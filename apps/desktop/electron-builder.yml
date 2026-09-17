@@ -96,6 +96,11 @@ linux:
   description: |
     BBPlayer 桌面端：播放 B 站音频、管理歌单、同步收藏夹、
     与移动端互通的 WebDAV 备份。
+  # ⚠️ 必须显式设置。Linux 上 `executableName` 默认从 **package.json 的 name**
+  # 派生，而我们的 name 是 `@bbplayer/desktop` -> 会变成 `@bbplayerdesktop`，
+  # AppImage 直接报「contains characters that cannot be safely used in file
+  # paths」（实测）。Windows 上用的是 productName，所以这个坑只在 Linux 暴露。
+  executableName: bbplayer
   target:
     - target: deb
       arch: [x64]
