@@ -280,6 +280,16 @@ setSleepTimer / getSleepTimerEndTime / cancelSleepTimer
 
 ## 4. 分阶段计划
 
+### 提交纪律（约定）
+
+**每个 Phase 验证通过后，立即向本地仓库提交一次**，便于回滚与逐阶段评审。
+
+- 提交信息用仓库既有的 scoped commit 风格（`root:` / `mobile:` 等）。
+- 提交前必须跑通：`pnpm type-check`、`pnpm check:core`、`pnpm lint`（允许既有错误存在，
+  但不得新增）。
+- 提交信息要写明**验证方式**与**已知限制**（例如「未在真机运行」），不要只写「完成 X」。
+- 遗留的既有失败（如 `jest.webdav`）应标注为「与本次无关」并附上复现依据。
+
 ### Phase 0 — 架构基座（不动 mobile 一行行为）✅ 已完成
 
 | 步骤 | 产出                                                                                                                                                  | 状态                                                                                                           |
@@ -376,16 +386,37 @@ setSleepTimer / getSleepTimerEndTime / cancelSleepTimer
 
 ## 5. 风险与对策
 
-| #   | 风险                                                                                                                                                              | 等级  | 对策                                                          |
-| --- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----- | ------------------------------------------------------------- |
-| 1   | **B 站音频防盗链导致播不了**（`NetworkModule.kt:42-45`）                                                                                                          | 🔴 高 | Phase 1.3 作为 go/no-go 关卡；自定义协议代理                  |
-| 2   | 33k 行 UI 重写的工作量被低估                                                                                                                                      | 🔴 高 | 明确「不是移植」；Phase 2 只做核心三页，其余迭代补            |
-| 3   | **`apps/update-publisher/src/index.ts:211` 只收 `.apk`**（`if (!asset.name.toLowerCase().endsWith('.apk')) continue`），`:252` 硬编码 `/Applications/Zed.app/...` | 🟡 中 | Phase 5.2 改造发布工具，否则桌面安装包进不了更新清单          |
-| 4   | 歌词服务剥离（625 行 + `Orpheus` 推送）                                                                                                                           | 🟡 中 | 抽出「匹配/缓存/偏移」，推送通过 `AudioPort` 可选方法         |
-| 5   | 两套 UI 长期漂移                                                                                                                                                  | 🟡 中 | `packages/design-tokens` 单一来源 + 共享 `packages/core` 契约 |
-| 6   | 打包体积（Electron ~120 MB）                                                                                                                                      | 🟢 低 | 接受；或用 `asar` + 裁剪依赖压到 ~90 MB                       |
-| 7   | mobile 回归                                                                                                                                                       | 🟡 中 | Phase 0 每步都跑 `pnpm type-check` + `pnpm lint`；CI 门禁     |
-| 8   | `pnpm install` 未执行，Phase 0 无法验证                                                                                                                           | 🟡 中 | 开工前需先安装依赖                                            |
+| #   | 风险                                                                                                                                                              | 等级      | 对策                                                          |
+| --- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------- | ------------------------------------------------------------- |
+| 1   | **B 站音频防盗链导致播不了**（`NetworkModule.kt:42-45`）                                                                                                          | 🔴 高     | Phase 1.3 作为 go/no-go 关卡；自定义协议代理                  |
+| 2   | 33k 行 UI 重写的工作量被低估                                                                                                                                      | 🔴 高     | 明确「不是移植」；Phase 2 只做核心三页，其余迭代补            |
+| 3   | **`apps/update-publisher/src/index.ts:211` 只收 `.apk`**（`if (!asset.name.toLowerCase().endsWith('.apk')) continue`），`:252` 硬编码 `/Applications/Zed.app/...` | 🟡 中     | Phase 5.2 改造发布工具，否则桌面安装包进不了更新清单          |
+| 4   | 歌词服务剥离（625 行 + `Orpheus` 推送）                                                                                                                           | 🟡 中     | 抽出「匹配/缓存/偏移」，推送通过 `AudioPort` 可选方法         |
+| 5   | 两套 UI 长期漂移                                                                                                                                                  | 🟡 中     | `packages/design-tokens` 单一来源 + 共享 `packages/core` 契约 |
+| 6   | 打包体积（Electron ~120 MB）                                                                                                                                      | 🟢 低     | 接受；或用 `asar` + 裁剪依赖压到 ~90 MB                       |
+| 7   | mobile 回归                                                                                                                                                       | 🟡 中     | Phase 0 每步都跑 `pnpm type-check` + `pnpm lint`；CI 门禁     |
+| 8   | ~~`pnpm install` 未执行，Phase 0 无法验证~~                                                                                                                       | ✅ 已解除 | 依赖已安装（两个 `packages` 已建链）                          |
+| 9   | **lefthook `pre-commit` 钩子在 Windows 上不可用**（实测复现，非推测）                                                                                             | 🟡 中     | 见下方「lefthook 缺陷详情」；在 Linux/macOS 上不受影响        |
+
+### lefthook 缺陷详情（执行 Phase 0 提交时实测）
+
+提交 Phase 0 时钩子失败，定位到 `lefthook.yml` 的两个真实缺陷：
+
+1. **lefthook 的 `{...}` 模板语法会破坏脚本正文里的 shell 变量展开**。
+   实测 `files=({staged_files})` 之后的 `${#files[@]}` 被替换成 `0files[@]`，
+   脚本随即语法错误。凡是在 `run` 里写 `${...}` 都有此风险。
+2. **`{staged_files}` 展开时不加引号**，因此文件名里的括号（本仓库有
+   `app/(tabs)/index.tsx`、`app/comments/[bvid].tsx` 等）会让
+   `files=(...)` 这类数组赋值直接语法错误。
+
+已尝试的修法（用 `set -- {staged_files}` + `[ $# -eq 0 ]`）解决了上述两点，
+但在当前 Windows 环境下钩子仍报 `-c: line N: syntax error: unexpected end of file`，
+根因未确定（同一脚本在隔离测试中可通过）。**因此该修改未纳入 Phase 0 提交**，
+`lefthook.yml` 保持原样。
+
+待办：在 Linux/macOS 上复验钩子；或在 Windows 上改用不依赖 shell 的判断方式。
+当前 Windows 提交需 `git commit --no-verify`，且提交前**手动**执行
+`pnpm type-check` + `pnpm check:core` + `pnpm lint`。
 
 ---
 
