@@ -106,6 +106,14 @@ contextBridge.exposeInMainWorld('bbplayer', {
 		downloadRemote: (remotePath) =>
 			ipcRenderer.invoke('backup:downloadRemote', remotePath),
 	},
+
+	// ---------- 设置（Phase 4 收尾）----------
+	settings: {
+		/** 读全部设置 + 常量（主题列表、定时预设、淡出时长） */
+		get: () => ipcRenderer.invoke('settings:get'),
+		/** 合并式写入；返回写入后的完整设置 */
+		update: (patch) => ipcRenderer.invoke('settings:update', patch),
+	},
 })
 
 /**

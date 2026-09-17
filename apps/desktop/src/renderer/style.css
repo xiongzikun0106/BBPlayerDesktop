@@ -855,3 +855,259 @@ input[type='range'] {
 	text-overflow: ellipsis;
 	white-space: nowrap;
 }
+
+/* ══════════════════════════════════════════════════════════
+   Phase 4 收尾：浅色主题 + 设置抽屉
+   ────────────────────────────────────────────────────────── */
+
+/*
+ * 浅色主题只覆盖语义 token —— 所有组件样式都消费这些变量，
+ * 因此不需要第二条样式规则。默认（无 data-theme 或 dark）即深色。
+ */
+:root[data-theme='light'] {
+	color-scheme: light;
+
+	--bg: #fef7ff;
+	--surface: #f7f2fa;
+	--surface-2: #ece6f0;
+	--surface-3: #e6e0e9;
+	--primary: #6750a4;
+	--on-primary: #ffffff;
+	--on-surface: #1d1b20;
+	--on-surface-variant: #49454f;
+	--outline: #cac4d0;
+	--ok: #1b6b2a;
+	--bad: #b3261e;
+	--warn: #7a5900;
+}
+
+/* ── 侧栏品牌行：标题 + 图标按钮 + 徽标 ───────────────── */
+.sidebar__brand-actions {
+	display: flex;
+	align-items: center;
+	gap: var(--sp-xxs);
+}
+
+.icon-button {
+	background: transparent;
+	border: none;
+	color: var(--on-surface-variant);
+	cursor: pointer;
+	font-size: 15px;
+	line-height: 1;
+	padding: 3px 5px;
+	border-radius: var(--r-sm);
+}
+
+.icon-button:hover {
+	background: var(--surface-2);
+	color: var(--on-surface);
+}
+
+/* ── 设置抽屉 ─────────────────────────────────────────── */
+.settings-drawer[hidden] {
+	display: none;
+}
+
+.settings-drawer {
+	position: fixed;
+	inset: 0;
+	background: rgb(0 0 0 / 40%);
+	display: flex;
+	justify-content: flex-end;
+	z-index: 90;
+}
+
+.settings-card {
+	background: var(--surface);
+	border-left: 1px solid var(--outline);
+	width: 460px;
+	max-width: 92vw;
+	height: 100%;
+	display: flex;
+	flex-direction: column;
+	overflow: hidden;
+	box-shadow: -8px 0 32px rgb(0 0 0 / 35%);
+}
+
+.settings-panel {
+	display: none;
+	flex-direction: column;
+	gap: var(--sp-xs);
+	padding: var(--sp-md);
+	overflow-y: auto;
+}
+
+.settings-panel.is-active {
+	display: flex;
+}
+
+.settings-panel h3 {
+	margin: var(--sp-sm) 0 var(--sp-xxs);
+	font-size: 13px;
+	text-transform: none;
+	color: var(--primary);
+}
+
+.settings-panel h3:first-child {
+	margin-top: 0;
+}
+
+.settings-hint {
+	font-size: 12px;
+	line-height: 1.6;
+	margin: 0;
+}
+
+.settings-hint code,
+.settings-path {
+	background: var(--surface-2);
+	border-radius: 4px;
+	padding: 0 4px;
+	font-size: 12px;
+}
+
+.settings-path {
+	padding: var(--sp-xxs) var(--sp-xs);
+	overflow-wrap: anywhere;
+}
+
+/* ── 分段控件（主题选择）────────────────────────────── */
+.segmented {
+	display: flex;
+	gap: var(--sp-xxs);
+}
+
+.segmented--wrap {
+	flex-wrap: wrap;
+}
+
+.segmented button {
+	flex: 1 1 auto;
+	background: var(--surface-2);
+	border: 1px solid var(--outline);
+	border-radius: var(--r-sm);
+	color: var(--on-surface);
+	cursor: pointer;
+	font: inherit;
+	padding: var(--sp-xxs) var(--sp-sm);
+}
+
+.segmented button:hover {
+	background: var(--surface-3);
+}
+
+.segmented button.is-active {
+	background: var(--primary);
+	border-color: var(--primary);
+	color: var(--on-primary);
+	font-weight: 600;
+}
+
+/* ── 通用行 ───────────────────────────────────────────── */
+.settings-row {
+	display: flex;
+	align-items: center;
+	gap: var(--sp-xs);
+}
+
+.settings-row--wrap {
+	flex-wrap: wrap;
+}
+
+.settings-row label {
+	white-space: nowrap;
+	color: var(--on-surface-variant);
+	font-size: 13px;
+	flex: 0 0 auto;
+
+
+.settings-row button {
+	background: var(--surface-2);
+	border: 1px solid var(--outline);
+	border-radius: var(--r-sm);
+	color: var(--on-surface);
+	cursor: pointer;
+	font: inherit;
+	padding: 4px var(--sp-sm);
+	white-space: nowrap;
+}
+
+.settings-row button:hover {
+	background: var(--surface-3);
+}
+
+.settings-row__label {
+	flex: 1 1 auto;
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	font-size: 13px;
+}
+
+.settings-row progress {
+	flex: 0 0 90px;
+	height: 6px;
+}
+
+.settings-row input[type='number'] {
+	background: var(--surface-2);
+	border: 1px solid var(--outline);
+	border-radius: var(--r-sm);
+	color: var(--on-surface);
+	font: inherit;
+	padding: 3px var(--sp-xs);
+	width: 90px;
+}
+
+.settings-toggle {
+	display: flex;
+	align-items: center;
+	gap: var(--sp-xs);
+	cursor: pointer;
+}
+
+/* ── 表单网格（WebDAV）───────────────────────────────── */
+.settings-grid {
+	display: grid;
+	grid-template-columns: auto minmax(0, 1fr);
+	gap: var(--sp-xs);
+	align-items: center;
+}
+
+.settings-grid label {
+	color: var(--on-surface-variant);
+	font-size: 13px;
+}
+
+.settings-grid input {
+	background: var(--surface-2);
+	border: 1px solid var(--outline);
+	border-radius: var(--r-sm);
+	color: var(--on-surface);
+	font: inherit;
+	padding: 4px var(--sp-xs);
+	width: 100%;
+}
+
+/* ── 状态文本 ─────────────────────────────────────────── */
+.settings-status {
+	margin: 0;
+	font-size: 12px;
+	line-height: 1.5;
+	color: var(--on-surface-variant);
+	overflow-wrap: anywhere;
+}
+
+.settings-status--ok {
+	color: var(--ok);
+}
+
+.settings-status--bad {
+	color: var(--bad);
+}
+
+.settings-status--busy {
+	color: var(--primary);
+}

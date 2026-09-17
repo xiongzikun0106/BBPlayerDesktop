@@ -137,6 +137,14 @@
 	keys.register('ctrl+shift+a', { description: '打开登录面板' }, () => {
 		window.bbAuth?.open('qr')
 	})
+	// 设置：Ctrl+, （与多数桌面应用一致）
+	keys.register(
+		'ctrl+,',
+		{ description: '打开设置', allowInInput: true },
+		() => {
+			window.bbSettings?.open()
+		},
+	)
 	keys.register('ctrl+q', { description: '队列/歌词面板切换' }, () => {
 		const current = window.bbState.get().rightPanel
 		switchPanel(current === 'queue' ? 'lyrics' : 'queue')
@@ -333,6 +341,102 @@
 	}
 
 	// ---------------------------------------------------------------
+	// 桌面专属功能（Phase 4 收尾）：主题 / 定时关闭 / 响度均衡
+	// ---------------------------------------------------------------
+
+	let sleepTimer = null
+	let loudness = null
+	let desktopFeatures = null
+
+	/** 读设置（面板与初始化都要用，收在一处便于统一错误处理） */
+	async function readSettings() {
+		const result = await window.bbplayer.settings.get()
+		if (result?.ok !== true) {
+			throw new Error(result?.error ?? '读取设置失败')
+		}
+		return result.data
+	}
+
+	/** 写设置；返回写入后的完整设置 */
+	async function writeSettings(patch) {
+		const result = await window.bbplayer.settings.update(patch)
+		if (result?.ok !== true) {
+			throw new Error(result?.error ?? '写入设置失败')
+		}
+		return result.data
+	}
+
+	async function initDesktopFeatures() {
+		const factory = window.bbDesktopFeatures
+		if (!factory) {
+			log('桌面特性模块不可用，跳过主题/定时/响度')
+			return
+		}
+
+		let stored
+		try {
+			stored = await readSettings()
+		} catch (error) {
+			log(`读取设置失败，使用默认值：${error.message}`)
+			stored = {
+				settings: {},
+				sleepPresets: [15, 30, 45, 60],
+				sleepFadeMs: 5000,
+			}
+		}
+		const settings = stored.settings ?? {}
+
+		// 主题：**先应用**，避免界面先闪一下深色再变浅
+		factory.applyTheme(settings.theme)
+
+		sleepTimer = factory.createSleepTimer({
+			player,
+			fadeMs: stored.sleepFadeMs ?? 5000,
+			onFire: async () => {
+				// 到点后清掉持久化的结束时间，否则重启后又会被恢复成「已过期」
+				try {
+					await writeSettings({ sleepEndsAt: null })
+				} catch (error) {
+					log(`清除定时关闭状态失败：${error.message}`)
+				}
+			},
+			log: (message) => log(`[sleep] ${message}`),
+		})
+		// 重启后恢复未到期的定时
+		if (settings.sleepEndsAt) {
+			const restored = sleepTimer.restore(settings.sleepEndsAt)
+			if (restored) log('已恢复上次未到期的定时关闭')
+		}
+
+		loudness = factory.createLoudnessNormalizer(player.getAudio(), {
+			targetDb: settings.loudnessTargetDb ?? -14,
+			maxGainDb: settings.loudnessMaxGainDb ?? 12,
+			log: (message) => log(`[loudness] ${message}`),
+		})
+		// 只在用户上次确实开着、且播放器已就绪时才自动启用
+		if (settings.loudnessNormalization) {
+			await loudness.enable()
+		}
+
+		desktopFeatures = { applyTheme: factory.applyTheme, sleepTimer, loudness }
+
+		window.bbSettings?.init({
+			...desktopFeatures,
+			// 面板通过这两个回调读写设置，不直接碰 IPC
+			readSettings: async () => (await readSettings()).settings,
+			writeSettings,
+			sleepPresets: stored.sleepPresets,
+		})
+		window.bbSettings?.startDownloadPolling()
+
+		log(
+			`桌面特性就绪：主题=${settings.theme ?? 'dark'}，` +
+				`响度均衡=${loudness.isEnabled() ? '开' : '关'}，` +
+				`定时关闭=${sleepTimer.describe().active ? '已设置' : '未设置'}`,
+		)
+	}
+
+	// ---------------------------------------------------------------
 	// 自动化接口
 	// ---------------------------------------------------------------
 
@@ -351,6 +455,10 @@
 		favorites: () => window.bbFavorites,
 		/** 系统媒体集成（Phase 4）；未初始化时为 null */
 		mediaSession: () => mediaSession,
+		/** 桌面特性（主题 / 定时关闭 / 响度均衡）；未初始化时为 null */
+		desktop: () => desktopFeatures,
+		/** 设置面板（Phase 4 收尾） */
+		settingsPanel: () => window.bbSettings,
 		/** 直接派发一个媒体动作（供自动化，避免真的依赖系统媒体键） */
 		dispatchMediaAction(action) {
 			const handler = MEDIA_ACTIONS[action]
@@ -393,6 +501,7 @@
 
 		initLyricsPanel()
 		initMediaSession()
+		await initDesktopFeatures()
 
 		// 登录徽标由 auth.js 自己初始化（走正式的 loginStatus IPC，
 		// 不再依赖只有探针模式才有的 bbProbe）；这里只把数据目录记进日志。

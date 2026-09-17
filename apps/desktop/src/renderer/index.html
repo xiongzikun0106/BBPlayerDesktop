@@ -16,9 +16,23 @@
 			<aside class="sidebar" data-testid="sidebar">
 				<div class="sidebar__brand">
 					<span class="sidebar__title">BBPlayer</span>
-					<span class="sidebar__badge" id="account-badge" data-testid="account-badge"
-						>未登录</span
-					>
+					<div class="sidebar__brand-actions">
+						<button
+							class="icon-button"
+							id="settings-open"
+							data-testid="settings-open"
+							title="设置"
+							aria-label="设置"
+						>
+							⚙
+						</button>
+						<span
+							class="sidebar__badge"
+							id="account-badge"
+							data-testid="account-badge"
+							>未登录</span
+						>
+					</div>
 				</div>
 
 				<nav class="nav" data-testid="nav">
@@ -336,6 +350,296 @@
 			</div>
 		</div>
 
+		<!-- ── 设置抽屉（Phase 4 收尾）────────────────────────── -->
+		<aside
+			class="settings-drawer"
+			id="settings-drawer"
+			data-testid="settings-drawer"
+			hidden
+			role="dialog"
+			aria-modal="false"
+			aria-label="设置"
+		>
+			<div class="settings-card">
+				<header class="modal__head">
+					<h2>设置</h2>
+					<button
+						class="modal__close"
+						id="settings-close"
+						data-testid="settings-close"
+						title="关闭"
+					>
+						✕
+					</button>
+				</header>
+
+				<div class="tabs tabs--inline" data-testid="settings-tabs">
+					<button
+						class="tab is-active"
+						data-settings-tab="appearance"
+						data-testid="settings-tab-appearance"
+					>
+						外观
+					</button>
+					<button
+						class="tab"
+						data-settings-tab="playback"
+						data-testid="settings-tab-playback"
+					>
+						播放
+					</button>
+					<button
+						class="tab"
+						data-settings-tab="download"
+						data-testid="settings-tab-download"
+					>
+						下载
+					</button>
+					<button
+						class="tab"
+						data-settings-tab="backup"
+						data-testid="settings-tab-backup"
+					>
+						备份
+					</button>
+				</div>
+
+				<!-- 外观 -->
+				<section
+					class="settings-panel is-active"
+					data-settings-panel="appearance"
+					data-testid="settings-panel-appearance"
+				>
+					<h3>主题</h3>
+					<p class="muted settings-hint">
+						配色取自 <code>packages/design-tokens</code>，与移动端同一套语义 token。
+					</p>
+					<div class="segmented" data-testid="settings-theme">
+						<button data-theme-choice="dark" data-testid="theme-dark">
+							深色（默认）
+						</button>
+						<button data-theme-choice="light" data-testid="theme-light">
+							浅色
+						</button>
+					</div>
+				</section>
+
+				<!-- 播放 -->
+				<section
+					class="settings-panel"
+					data-settings-panel="playback"
+					data-testid="settings-panel-playback"
+				>
+					<h3>定时关闭</h3>
+					<p class="muted settings-hint">
+						到点前 5 秒开始淡出，然后暂停播放并还原音量。
+					</p>
+					<div
+						class="segmented segmented--wrap"
+						id="settings-sleep-presets"
+						data-testid="settings-sleep-presets"
+					></div>
+					<div class="settings-row">
+						<input
+							id="settings-sleep-custom"
+							data-testid="settings-sleep-custom"
+							type="number"
+							min="1"
+							placeholder="自定义分钟"
+						/>
+						<button id="settings-sleep-set" data-testid="settings-sleep-set">
+							设置
+						</button>
+						<button
+							id="settings-sleep-cancel"
+							data-testid="settings-sleep-cancel"
+						>
+							取消
+						</button>
+					</div>
+					<p
+						class="settings-status"
+						id="settings-sleep-status"
+						data-testid="settings-sleep-status"
+					></p>
+
+					<h3>响度均衡</h3>
+					<label class="settings-toggle">
+						<input
+							id="settings-loudness"
+							data-testid="settings-loudness"
+							type="checkbox"
+						/>
+						<span>启用响度均衡</span>
+					</label>
+					<div class="settings-row">
+						<label for="settings-loudness-target">目标电平</label>
+						<input
+							id="settings-loudness-target"
+							data-testid="settings-loudness-target"
+							type="range"
+							min="5"
+							max="30"
+							step="1"
+							value="14"
+						/>
+						<span
+							class="mono"
+							id="settings-loudness-target-value"
+							data-testid="settings-loudness-target-value"
+							>-14 dB</span
+						>
+					</div>
+					<p
+						class="settings-status"
+						id="settings-loudness-status"
+						data-testid="settings-loudness-status"
+					></p>
+				</section>
+
+				<!-- 下载 -->
+				<section
+					class="settings-panel"
+					data-settings-panel="download"
+					data-testid="settings-panel-download"
+				>
+					<h3>下载目录</h3>
+					<p class="muted mono settings-path" id="settings-download-dir"></p>
+					<div class="settings-row">
+						<button
+							id="settings-download-open"
+							data-testid="settings-download-open"
+						>
+							在文件管理器中打开
+						</button>
+						<label for="settings-download-parallel">并发</label>
+						<input
+							id="settings-download-parallel"
+							data-testid="settings-download-parallel"
+							type="number"
+							min="1"
+							max="6"
+							value="2"
+						/>
+					</div>
+
+					<h3>进行中的下载</h3>
+					<div
+						id="settings-download-tasks"
+						data-testid="settings-download-tasks"
+					></div>
+
+					<h3>已下载</h3>
+					<div class="settings-row">
+						<button
+							id="settings-download-refresh"
+							data-testid="settings-download-refresh"
+						>
+							刷新
+						</button>
+					</div>
+					<div
+						id="settings-download-list"
+						data-testid="settings-download-list"
+					></div>
+					<p
+						class="settings-status"
+						id="settings-download-status"
+						data-testid="settings-download-status"
+					></p>
+				</section>
+
+				<!-- 备份 -->
+				<section
+					class="settings-panel"
+					data-settings-panel="backup"
+					data-testid="settings-panel-backup"
+				>
+					<h3>WebDAV</h3>
+					<p class="muted settings-hint">
+						与移动端共用同一份备份格式（ZIP + SQLite 快照），远端文件名形如
+						<code>backup-&lt;时间戳&gt;.bbplayer</code>。
+					</p>
+					<div class="settings-grid">
+						<label for="settings-webdav-url">地址</label>
+						<input
+							id="settings-webdav-url"
+							data-testid="settings-webdav-url"
+							type="text"
+							placeholder="https://dav.example.com/dav"
+							spellcheck="false"
+						/>
+						<label for="settings-webdav-user">用户名</label>
+						<input
+							id="settings-webdav-user"
+							data-testid="settings-webdav-user"
+							type="text"
+							spellcheck="false"
+							autocomplete="off"
+						/>
+						<label for="settings-webdav-password">密码</label>
+						<input
+							id="settings-webdav-password"
+							data-testid="settings-webdav-password"
+							type="password"
+							autocomplete="off"
+						/>
+						<label for="settings-webdav-directory">远端目录</label>
+						<input
+							id="settings-webdav-directory"
+							data-testid="settings-webdav-directory"
+							type="text"
+							placeholder="/BBPlayer"
+							spellcheck="false"
+						/>
+					</div>
+					<div class="settings-row settings-row--wrap">
+						<button id="settings-webdav-save" data-testid="settings-webdav-save">
+							保存
+						</button>
+						<button id="settings-webdav-test" data-testid="settings-webdav-test">
+							测试连接
+						</button>
+						<button
+							id="settings-webdav-upload"
+							data-testid="settings-webdav-upload"
+						>
+							立即备份并上传
+						</button>
+						<button
+							id="settings-webdav-refresh"
+							data-testid="settings-webdav-refresh"
+						>
+							刷新远端列表
+						</button>
+					</div>
+					<p
+						class="settings-status"
+						id="settings-backup-security"
+						data-testid="settings-backup-security"
+					></p>
+
+					<h3>本地导出</h3>
+					<div class="settings-row">
+						<button
+							id="settings-backup-export"
+							data-testid="settings-backup-export"
+						>
+							导出一份到本地
+						</button>
+					</div>
+
+					<h3>远端备份</h3>
+					<div id="settings-backup-list" data-testid="settings-backup-list"></div>
+					<p
+						class="settings-status"
+						id="settings-backup-status"
+						data-testid="settings-backup-status"
+					></p>
+				</section>
+			</div>
+		</aside>
+
 		<pre id="log" data-testid="log" class="log" hidden></pre>
 
 		<script src="state.js"></script>
@@ -344,8 +648,16 @@
 		<script src="keyboard.js"></script>
 		<script src="lyrics-panel.js"></script>
 		<script src="media-session.js"></script>
+		<!--
+			⚠️ 顺序有实际影响：settings-panel.js 必须排在 renderer.js 之前，
+			因为 renderer.js 的 boot() 里会调 `window.bbSettings.init(...)` 注入依赖。
+			反过来的话 init 落空，设置面板的每个按钮都会因为 `features === null`
+			而点了没反应（实测踩过）。
+		-->
+		<script src="desktop-features.js"></script>
 		<script src="auth.js"></script>
 		<script src="favorites.js"></script>
+		<script src="settings-panel.js"></script>
 		<script src="renderer.js"></script>
 	</body>
 </html>

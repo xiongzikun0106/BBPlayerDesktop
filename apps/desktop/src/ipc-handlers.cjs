@@ -16,7 +16,7 @@ const {
 	resolveAudio,
 	clearAudioCache,
 } = require('./audio-proxy.cjs')
-const { core, describePorts, storage, DATA_DIR } = require('./ports.cjs')
+const { core, describePorts, DATA_DIR } = require('./ports.cjs')
 const { loadTsFile } = require('./core-loader.cjs')
 const { getLoginManager } = require('./bilibili-login-holder.cjs')
 
@@ -29,8 +29,51 @@ const { getLoginManager } = require('./bilibili-login-holder.cjs')
  *     提前创建会多出无用目录。
  *   * 备份管理器要读 KV 与 `safeStorage`，而 `safeStorage` 要 app ready 后才可用。
  */
+/**
+ * 取 core 的 StoragePort，并适配成 `getItem/setItem` 风格的键值接口。
+ *
+ * ⚠️ 两个坑都在这里踩过：
+ *
+ * 1. **不能在模块顶部解构 `storage`。** `ports.cjs` 初始化时会
+ *    `registerCorePorts(desktopPorts)`，而 `desktopPorts.storage` 在那之前是
+ *    undefined；模块顶部解构拿到的是当时的快照，表现为每个 handler 都报
+ *    `storage.getItem is not a function`。
+ *
+ * 2. **端口的真实方法名是 `getString` / `set`**（见
+ *    `packages/core/src/ports/index.ts` 的 `StoragePort`），不是
+ *    `getItem` / `setItem`。备份管理器与设置层用的是后者这套名字，
+ *    所以这里做一层**显式适配**，而不是让两处各写一套语义相近但名字不同的
+ *    接口 —— 后者正是第一版把 `getString` 当成 `getItem` 的原因。
+ */
+function getStorage() {
+	const port = require('./ports.cjs').desktopPorts.storage
+	if (!port) {
+		throw new Error('StoragePort 尚未注册（ports.cjs 初始化未完成？）')
+	}
+	return {
+		/** 读字符串；未设置时返回 null（与 StoragePort.getString 的 undefined 区分） */
+		getItem: (key) => port.getString(key) ?? null,
+		setItem: (key, value) => port.set(key, value),
+		deleteItem: (key) => port.delete(key),
+		/** 原样转发，便于需要 getBoolean 等能力时使用 */
+		port,
+	}
+}
+
 let downloadManager = null
 let backupManager = null
+let settingsManager = null
+
+function getSettings() {
+	if (!settingsManager) {
+		const { createSettings } = require('./settings.cjs')
+		settingsManager = createSettings({
+			storage: getStorage(),
+			log: (message) => core?.logger?.info?.(message),
+		})
+	}
+	return settingsManager
+}
 
 function getDownloadManager() {
 	if (!downloadManager) {
@@ -51,7 +94,7 @@ function getBackupManager() {
 			dataDir: DATA_DIR,
 			dbFile: path.join(DATA_DIR, 'bbplayer.db'),
 			baselineName: db.BASELINE_MIGRATION,
-			storage,
+			storage: getStorage(),
 			log: (message) => core?.logger?.info?.(message),
 		})
 	}
@@ -730,6 +773,29 @@ function registerIpcHandlers() {
 		try {
 			const buffer = await getBackupManager().downloadRemote(remotePath)
 			return { ok: true, data: getBackupManager().restoreFromBuffer(buffer) }
+		} catch (error) {
+			return { ok: false, error: error.message }
+		}
+	})
+
+	// ---------- 设置（Phase 4 收尾）----------
+	//
+	// 设置存在 core 的 StoragePort 里（桌面端是 JSON 文件 KV），
+	// 键名与移动端的 `app-storage` 语义对齐，方便将来备份互通。
+
+	ipcMain.handle('settings:get', async () => {
+		try {
+			return { ok: true, data: await getSettings().describe() }
+		} catch (error) {
+			return { ok: false, error: error.message }
+		}
+	})
+
+	ipcMain.handle('settings:update', async (_event, patch) => {
+		try {
+			const settings = getSettings()
+			await settings.update(patch ?? {})
+			return { ok: true, data: await settings.describe() }
 		} catch (error) {
 			return { ok: false, error: error.message }
 		}

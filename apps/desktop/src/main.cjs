@@ -30,6 +30,8 @@ const UI_PROBE_MODE = process.argv.includes('--ui-probe')
 const LOGIN_PROBE_MODE = process.argv.includes('--login-probe')
 /** 媒体集成验收模式：跑 Phase 4 的 MediaSession 断言序列（见 media-probe-driver.cjs） */
 const MEDIA_PROBE_MODE = process.argv.includes('--media-probe')
+/** 设置验收模式：跑 Phase 4 收尾的桌面特性断言序列（见 settings-probe-driver.cjs） */
+const SETTINGS_PROBE_MODE = process.argv.includes('--settings-probe')
 /** 对比模式的「不安全」变体：关掉 webSecurity，用于量化其代价 */
 const INSECURE_MODE = process.argv.includes('--insecure')
 /**
@@ -289,6 +291,18 @@ void app.whenReady().then(() => {
 			void run(mainWindow)
 				.catch((error) => {
 					console.error('[desktop] 媒体探针执行失败:', error)
+				})
+				.finally(() => {
+					setTimeout(() => app.exit(0), 500)
+				})
+		})
+	} else if (SETTINGS_PROBE_MODE) {
+		// 设置验收：跑 Phase 4 收尾的桌面特性断言序列
+		mainWindow.webContents.once('did-finish-load', () => {
+			const { run } = require('./settings-probe-driver.cjs')
+			void run(mainWindow)
+				.catch((error) => {
+					console.error('[desktop] 设置探针执行失败:', error)
 				})
 				.finally(() => {
 					setTimeout(() => app.exit(0), 500)
