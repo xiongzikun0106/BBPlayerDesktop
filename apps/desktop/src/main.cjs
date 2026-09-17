@@ -80,6 +80,8 @@ const LYRICS_PROBE_MODE = process.argv.includes('--lyrics-probe')
 const HISTORY_PROBE_MODE = process.argv.includes('--history-probe')
 /** 外部歌单导入验收模式（Phase 3.3，见 import-probe-driver.cjs） */
 const IMPORT_PROBE_MODE = process.argv.includes('--import-probe')
+/** 共享歌单验收模式（Phase 3.4，见 share-probe-driver.cjs） */
+const SHARE_PROBE_MODE = process.argv.includes('--share-probe')
 
 /** 对比模式的「不安全」变体：关掉 webSecurity，用于量化其代价 */
 const INSECURE_MODE = process.argv.includes('--insecure')
@@ -110,6 +112,7 @@ const PROBE_ENABLED = [
 	'--lyrics-probe',
 	'--history-probe',
 	'--import-probe',
+	'--share-probe',
 ].some((flag) => process.argv.includes(flag))
 
 const SHOT_DIR = path.join(__dirname, '..', 'probe-output')
@@ -505,6 +508,14 @@ void app.whenReady().then(() => {
 			const { run } = require('./import-probe-driver.cjs')
 			void run(mainWindow)
 				.catch((error) => console.error('[desktop] 导入探针执行失败:', error))
+				.finally(() => setTimeout(() => app.exit(0), 500))
+		})
+	} else if (SHARE_PROBE_MODE) {
+		// 共享歌单验收（Phase 3.4）
+		mainWindow.webContents.once('did-finish-load', () => {
+			const { run } = require('./share-probe-driver.cjs')
+			void run(mainWindow)
+				.catch((error) => console.error('[desktop] 共享探针执行失败:', error))
 				.finally(() => setTimeout(() => app.exit(0), 500))
 		})
 	} else if (COMPARE_MODE) {

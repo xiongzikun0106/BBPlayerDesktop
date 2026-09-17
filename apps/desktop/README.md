@@ -2,9 +2,9 @@
 
 Windows / Linux 桌面端。**Phase 0–5 已完成**：播放 / 搜索 / 歌单 / 歌词 / 登录同步 /
 下载 / WebDAV 备份 / 媒体集成 / 独立歌词窗口 / 主题 / 定时关闭 / 响度均衡 /
-播放历史 / 外部歌单导入，并且 Windows 与 Linux 的安装包均已构建并在真机验证。
+播放历史 / 外部歌单导入 / 共享歌单，并且 Windows 与 Linux 的安装包均已构建并在真机验证。
 
-未做的只有 Phase 5.3（代码签名）与 Phase 3.4（共享歌单，依赖后端 share 接口）。
+未做的只有 Phase 5.3（代码签名）与 QQ 音乐的歌单导入（接口需要登录态签名）。
 
 方案与阶段划分见 [`docs/DESKTOP_PLAN.md`](../../docs/DESKTOP_PLAN.md)。
 
@@ -53,6 +53,8 @@ pnpm verify:login              # 52 项：登录接口与 RSA 加密链路
 pnpm verify:play-history       # 35 项：播放历史 SQL 层
 pnpm verify:external-import    # 65 项：外部歌单导入后端（含真实网易云歌单）
 pnpm verify:sortkey            # 16 项：跨端歌单顺序互通（sort_key 方向）
+pnpm verify:shared             # 95 项：共享歌单契约（**需要本机后端**，见下）
+pnpm verify:desktop:shared     # UI 点击级：账号 / 订阅 / 分享 / 成员 / 邀请码（**需要本机后端**）
 
 # 需要 tsx 的其它验证
 pnpm exec tsx scripts/verify-core-on-node.mjs
@@ -108,16 +110,19 @@ apps/desktop/
     thumbar-icons.cjs         32×32 PNG 图标运行时生成（零依赖）
     netease-playlist.cjs      网易云歌单抓取（匿名接口 + 字段裁剪）
     track-matcher.cjs         歌单匹配：权重打分 + 负向词罚分 + 落库
+    bbplayer-account.cjs      BBPlayer 账号（共享歌单的后端身份；独立于 B 站登录）
+    shared-playlist.cjs       共享歌单：分享 / 订阅 / outbox 增量同步 / 成员 / 邀请码
     ipc-handlers.cjs          全部 IPC handler
     探针：probe-driver / ui-probe-driver / compare-driver /
           login-probe-driver / media-probe-driver / settings-probe-driver /
-          lyrics-window-probe-driver / history-probe-driver / import-probe-driver
+          lyrics-window-probe-driver / history-probe-driver / import-probe-driver /
+          share-probe-driver
     renderer/
       index.html  style.css  state.js  player.js  library.js
       keyboard.js  lyrics-panel.js  media-session.js
       lyrics-window.html  lyrics-window.css  lyrics-window.js
       desktop-features.js  settings-panel.js
-      auth.js  favorites.js  history.js  import.js  renderer.js
+      auth.js  favorites.js  history.js  import.js  share.js  renderer.js
 ```
 
 ### 为什么数据库 schema 与移动端同源
@@ -324,6 +329,65 @@ WebDAV 复用 `packages/core` 的平台无关客户端（移动端注入 RN fetc
 
 ---
 
+## 共享歌单（Phase 3.4）
+
+把歌单分享到 BBPlayer 自己的后端，别人用链接订阅后**双向同步**（owner / editor
+能改，subscriber 只读）。
+
+### 它需要**第二套身份**
+
+B 站登录态解锁的是 B 站内容（私密收藏夹、会员音轨）；共享歌单是
+`apps/backend` 的能力，有独立的账号与 JWT。两者互不相干 —— B 站 cookie 拿到
+共享后端毫无用处。所以 `bbplayer-account.cjs` 与 `bilibili-login.cjs` 并存：
+
+|      | B 站登录                  | BBPlayer 账号                    |
+| ---- | ------------------------- | -------------------------------- |
+| 凭据 | cookie 字典（可粘贴导入） | 用户名 + 密码换 JWT              |
+| 失效 | 有有效期，需重新扫码      | JWT **没有 `exp`**，实测不会过期 |
+| 落盘 | `bilibili-cookie.json`    | `bbplayer-account.json`          |
+
+**后端地址可配**（默认 `https://be.bbplayer.roitium.com`，与移动端的默认值
+一致）。自建实例是真实需求，也让验证脚本能对着本地后端跑而不去写上游的生产库。
+
+### 顺序与身份的两条约定
+
+- **`sort_key` 越大越靠前**，读取用 `DESC`，键是 fractional-indexing 字符串。
+  约定唯一定义在 `packages/core/src/utils/sortKey.ts`，两端共用 ——
+  详见「备份与恢复」一节里那个会让歌单**整单倒序**的坑。
+- **曲目身份以**服务端给的 `unique_key` 为准（`bilibili::<bvid>`，多 P 时带
+  `::<cid>`）。移动端拉取时会用重新生成的键去查本地行，差一点就**静默丢弃**；
+  桌面端不重新生成。
+
+### 协议里几个必须记住的点
+
+- **写 `remove`，读回是 `delete`**（`POST /changes` 与 `GET /changes` 用词不同）。
+- **`track_count` 是字符串**（Postgres `count(*)` 经 `pg` 回来是 bigint 字符串）。
+- **`POST /playlists` 不能带尾斜杠**（Hono strict 路由会 404）。
+- **LWW 只对曲目操作生效**；`PATCH` 元数据没有时间戳比较，靠客户端按
+  `operation_at` 升序推送来摆顺序。
+- **邀请码初始是 `null`**（后端只在 rotate 时生成），UI 会显示「生成邀请码」。
+- **重复拉取是协议的固有性质**：LWW 用客户端时间戳、游标用服务端时间，两个
+  时钟有偏差时刚推上去的行会被重拉。桌面端**不去掩盖它**（更激进的游标会
+  永久漏掉别人的改动），因此断言的是**重放幂等**。
+
+### 验证需要一个**本机**后端
+
+`verify:shared` 与 `verify:desktop:shared` 会注册账号、建歌单、传曲目、改角色、
+删歌单。上游那个域名是**别人正在服务的库**，不能拿这些动作去写它。两个脚本
+都只认 `BBPLAYER_API_URL`，**隧道不在就直接失败**，绝不静默回退到生产地址。
+
+```bash
+# 在 VPS 上（仓库已 clone）：wrangler dev + 本地 Postgres，只监听 127.0.0.1
+systemctl status bbplayer-backend   # 或 cd apps/backend && pnpm exec wrangler dev --port 8787 --ip 127.0.0.1
+# 在本机：把端口接到本地
+ssh -i <key> -N -L 8787:127.0.0.1:8787 root@<vps>
+# 然后
+pnpm verify:shared
+pnpm verify:desktop:shared
+```
+
+---
+
 ## 已知限制 / 下一步
 
 - ~~`window.bbProbe` 无条件暴露~~ —— 已修：只在探针模式下通过 `additionalArguments` 暴露，并有专门的 `--verify-gating` 模式做端到端断言（它故意不属于探针模式，否则永远测不出问题）。
@@ -339,7 +403,9 @@ WebDAV 复用 `packages/core` 的平台无关客户端（移动端注入 RN fetc
   独立歌词窗口走的是另一份渲染实现，**没有这个问题**，可作为绕过路径。
 - Phase 5.3（代码签名）未做：Windows 的 NSIS 包未签名，SmartScreen 会提示；
   Linux 包也未签名。
-- Phase 3.3（外部歌单导入）只支持**网易云**；QQ 音乐与 Phase 3.4（共享歌单）未做。
+- 外部歌单导入只支持**网易云**；QQ 音乐未做（接口需登录态签名）。
+- 共享歌单的**多人同时编辑体验**没有人评过（需要两台真机同时操作）；只断言了
+  协议层的 LWW 与重放幂等。
 - 外部歌单导入的**匹配语义正确性**（自动匹配上的 B 站视频是否真的是那首歌）
   需要人耳/人眼确认，探针只能断言「分数与负向词符合预期」。200 首量级的
   全量匹配 UI 表现（进度 / 取消 / 滚动）也只做了逻辑断言，未做端到端点击验证。

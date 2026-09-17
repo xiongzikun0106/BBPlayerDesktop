@@ -1222,3 +1222,381 @@ input[type='range'] {
 .import-table tbody tr[data-selected='true'] {
 	background: rgb(208 188 255 / 8%);
 }
+
+/* ══════════════════════════════════════════════════════════
+   Phase 3.4：共享歌单
+   ────────────────────────────────────────────────────────── */
+
+/*
+ * ⚠️ `#view-share` 是**常驻**节点（探针要能直接找到它），与 `#content`
+ * 互斥显示。`.content` 没有声明 `display`，所以 `[hidden]` 的 UA 规则能生效；
+ * 这里自己声明了 `display: flex`，就必须显式写 `[hidden]`（同 modal/drawer）。
+ */
+.share-view[hidden] {
+	display: none;
+}
+
+.share-view {
+	flex: 1 1 auto;
+	min-height: 0;
+	overflow-y: auto;
+	padding: var(--sp-md);
+}
+
+.share-head {
+	display: flex;
+	align-items: baseline;
+	justify-content: space-between;
+	gap: var(--sp-sm);
+	margin-bottom: var(--sp-xs);
+}
+
+.share-head h2 {
+	margin: 0;
+	font-size: 18px;
+}
+
+.share-status {
+	font-size: 12px;
+	margin: 0 0 var(--sp-md);
+	min-height: 1.2em;
+}
+
+.share-status--idle {
+	color: var(--on-surface-variant);
+}
+
+.share-status--ok {
+	color: var(--ok);
+}
+
+.share-status--busy {
+	color: var(--warn);
+}
+
+.share-status--bad {
+	color: var(--bad);
+}
+
+.share-section {
+	background: var(--surface);
+	border: 1px solid var(--outline);
+	border-radius: var(--r-md);
+	padding: var(--sp-sm) var(--sp-md);
+	margin-bottom: var(--sp-md);
+}
+
+.share-section h3 {
+	margin: 0 0 var(--sp-xs);
+	font-size: 14px;
+}
+
+.share-hint {
+	font-size: 12px;
+	margin: var(--sp-xxs) 0 var(--sp-xs);
+}
+
+.share-grid {
+	display: flex;
+	flex-wrap: wrap;
+	gap: var(--sp-xs);
+	margin-bottom: var(--sp-xs);
+}
+
+.share-field {
+	display: flex;
+	flex-direction: column;
+	gap: 2px;
+	flex: 1 1 220px;
+	min-width: 160px;
+}
+
+.share-field label {
+	font-size: 12px;
+	color: var(--on-surface-variant);
+}
+
+.share-field input[type='text'],
+.share-field input[type='password'] {
+	background: var(--surface-2);
+	border: 1px solid var(--outline);
+	border-radius: var(--r-sm);
+	color: var(--on-surface);
+	font: inherit;
+	padding: 6px var(--sp-xs);
+	width: 100%;
+}
+
+.share-security {
+	font-size: 12px;
+	margin: var(--sp-xxs) 0 var(--sp-xs);
+}
+
+.share-security--ok {
+	color: var(--ok);
+}
+
+.share-security--bad {
+	color: var(--bad);
+}
+
+/* ── 订阅预览 ─────────────────────────────────────────── */
+.share-preview {
+	border-top: 1px dashed var(--outline);
+	margin-top: var(--sp-xs);
+	padding-top: var(--sp-xs);
+}
+
+.share-preview__title {
+	font-weight: 600;
+}
+
+.share-preview__meta,
+.share-preview__error,
+.share-preview__link {
+	font-size: 12px;
+}
+
+.share-preview__error {
+	color: var(--bad);
+}
+
+.share-preview__tracks {
+	margin: var(--sp-xxs) 0;
+	padding-left: var(--sp-lg);
+	font-size: 12px;
+	color: var(--on-surface-variant);
+}
+
+/* ── 我的共享歌单 ─────────────────────────────────────── */
+.share-list {
+	list-style: none;
+	margin: 0;
+	padding: 0;
+	display: flex;
+	flex-direction: column;
+	gap: var(--sp-xs);
+}
+
+.share-row {
+	background: var(--surface-2);
+	border: 1px solid var(--surface-3);
+	border-radius: var(--r-sm);
+	padding: var(--sp-xs) var(--sp-sm);
+	display: flex;
+	flex-direction: column;
+	gap: var(--sp-xxs);
+}
+
+.share-row__top {
+	display: flex;
+	align-items: baseline;
+	justify-content: space-between;
+	gap: var(--sp-xs);
+}
+
+.share-row__title {
+	font-weight: 600;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.share-row__meta {
+	font-size: 12px;
+}
+
+.share-row__actions {
+	margin-bottom: 0;
+	flex-wrap: wrap;
+}
+
+.share-row__info[hidden] {
+	display: none;
+}
+
+.share-row__badges {
+	display: flex;
+	flex-wrap: wrap;
+	gap: var(--sp-xxs);
+}
+
+.share-note {
+	font-size: 12px;
+	margin: var(--sp-xxs) 0 0;
+}
+
+.share-note--ok {
+	color: var(--ok);
+}
+
+.share-note--busy {
+	color: var(--warn);
+}
+
+.share-note--bad {
+	color: var(--bad);
+}
+
+.share-badge {
+	align-self: flex-start;
+	font-size: 11px;
+	padding: 1px 8px;
+	border-radius: var(--r-full);
+	background: var(--surface-3);
+	color: var(--on-surface-variant);
+	white-space: nowrap;
+}
+
+.share-badge--owner {
+	background: rgb(208 188 255 / 16%);
+	color: var(--primary);
+}
+
+.share-badge--editor {
+	background: rgb(125 220 138 / 14%);
+	color: var(--ok);
+}
+
+.share-badge--pending {
+	color: var(--warn);
+}
+
+.share-badge--readonly {
+	background: rgb(245 214 123 / 14%);
+	color: var(--warn);
+}
+
+.share-inline-link {
+	display: flex;
+	gap: var(--sp-xs);
+	align-items: center;
+}
+
+.share-inline-link input {
+	flex: 1 1 auto;
+	background: var(--surface-3);
+	border: 1px solid var(--outline);
+	border-radius: var(--r-sm);
+	color: var(--on-surface);
+	font: inherit;
+	font-size: 12px;
+	padding: 4px var(--sp-xs);
+}
+
+.share-members {
+	margin: var(--sp-xxs) 0 0;
+	padding-left: var(--sp-lg);
+	font-size: 12px;
+}
+
+.share-members-box,
+.share-invite-box {
+	border-top: 1px dashed var(--outline);
+	margin-top: var(--sp-xxs);
+	padding-top: var(--sp-xxs);
+}
+
+/* ── 分享本地歌单后的结果块（中栏底部） ───────────────── */
+.share-result {
+	background: var(--surface);
+	border: 1px solid var(--outline);
+	border-radius: var(--r-md);
+	margin-top: var(--sp-md);
+	padding: var(--sp-sm) var(--sp-md);
+}
+
+.share-result__title {
+	font-weight: 600;
+}
+
+.share-result__meta {
+	font-size: 12px;
+	margin-bottom: var(--sp-xxs);
+}
+
+/* 链接行：一次点击即全选，剪贴板不可用时的退路 */
+.share-result__link {
+	background: var(--surface-2);
+	border: 1px solid var(--outline);
+	border-radius: var(--r-sm);
+	font-size: 12px;
+	margin-bottom: var(--sp-xs);
+	padding: 4px var(--sp-xs);
+	user-select: all;
+	word-break: break-all;
+}
+
+.share-results {
+	display: flex;
+	flex-direction: column;
+	gap: 2px;
+	font-size: 12px;
+	color: var(--on-surface-variant);
+	margin-bottom: var(--sp-xs);
+}
+
+.share-results__row--bad {
+	color: var(--bad);
+}
+
+/* ── 左栏歌单行的「分享 / 同步」 ───────────────────────── */
+.playlist-list__name {
+	flex: 1 1 auto;
+}
+
+.playlist-list__share {
+	flex: 0 0 auto;
+	background: var(--surface-3);
+	border: 1px solid var(--outline);
+	border-radius: var(--r-sm);
+	color: var(--on-surface-variant);
+	cursor: pointer;
+	font: inherit;
+	font-size: 11px;
+	padding: 1px 8px;
+	white-space: nowrap;
+}
+
+.playlist-list__item[data-shared='true'] .playlist-list__share {
+	color: var(--primary);
+	border-color: var(--primary);
+}
+
+.playlist-list__share:hover {
+	background: var(--surface-2);
+	color: var(--on-surface);
+}
+
+.playlist-list__share:disabled {
+	opacity: 0.5;
+	cursor: default;
+}
+
+/* ── 曲目表的「移除」列 ───────────────────────────────── */
+.track-table th.col-actions,
+.track-table td.col-actions {
+	width: 84px;
+	text-align: right;
+	white-space: nowrap;
+}
+
+.track-remove {
+	background: var(--surface-2);
+	border: 1px solid var(--outline);
+	border-radius: var(--r-sm);
+	color: var(--bad);
+	cursor: pointer;
+	font: inherit;
+	font-size: 12px;
+	padding: 2px var(--sp-xs);
+}
+
+.track-remove:hover {
+	background: var(--surface-3);
+}
+
+.track-remove:disabled {
+	opacity: 0.5;
+	cursor: default;
+}

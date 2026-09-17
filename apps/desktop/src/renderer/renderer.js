@@ -53,6 +53,24 @@
 		// 收藏夹工具条只在收藏夹视图显示
 		const bar = document.getElementById('favorite-bar')
 		if (bar) bar.hidden = view !== 'favorites'
+		// 共享视图的根节点常驻在 index.html 里（探针要能直接 `#view-share` 找到它），
+		// 所以这里手动与 #content 互斥：否则两个 flex 子项会把中栏挤成上下两半
+		toggleShareView(view === 'share')
+	}
+
+	/**
+	 * 在「共享视图」与「#content 里的其它视图」之间切换（两者互斥）。
+	 *
+	 * `#content` 是 library / 搜索 / 导入 / 历史 / 收藏夹 / 合集共用的容器，
+	 * 它们渲染时都会清空它 —— 而共享视图是**常驻**的兄弟节点，不会被清掉。
+	 * 所以从任何路径切回 #content 时都要显式把共享视图藏起来
+	 * （`bbLibrary.renderTrackTable` 这类不经过导航的渲染也要走 `showContent`）。
+	 */
+	function toggleShareView(showShare) {
+		const shareRoot = document.getElementById('view-share')
+		const content = document.getElementById('content')
+		if (shareRoot) shareRoot.hidden = !showShare
+		if (content) content.hidden = showShare
 	}
 
 	for (const item of document.querySelectorAll('.nav__item')) {
@@ -75,6 +93,10 @@
 				void window.bbFavorites.show()
 			} else if (view === 'collection') {
 				window.bbLibrary.renderTrackTable([], { title: '合集' })
+			} else if (view === 'share') {
+				// ⚠️ `show()` 只读本地状态（`share.status()` 不发网络请求），
+				// 所以打开视图不会因为后端不可达而卡住或抛错
+				void window.bbShare?.show?.()
 			}
 		})
 	}
@@ -613,6 +635,8 @@
 	window.bbUI = {
 		switchPanel,
 		setActiveNav,
+		/** 从共享视图切回 #content 里的其它视图（library.js 直接渲染时要用） */
+		showContent: () => toggleShareView(false),
 		keys: () => keys.list(),
 		keyHistory: () => keys.history(),
 		/** 歌词面板（供自动化断言）；未初始化时为 null */

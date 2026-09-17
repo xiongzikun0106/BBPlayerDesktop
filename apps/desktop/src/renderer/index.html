@@ -54,6 +54,9 @@
 					<button class="nav__item" data-view="collection" data-testid="nav-collection">
 						<span class="nav__icon">▤</span> 合集
 					</button>
+					<button class="nav__item" data-view="share" data-testid="nav-share">
+						<span class="nav__icon">⇄</span> 共享
+					</button>
 				</nav>
 
 				<div class="sidebar__section">
@@ -109,6 +112,20 @@
 					<button id="favorite-load" data-testid="favorite-load">读取收藏夹</button>
 					<span class="muted" id="favorite-status" data-testid="favorite-status"></span>
 				</div>
+
+				<!--
+					共享歌单视图（Phase 3.4）。
+					⚠️ 与其它视图不同，它**常驻在 DOM 里**（而不是渲染进 #content）：
+					这样 `#view-share` 在任何时刻都能被找到，探针不必先点导航。
+					代价是它与 #content 必须互斥显示，见 renderer.js 的 toggleShareView。
+				-->
+				<section
+					class="share-view"
+					id="view-share"
+					data-testid="view-share"
+					hidden
+					aria-label="共享歌单"
+				></section>
 			</main>
 
 			<!-- ── 右栏：播放队列 / 歌词 ─────────────────────────── -->
@@ -673,6 +690,7 @@
 		<script src="history.js"></script>
 		<script src="import.js"></script>
 		<script src="settings-panel.js"></script>
+		<script src="share.js"></script>
 		<script src="renderer.js"></script>
 	</body>
 </html>

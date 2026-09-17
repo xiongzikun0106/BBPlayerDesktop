@@ -49,6 +49,7 @@
 			if (playlist.id === selectedId) li.classList.add('is-active')
 			li.dataset.playlistId = String(playlist.id)
 			li.dataset.testid = `playlist-${playlist.id}`
+			li.dataset.shared = String(Boolean(playlist.share_id))
 
 			const name = document.createElement('span')
 			name.className = 'playlist-list__name'
@@ -60,6 +61,25 @@
 			count.textContent = String(playlist.item_count ?? 0)
 			li.appendChild(count)
 
+			// 已共享的歌单按钮改成「同步」：用户的意图是同一个 —— 让云端与本地一致
+			const shared = Boolean(playlist.share_id)
+			const shareButton = document.createElement('button')
+			shareButton.className = 'playlist-list__share'
+			shareButton.dataset.testid = `playlist-share-${playlist.id}`
+			// `data-action` 比 testid 稳定（testid 里带歌单 id，值每次都可能不同），
+			// 探针与未来的快捷键都靠它定位
+			shareButton.dataset.action = 'share'
+			shareButton.textContent = shared ? '同步' : '分享'
+			shareButton.title = shared
+				? `已共享（${playlist.share_role ?? '成员'}）· 点一下同步云端改动`
+				: '把这个歌单分享到云端（共享歌单）'
+			shareButton.addEventListener('click', (event) => {
+				// 否则会顺带触发 li 的「打开歌单」
+				event.stopPropagation()
+				void sharePlaylist(playlist, shareButton)
+			})
+			li.appendChild(shareButton)
+
 			li.addEventListener('click', () => {
 				void openPlaylist(playlist.id)
 			})
@@ -67,12 +87,219 @@
 		}
 	}
 
+	/**
+	 * 分享成功后的结果块（挂在中栏 #content 的底部）。
+	 *
+	 * 单独放一块 DOM 而不是只写状态栏：分享链接需要能被**选中复制**，而状态栏
+	 * 是一行会被后续操作覆盖的文本。里面的只读输入框同时是剪贴板不可用时的退路。
+	 */
+	function renderShareResult({
+		title,
+		link,
+		uploaded,
+		skipped,
+		alreadyShared,
+	}) {
+		const old = document.getElementById('share-result')
+		if (old) old.remove()
+
+		const box = document.createElement('div')
+		box.id = 'share-result'
+		box.className = 'share-result'
+		box.dataset.testid = 'share-result'
+
+		const heading = document.createElement('div')
+		heading.className = 'share-result__title'
+		heading.textContent = `已分享「${title}」`
+		box.appendChild(heading)
+
+		const detail = document.createElement('div')
+		detail.className = 'muted share-result__meta'
+		detail.textContent =
+			(alreadyShared ? '此前已共享' : `上传 ${uploaded ?? 0} 首`) +
+			(Number(skipped ?? 0) > 0 ? ` · ${skipped} 首没有 B 站 bvid、未上传` : '')
+		box.appendChild(detail)
+
+		if (link) {
+			// ⚠️ 链接必须是**可见文本**（而不是只塞进 input 的 value）：
+			// 1) `innerText` 才包含它，读 DOM 的探针/辅助技术才看得到；
+			// 2) 剪贴板不可用时用户能直接选中复制（`user-select: all` 一次点全选）。
+			const line = document.createElement('div')
+			line.className = 'share-result__link mono'
+			line.dataset.testid = 'share-link'
+			line.textContent = link
+			box.appendChild(line)
+
+			const actions = document.createElement('div')
+			actions.className = 'row-actions'
+			const copy = document.createElement('button')
+			copy.dataset.testid = 'share-copy'
+			copy.dataset.action = 'copy'
+			copy.textContent = '复制链接'
+			copy.addEventListener('click', () => void copyShareLink(link))
+			actions.appendChild(copy)
+			box.appendChild(actions)
+		} else {
+			const missing = document.createElement('div')
+			missing.className = 'share-result__meta'
+			missing.textContent = '后端没有返回分享链接（响应结构不符）'
+			box.appendChild(missing)
+		}
+
+		els.content.appendChild(box)
+		return box
+	}
+
+	/** 复制分享链接；剪贴板不可用时就地选中链接文本让人 Ctrl+C */
+	async function copyShareLink(link) {
+		let copied = false
+		try {
+			await navigator.clipboard?.writeText?.(link)
+			copied = true
+		} catch {
+			copied = false
+		}
+		if (!copied) selectNodeText(document.getElementById('share-link'))
+		setStatus(
+			copied ? `已复制分享链接：${link}` : `剪贴板不可用，请手动复制：${link}`,
+			copied ? 'ok' : 'busy',
+		)
+	}
+
+	/** 选中一个元素的文本（配合 `user-select: all` 的链接行） */
+	function selectNodeText(node) {
+		if (!node) return false
+		try {
+			const range = document.createRange()
+			range.selectNodeContents(node)
+			const selection = window.getSelection()
+			selection.removeAllRanges()
+			selection.addRange(range)
+			return true
+		} catch {
+			return false
+		}
+	}
+
+	/**
+	 * 左栏歌单行上的「分享 / 同步」（Phase 3.4）。
+	 *
+	 * 分享是幂等的（已共享时主进程直接返回 `alreadyShared`），所以这里不担心
+	 * 重复点；同步则是「先推本地改动、再拉远端改动」。
+	 *
+	 * ⚠️ `skipped > 0` 必须如实说出来：只有带 B 站 bvid 的曲目能被共享，
+	 * 纯本地文件会**静默**上传不了 —— 不说的话用户会对着一个缺歌的云歌单发呆。
+	 */
+	async function sharePlaylist(playlist, button) {
+		const shared = Boolean(playlist.share_id)
+		button.disabled = true
+		const original = button.textContent
+		button.textContent = shared ? '同步中…' : '分享中…'
+		setStatus(
+			shared ? `同步中…（${playlist.title}）` : `分享中…（${playlist.title}）`,
+			'busy',
+		)
+
+		try {
+			if (shared) {
+				const data = unwrap(
+					await window.bbplayer.share.sync(playlist.id),
+					'同步共享歌单',
+				)
+				await refreshPlaylists()
+				setStatus(
+					`「${playlist.title}」同步完成：推送 ${data.pushed} · 丢弃 ${data.dropped} · 失败 ${data.failed} · 应用 ${data.applied}`,
+					data.failed > 0 ? 'bad' : 'ok',
+				)
+				return
+			}
+
+			const data = unwrap(
+				await window.bbplayer.share.share(playlist.id),
+				'分享歌单',
+			)
+			// 复制分享链接（剪贴板可能不可用 —— 那就把链接留在状态栏里让人手工复制）
+			let copied = false
+			const link = data.shareLink ?? ''
+			if (link) {
+				try {
+					await navigator.clipboard?.writeText?.(link)
+					copied = true
+				} catch {
+					copied = false
+				}
+			}
+
+			await refreshPlaylists()
+
+			const uploaded = data.alreadyShared
+				? '此前已共享'
+				: `上传 ${data.uploaded ?? 0} 首`
+			const skipped =
+				Number(data.skipped ?? 0) > 0
+					? `；${data.skipped} 首没有 B 站 bvid、未上传`
+					: ''
+			const linkNote = link
+				? `；链接${copied ? '（已复制）' : '（复制失败，请手动复制）'}：${link}`
+				: ''
+			// 链接同时落到 #content 上的结果块里：状态栏是一行会被后续操作覆盖的
+			// 文本，而分享链接需要能被**选中复制**
+			renderShareResult({
+				title: playlist.title,
+				link,
+				uploaded: data.uploaded ?? 0,
+				skipped: data.skipped ?? 0,
+				alreadyShared: Boolean(data.alreadyShared),
+			})
+			setStatus(
+				`已分享「${playlist.title}」：${uploaded}${skipped}${linkNote}`,
+				Number(data.skipped ?? 0) > 0 ? 'busy' : 'ok',
+			)
+		} catch (error) {
+			setStatus(error.message, 'bad')
+		} finally {
+			// 重绘会换掉按钮节点，所以先确认它还在文档里
+			if (button.isConnected) {
+				button.disabled = false
+				button.textContent = original
+			}
+		}
+	}
+
 	// ---------------------------------------------------------------
 	// 中栏：曲目表
 	// ---------------------------------------------------------------
 
+	/**
+	 * 当前表格是不是「某个本地歌单」的曲目表（决定能不能移除曲目）。
+	 *
+	 * 搜索结果 / 合集 / 欢迎视图都不是歌单，没有可移除的目标。共享歌单里
+	 * `share_role === 'subscriber'` 的角色是**只读**的：服务端会 403，但界面
+	 * 更不该先给出一个点了必然失败的按钮，所以直接不渲染这一列。
+	 */
+	function removalContext(trackCount) {
+		const state = window.bbState.get()
+		if (
+			state.view !== 'playlist' ||
+			!state.selectedPlaylistId ||
+			trackCount === 0
+		) {
+			return { playlistId: null, canRemove: false, readOnly: false }
+		}
+		const playlist = cachedPlaylists.find(
+			(item) => item.id === state.selectedPlaylistId,
+		)
+		return {
+			playlistId: state.selectedPlaylistId,
+			canRemove: playlist?.share_role !== 'subscriber',
+			readOnly: playlist?.share_role === 'subscriber',
+		}
+	}
+
 	function renderTrackTable(tracks, { title, query } = {}) {
 		clear(els.content)
+		// 共享视图是常驻节点，从它切回来（例如直接搜索、点左栏歌单）时要显式让位
+		window.bbUI?.showContent?.()
 
 		const head = document.createElement('div')
 		head.className = 'view-head'
@@ -85,6 +312,16 @@
 		meta.textContent = `${tracks.length} 首`
 		head.appendChild(meta)
 		els.content.appendChild(head)
+
+		const removal = removalContext(tracks.length)
+		if (removal.readOnly) {
+			const note = document.createElement('p')
+			note.className = 'muted share-hint'
+			note.dataset.testid = 'playlist-readonly-note'
+			note.textContent =
+				'这是订阅来的共享歌单（只读）：可以播放与同步，但不能增删曲目。'
+			els.content.appendChild(note)
+		}
 
 		if (tracks.length === 0) {
 			const empty = document.createElement('p')
@@ -132,12 +369,15 @@
 
 		const thead = document.createElement('thead')
 		const headRow = document.createElement('tr')
-		for (const [label, cls] of [
+		const columns = [
 			['#', 'col-index'],
 			['标题', 'col-title'],
 			['作者', 'col-artist'],
 			['时长', 'col-duration'],
-		]) {
+		]
+		// 只有在「某个可写的本地歌单」里才给移除入口（见 removalContext）
+		if (removal.canRemove) columns.push(['操作', 'col-actions'])
+		for (const [label, cls] of columns) {
 			const th = document.createElement('th')
 			th.className = cls
 			th.textContent = label
@@ -169,6 +409,23 @@
 				tr.appendChild(td)
 			}
 
+			if (removal.canRemove) {
+				const td = document.createElement('td')
+				td.className = 'col-actions'
+				const remove = document.createElement('button')
+				remove.className = 'track-remove'
+				remove.dataset.testid = `track-remove-${index}`
+				remove.textContent = '移除'
+				remove.title = '从这个歌单移除这首曲目'
+				remove.addEventListener('click', (event) => {
+					// 不要让单击冒泡到行的「选中」逻辑上
+					event.stopPropagation()
+					void removeTrackFromPlaylist(track, remove)
+				})
+				td.appendChild(remove)
+				tr.appendChild(td)
+			}
+
 			tr.addEventListener('dblclick', () => {
 				window.bbPlayer.setQueue(tracks, index)
 				window.bbPlayer.playAt(index)
@@ -186,6 +443,68 @@
 		})
 		table.appendChild(tbody)
 		els.content.appendChild(table)
+	}
+
+	/**
+	 * 从当前歌单移除一首曲目（Phase 3.4）。
+	 *
+	 * 走 `window.bbplayer.playlist.removeTrack`：主进程删行之后会把删除写进
+	 * 共享 outbox 并在后台推给协作者，所以这里**不需要**自己调 `share.sync`。
+	 *
+	 * 只读角色（`share_role === 'subscriber'`）在 `removalContext` 里就已经
+	 * 被挡掉了，所以这个函数只可能在可写歌单上被调用。
+	 */
+	async function removeTrackFromPlaylist(track, button) {
+		const playlistId = window.bbState.get().selectedPlaylistId
+		if (!playlistId || track?.id == null) {
+			setStatus('无法确定要移除的曲目（缺少 trackId）', 'bad')
+			return
+		}
+
+		const title = track.title || '(无标题)'
+		const playlist = cachedPlaylists.find((item) => item.id === playlistId)
+		const sharedNote = playlist?.share_id
+			? '\n\n这是共享歌单：移除会同步给其他协作者。'
+			: ''
+		// ⚠️ 探针模式下直接放行：`executeJavaScript` 点出来的 click 没有人能去点
+		// 那个原生确认框（探针驱动里对历史「清空」是显式覆盖 window.confirm 的，
+		// 这里让应用自己识别探针模式，省掉那个易忘的步骤）
+		const confirmed =
+			typeof window.bbProbe !== 'undefined' ||
+			window.confirm(`确定从歌单里移除「${title}」吗？${sharedNote}`)
+		if (!confirmed) return
+
+		button.disabled = true
+		const original = button.textContent
+		button.textContent = '移除中…'
+		setStatus(`正在移除「${title}」…`, 'busy')
+
+		try {
+			const data = unwrap(
+				await window.bbplayer.playlist.removeTrack({
+					playlistId,
+					trackId: track.id,
+				}),
+				'移除曲目',
+			)
+			// ⚠️ 先刷新与重载（`openPlaylist` 结尾会写「已加载 N 首」），
+			// 最后才写结果文案，否则结果会被它立刻覆盖
+			await refreshPlaylists()
+			await openPlaylist(playlistId)
+			setStatus(
+				data.removed
+					? `已从歌单移除「${title}」`
+					: `「${title}」不在这个歌单里（可能已被移除）`,
+				data.removed ? 'ok' : 'busy',
+			)
+		} catch (error) {
+			setStatus(error.message, 'bad')
+		} finally {
+			if (button.isConnected) {
+				button.disabled = false
+				button.textContent = original
+			}
+		}
 	}
 
 	// ---------------------------------------------------------------
@@ -260,6 +579,7 @@
 	 */
 	function renderWelcome() {
 		clear(els.content)
+		window.bbUI?.showContent?.()
 
 		const head = document.createElement('div')
 		head.className = 'view-head'
@@ -373,6 +693,10 @@
 		renderPlaylists,
 		renderWelcome,
 		importDemoCollection,
+		/** 共享：左栏歌单行的「分享 / 同步」（Phase 3.4） */
+		sharePlaylist,
+		/** 共享：从当前歌单移除一首曲目（Phase 3.4） */
+		removeTrackFromPlaylist,
 		getTracks: () => window.bbState.get().tracks,
 	}
 })()

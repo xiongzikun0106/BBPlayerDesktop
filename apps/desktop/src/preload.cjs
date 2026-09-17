@@ -171,6 +171,45 @@ contextBridge.exposeInMainWorld('bbplayer', {
 		/** 合并式写入；返回写入后的完整设置 */
 		update: (patch) => ipcRenderer.invoke('settings:update', patch),
 	},
+	/**
+	 * 共享歌单（Phase 3.4）。
+	 *
+	 * 所有调用都返回 `{ok, data}` 或 `{ok:false, error, status, code}` ——
+	 * 共享会失败在**很多种**原因上（没登录 / 网络 / 404 / 403 / 邀请码不对），
+	 * 渲染进程必须能区分「重登」和「提示」，所以错误不吞成 undefined。
+	 */
+	share: {
+		/** 账号状态 + 本地共享歌单列表 */
+		status: () => ipcRenderer.invoke('share:status'),
+		setBaseUrl: (url) => ipcRenderer.invoke('share:setBaseUrl', url),
+		register: (payload) => ipcRenderer.invoke('share:register', payload),
+		login: (payload) => ipcRenderer.invoke('share:login', payload),
+		logout: () => ipcRenderer.invoke('share:logout'),
+		me: () => ipcRenderer.invoke('share:me'),
+
+		listPlaylists: () => ipcRenderer.invoke('share:listPlaylists'),
+		/** 把一个本地歌单分享到云端（幂等） */
+		share: (playlistId) => ipcRenderer.invoke('share:playlist', playlistId),
+		/** 取消共享（owner 删远端歌单，其余角色退出协作） */
+		unshare: (playlistId) => ipcRenderer.invoke('share:unshare', playlistId),
+		/** 只清本地共享标记（远端已消失/被移出时用；歌单与曲目保留） */
+		detach: (playlistId) => ipcRenderer.invoke('share:detach', playlistId),
+		/** 公开预览：不需要登录 */
+		preview: (input) => ipcRenderer.invoke('share:preview', input),
+		subscribe: (payload) => ipcRenderer.invoke('share:subscribe', payload),
+		sync: (playlistId) => ipcRenderer.invoke('share:sync', playlistId),
+		syncAll: () => ipcRenderer.invoke('share:syncAll'),
+		restore: () => ipcRenderer.invoke('share:restore'),
+		invite: (playlistId) => ipcRenderer.invoke('share:invite', playlistId),
+		rotateInvite: (playlistId) =>
+			ipcRenderer.invoke('share:rotateInvite', playlistId),
+		members: (playlistId) => ipcRenderer.invoke('share:members', playlistId),
+	},
+	playlist: {
+		/** 从歌单移除一首曲目；共享歌单会顺带把删除推给协作者 */
+		removeTrack: (payload) =>
+			ipcRenderer.invoke('playlist:removeTrack', payload),
+	},
 })
 
 /**

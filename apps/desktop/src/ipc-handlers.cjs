@@ -16,9 +16,11 @@ const {
 	resolveAudio,
 	clearAudioCache,
 } = require('./audio-proxy.cjs')
-const { core, describePorts, DATA_DIR } = require('./ports.cjs')
+const { core, describePorts, DATA_DIR, logger } = require('./ports.cjs')
 const { loadTsFile } = require('./core-loader.cjs')
 const { getLoginManager } = require('./bilibili-login-holder.cjs')
+const { createAccountModule } = require('./bbplayer-account.cjs')
+const { createSharedPlaylistModule } = require('./shared-playlist.cjs')
 
 /**
  * 懒创建下载管理器与备份管理器。
@@ -230,6 +232,7 @@ function registerIpcHandlers() {
 			const playlist = existing ?? db.createPlaylist({ title, type: 'local' })
 
 			let added = 0
+			const addedTrackIds = []
 			const failures = []
 			for (const archive of archives) {
 				try {
@@ -245,11 +248,17 @@ function registerIpcHandlers() {
 						cid: info.cid,
 						isMultiPage: info.pages > 1,
 					})
-					if (db.addTrackToPlaylist(playlist.id, track.id)) added += 1
+					if (db.addTrackToPlaylist(playlist.id, track.id)) {
+						added += 1
+						addedTrackIds.push(track.id)
+					}
 				} catch (error) {
 					failures.push({ bvid: archive.bvid, error: error.message })
 				}
 			}
+
+			// 歌单是共享的就把这次新增记进 outbox 并后台推送
+			enqueueSharedAdd(playlist.id, addedTrackIds)
 
 			return {
 				ok: true,
@@ -523,6 +532,7 @@ function registerIpcHandlers() {
 
 			const known = db.getPlaylistBvids(playlist.id)
 			const failures = []
+			const addedTrackIds = []
 			let added = 0
 			let skipped = 0
 
@@ -547,12 +557,14 @@ function registerIpcHandlers() {
 					})
 					if (db.addTrackToPlaylist(playlist.id, track.id)) {
 						added += 1
+						addedTrackIds.push(track.id)
 					}
 				} catch (error) {
 					failures.push({ bvid: resource.bvid, error: error.message })
 				}
 			}
 
+			enqueueSharedAdd(playlist.id, addedTrackIds)
 			const total = db.markPlaylistSynced(playlist.id)
 
 			return {
@@ -936,15 +948,222 @@ function registerIpcHandlers() {
 				resolveInfo: (bvid) => bilibiliApi.getVideoInfo(bvid),
 				db,
 			})
+			// 歌单是共享的就把这次新增记进 outbox 并后台推送
+			enqueueSharedAdd(data.playlistId, data.addedTrackIds)
+
 			return { ok: true, data: { ...data, source: source ?? 'netease' } }
 		} catch (error) {
 			return { ok: false, error: error.message }
 		}
-	})
-
-	// ---------- 诊断 ----------
+	}) // ---------- 诊断 ----------
 	ipcMain.handle('probe:request-log', () => requestLog)
 	ipcMain.handle('probe:ports', () => describePorts())
+	registerShareHandlers()
+}
+
+// ===============================================================
+// 共享歌单（Phase 3.4）
+// ===============================================================
+//
+// 与 B 站登录态并存但**互相独立**：共享用的是 BBPlayer 自己后端的账号
+// （见 `bbplayer-account.cjs` 的说明）。因此这里不去动 `login:*` 的任何东西。
+
+/**
+ * 懒创建「账号 + 共享」门面。
+ *
+ * 和下载/备份管理器同样的理由：`bbplayer-account.cjs` 会去读 `safeStorage`
+ * （要 app ready 之后才可用），纯 Node 的验证脚本不该被迫走这一步。
+ */
+let sharedModule = null
+
+function getShared() {
+	if (!sharedModule) {
+		sharedModule = createSharedPlaylistModule({
+			account: createAccountModule(),
+		})
+	}
+	return sharedModule
+}
+
+/**
+ * 把一次本地改动入队并在后台推上去。
+ *
+ * 调用方（导入收藏夹 / 合集 / 外部歌单）只关心「我往歌单里加了哪些曲目」，
+ * 不需要知道共享的存在；这里做「如果是共享歌单就记一笔并同步」。
+ *
+ * **后台推**：推送是网络操作，不能挡在导入的返回路径上；失败也只是把 outbox
+ * 标成 `failed` 等下次重试，用户仍能看到导入成功。
+ */
+function enqueueSharedAdd(playlistId, trackIds) {
+	if (!trackIds || trackIds.length === 0) return
+	try {
+		const shared = getShared()
+		const result = shared.queueLocalChange(playlistId, 'add_tracks', {
+			trackIds,
+		})
+		if (result.queued) syncSharedInBackground(shared, playlistId)
+	} catch (error) {
+		// 共享是附加能力：它出问题不能把导入本身弄失败
+		logger.warn(`[share] 入队失败: ${error.message}`)
+	}
+}
+
+/**
+ * 后台推一次。
+ *
+ * 刻意不 `await`：同步要发网络请求，而它的成败不该决定「导入是否成功」。
+ * 失败时 outbox 里那些行已经是 `failed`，用户点「同步」就能重试。
+ */
+function syncSharedInBackground(shared, playlistId) {
+	shared.syncPlaylist(playlistId).catch((error) => {
+		logger.warn(`[share] 后台同步失败: ${error.message}`)
+	})
+}
+
+/**
+ * 统一把异常转成 `{ok, error, status, code}`。
+ *
+ * 放在模块作用域（不在 `registerShareHandlers` 里面）：它不捕获任何局部变量，
+ * 每次注册都新建一个函数对象没有意义。
+ */
+const wrapShareHandler =
+	(fn) =>
+	async (_event, ...args) => {
+		try {
+			return { ok: true, data: await fn(...args) }
+		} catch (error) {
+			return {
+				ok: false,
+				error: error.message,
+				status: error.status ?? null,
+				code: error.code ?? null,
+			}
+		}
+	}
+
+function registerShareHandlers() {
+	/** 统一把异常转成 `{ok,error,status}`，避免渲染进程收到 Electron 的序列化错误 */
+	ipcMain.handle(
+		'share:status',
+		wrapShareHandler(async () => {
+			const shared = getShared()
+			return {
+				...shared.accountStatus(),
+				sharedPlaylists: shared.listSharedPlaylists(),
+			}
+		}),
+	)
+
+	ipcMain.handle(
+		'share:setBaseUrl',
+		wrapShareHandler(async (url) => ({ baseUrl: getShared().setBaseUrl(url) })),
+	)
+	ipcMain.handle(
+		'share:register',
+		wrapShareHandler(async (payload) => getShared().register(payload)),
+	)
+	ipcMain.handle(
+		'share:login',
+		wrapShareHandler(async (payload) => getShared().login(payload)),
+	)
+	ipcMain.handle(
+		'share:logout',
+		wrapShareHandler(async () => getShared().logout()),
+	)
+	ipcMain.handle(
+		'share:me',
+		wrapShareHandler(async () => getShared().me()),
+	)
+
+	ipcMain.handle(
+		'share:listPlaylists',
+		wrapShareHandler(async () => getShared().listSharedPlaylists()),
+	)
+	ipcMain.handle(
+		'share:playlist',
+		wrapShareHandler(async (playlistId) =>
+			getShared().sharePlaylist(playlistId),
+		),
+	)
+	ipcMain.handle(
+		'share:unshare',
+		wrapShareHandler(async (playlistId) =>
+			getShared().unsharePlaylist(playlistId),
+		),
+	)
+	/**
+	 * 只清本地共享标记（歌单与曲目保留）。
+	 *
+	 * 用在「远端歌单已经没了 / 我们被移出成员」的场景 —— 那时再发请求只会拿到
+	 * 404/403，用户需要的是把这一行从共享列表里摘掉，而不是丢掉整个歌单。
+	 */
+	ipcMain.handle(
+		'share:detach',
+		wrapShareHandler(async (playlistId) =>
+			getShared().detachSharedPlaylist(playlistId),
+		),
+	)
+	ipcMain.handle(
+		'share:preview',
+		wrapShareHandler(async (input) => getShared().preview(input)),
+	)
+	ipcMain.handle(
+		'share:subscribe',
+		wrapShareHandler(async ({ input, inviteCode }) =>
+			getShared().subscribe(input, { inviteCode }),
+		),
+	)
+	ipcMain.handle(
+		'share:sync',
+		wrapShareHandler(async (playlistId) =>
+			getShared().syncPlaylist(playlistId),
+		),
+	)
+	ipcMain.handle(
+		'share:syncAll',
+		wrapShareHandler(async () => getShared().syncAll()),
+	)
+	ipcMain.handle(
+		'share:restore',
+		wrapShareHandler(async () => getShared().restoreFromCloud()),
+	)
+	ipcMain.handle(
+		'share:invite',
+		wrapShareHandler(async (playlistId) =>
+			getShared().getInviteCode(playlistId),
+		),
+	)
+	ipcMain.handle(
+		'share:rotateInvite',
+		wrapShareHandler(async (playlistId) =>
+			getShared().rotateInviteCode(playlistId),
+		),
+	)
+	ipcMain.handle(
+		'share:members',
+		wrapShareHandler(async (playlistId) => getShared().listMembers(playlistId)),
+	)
+
+	/**
+	 * 从歌单里移除一首曲目。
+	 *
+	 * 这是「本地改动 → outbox」的**唯一**入口：数据库层只负责删行，
+	 * 共享语义（要不要推送、推什么）留在这里，免得 db 层反向依赖共享模块。
+	 */
+	ipcMain.handle(
+		'playlist:removeTrack',
+		wrapShareHandler(async ({ playlistId, trackId }) => {
+			const removed = db.removeTrackFromPlaylist(playlistId, trackId)
+			if (removed) {
+				const shared = getShared()
+				const queued = shared.queueLocalChange(playlistId, 'remove_tracks', {
+					removedTrackIds: [trackId],
+				})
+				if (queued.queued) syncSharedInBackground(shared, playlistId)
+			}
+			return { removed }
+		}),
+	)
 }
 
 module.exports = { registerIpcHandlers, ensureDatabase }

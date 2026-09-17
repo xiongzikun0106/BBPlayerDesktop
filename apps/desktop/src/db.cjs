@@ -246,22 +246,49 @@ function generateSortKey(playlistId) {
  * `artists` 上有 CHECK 约束：
  *   (source = 'local' AND remote_id IS NULL) OR (source != 'local' AND remote_id IS NOT NULL)
  * 所以带 mid 的用 `bilibili`，没有 mid 的只能落成 `local`（remote_id 必须为 NULL）。
+ *
+ * ## 为什么先按 `(source, remote_id)` 查，再按 `name` 查
+ *
+ * 早先只按 `name` 查，然后无条件 INSERT —— 一旦**同一个 UP 改过名**（B 站很常见）
+ * 或同一首曲目先以名字 A 落库、后又以名字 B 带着同一个 mid 出现，
+ * 就会撞上 `source_remote_id_unq` 唯一索引并**抛异常**，整批导入失败。
+ * 带 mid 时 mid 才是身份，名字只是显示用的属性，所以先按 mid 找。
  */
 function upsertArtist({ name, remoteId = null }) {
 	if (!name) return null
-	const existing = sqlite.getFirstSync(
-		'SELECT id FROM artists WHERE name = ?',
-		[name],
-	)
-	if (existing) return existing.id
+
+	if (remoteId) {
+		const byRemoteId = sqlite.getFirstSync(
+			"SELECT id FROM artists WHERE source != 'local' AND remote_id = ?",
+			[String(remoteId)],
+		)
+		if (byRemoteId) return byRemoteId.id
+	}
+
+	const byName = sqlite.getFirstSync('SELECT id FROM artists WHERE name = ?', [
+		name,
+	])
+	if (byName) return byName.id
 
 	const source = remoteId ? 'bilibili' : 'local'
 	const now = Date.now()
+	// `OR IGNORE` 兜住并发/重入：真的撞上唯一索引时，下面的 SELECT 仍能取回那一行
 	sqlite.runSync(
-		'INSERT INTO artists (name, source, remote_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?)',
-		[name, source, remoteId, now, now],
+		'INSERT OR IGNORE INTO artists (name, source, remote_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?)',
+		[name, source, remoteId === null ? null : String(remoteId), now, now],
 	)
-	return sqlite.getFirstSync('SELECT id FROM artists WHERE name = ?', [name]).id
+
+	if (remoteId) {
+		const inserted = sqlite.getFirstSync(
+			"SELECT id FROM artists WHERE source != 'local' AND remote_id = ?",
+			[String(remoteId)],
+		)
+		if (inserted) return inserted.id
+	}
+	return (
+		sqlite.getFirstSync('SELECT id FROM artists WHERE name = ?', [name])?.id ??
+		null
+	)
 }
 
 function createPlaylist({
@@ -360,6 +387,30 @@ function addTrackToPlaylist(playlistId, trackId) {
 		)
 	}
 	return inserted
+}
+
+/**
+ * 从播放列表里移除一首曲目（幂等），并重算 `item_count`。
+ *
+ * 共享歌单需要这个动作来驱动 outbox（`remove_tracks`），因此**不在这里**
+ * 顺手写 outbox —— 数据库层不认识共享语义，由 `shared-playlist.cjs` 的调用方
+ * 决定是否入队，避免 db 层反向依赖共享模块。
+ */
+function removeTrackFromPlaylist(playlistId, trackId) {
+	const result = sqlite.runSync(
+		'DELETE FROM playlist_tracks WHERE playlist_id = ? AND track_id = ?',
+		[playlistId, trackId],
+	)
+	const removed = Number(result?.changes ?? 0) > 0
+	if (removed) {
+		sqlite.runSync(
+			`UPDATE playlists
+			 SET item_count = (SELECT COUNT(*) FROM playlist_tracks WHERE playlist_id = ?), updated_at = ?
+			 WHERE id = ?`,
+			[playlistId, Date.now(), playlistId],
+		)
+	}
+	return removed
 }
 
 /** 读取播放列表里的曲目（按 sort_key） */
@@ -838,6 +889,7 @@ module.exports = {
 	listPlaylists,
 	upsertTrack,
 	addTrackToPlaylist,
+	removeTrackFromPlaylist,
 	getPlaylistTracks,
 	findPlaylistByRemote,
 	upsertRemotePlaylist,

@@ -365,6 +365,7 @@ async function importMatched({
 
 	const known = db.getPlaylistBvids(playlist.id)
 	const failures = []
+	const addedTrackIds = []
 	let added = 0
 	let skipped = 0
 
@@ -389,6 +390,7 @@ async function importMatched({
 			})
 			if (db.addTrackToPlaylist(playlist.id, track.id)) {
 				added += 1
+				addedTrackIds.push(track.id)
 			}
 		} catch (error) {
 			failures.push({
@@ -407,6 +409,8 @@ async function importMatched({
 		skipped,
 		itemCount: total,
 		failures,
+		// 返回真正新增的本地 id，让调用方（IPC 层）能把它记进共享 outbox
+		addedTrackIds,
 	}
 }
 
