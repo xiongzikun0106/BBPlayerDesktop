@@ -23,9 +23,12 @@
 		"verify:desktop:download": "node scripts/verify-download.mjs",
 		"verify:desktop:icons": "node scripts/verify-thumbar-icons.mjs",
 		"verify:desktop:login": "node scripts/verify-desktop-login.mjs",
+		"verify:desktop:lyrics-win": "node scripts/verify-desktop-lyrics-window.mjs",
 		"verify:desktop:media": "node scripts/verify-desktop-media.mjs",
+		"verify:desktop:settings": "node scripts/verify-desktop-settings.mjs",
 		"verify:desktop:ui": "node scripts/verify-desktop-ui.mjs",
-		"verify:login": "pnpm exec tsx scripts/verify-bilibili-login.mts"
+		"verify:login": "pnpm exec tsx scripts/verify-bilibili-login.mts",
+		"verify:packaged": "node scripts/verify-packaged.mjs"
 	},
 	"devDependencies": {
 		"@bbplayer/eslint-plugin": "workspace:*",
