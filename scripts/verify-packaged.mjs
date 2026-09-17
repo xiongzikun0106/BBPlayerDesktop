@@ -224,12 +224,25 @@ function report(selfRun, gatingRun, exe) {
 	console.log('\n--- 能力门控断言（非探针模式启动）---')
 	const gating = gatingRun.parsed
 	const gatingChecks = []
+	const skippedGating = []
 	if (!gating || gating.error) {
 		gatingChecks.push([
 			'门控验证能跑起来',
 			false,
 			gating?.error ?? `没有输出（exit=${gatingRun.code}）`,
 		])
+	} else if (gating.headless === true) {
+		// headless：读不到渲染进程，如实记为「跳过」而不是失败
+		gatingChecks.push([
+			'主进程侧确认非探针模式下不启用探针通道',
+			gating.probeEnabled === false,
+			`PROBE_ENABLED=${gating.probeEnabled}`,
+		])
+		skippedGating.push(
+			'非探针模式下 window.bbProbe 不存在（需要显示环境；VPS 上可用 xvfb-run）',
+			'非探针模式下 window.bbplayer 仍可用',
+			'非探针模式下应用仍能就绪',
+		)
 	} else {
 		gatingChecks.push([
 			'非探针模式下 window.bbProbe 不存在',
@@ -250,6 +263,7 @@ function report(selfRun, gatingRun, exe) {
 	for (const [name, ok, detail] of gatingChecks) {
 		console.log(`  ${ok ? '✅' : '❌'} ${name}${detail ? `  — ${detail}` : ''}`)
 	}
+	for (const name of skippedGating) console.log(`  ⏭ ${name}`)
 
 	if (result.failures?.length) {
 		console.log('\n--- 自检失败原因 ---')

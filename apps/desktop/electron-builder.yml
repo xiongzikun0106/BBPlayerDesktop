@@ -118,3 +118,41 @@ linux:
       Name: BBPlayer
       Comment: B 站音乐播放器
       Categories: AudioVideo;Audio;Player;
+
+# ⚠️ 显式补上 `libasound2` / `alsa-lib`。
+#
+# electron-builder 的默认依赖清单（libgtk-3-0 / libnotify4 / libnss3 /
+# libxss1 / libxtst6 / xdg-utils / libatspi2.0-0 / libuuid1 / libsecret-1-0）
+# **不含 ALSA**。在完整桌面发行版上 libasound2 通常已被别的包带进来，
+# 但在最小化安装（服务器 / 容器）上会缺，表现为启动时一句很难懂的：
+#
+#     error while loading shared libraries: libasound.so.2: cannot open
+#     shared object file
+#
+# 一个**音乐播放器**没声明 ALSA 依赖说不过去，所以在 Debian 12 上实测到之后
+# 就补进清单里（`libasound2` 是 Debian/Ubuntu 的包名，RPM 系叫 `alsa-lib`）。
+deb:
+  depends:
+    - libgtk-3-0
+    - libnotify4
+    - libnss3
+    - libxss1
+    - libxtst6
+    - xdg-utils
+    - libatspi2.0-0
+    - libuuid1
+    - libsecret-1-0
+    - libasound2
+
+rpm:
+  depends:
+    - gtk3
+    - libnotify
+    - nss
+    - libXScrnSaver
+    - libXtst
+    - xdg-utils
+    - at-spi2-core
+    - libuuid
+    - libsecret
+    - alsa-lib

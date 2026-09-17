@@ -608,12 +608,67 @@ backup-<ISO 时间戳，冒号与点都换成 ->.bbplayer
 
 ### Phase 5 — 打包发布
 
-| 步骤 | 产出                                                                      |
-| ---- | ------------------------------------------------------------------------- |
-| 5.1  | `electron-builder`：Windows NSIS + portable、Linux `.deb`/`.rpm`/AppImage |
-| 5.2  | `apps/update-publisher` 支持桌面产物（**当前只收 `.apk`**，见 §5 风险 3） |
-| 5.3  | 各自签名策略                                                              |
-| 5.4  | 桌面端独立版本号，从 `0.1.0` 起步（mobile 当前 `2.7.0-alpha.1`）          |
+| 步骤 | 产出                                                                      | 状态                                                              |
+| ---- | ------------------------------------------------------------------------- | ----------------------------------------------------------------- |
+| 5.1  | `electron-builder`：Windows NSIS + portable、Linux `.deb`/`.rpm`/AppImage | ✅ 三种 Linux 格式 + 两种 Windows 格式均已构建并在真机验证        |
+| 5.2  | `apps/update-publisher` 支持桌面产物（**当前只收 `.apk`**，见 §5 风险 3） | ✅ 按 electron-updater 路线实现（见下，**不**扩展 `update.json`） |
+| 5.3  | 各自签名策略                                                              | ⬜ 未做（未签名，Windows SmartScreen 会提示，属已知取舍）         |
+| 5.4  | 桌面端独立版本号，从 `0.1.0` 起步（mobile 当前 `2.7.0-alpha.1`）          | ✅ `apps/desktop/package.json` 为 `0.1.0`，与移动端版本线完全独立 |
+
+#### Phase 5 实测结论
+
+**构建产物（已在真机验证）**
+
+| 平台    | 产物                                            | 大小     | 验证                                                               |
+| ------- | ----------------------------------------------- | -------- | ------------------------------------------------------------------ |
+| Windows | `BBPlayer-0.1.0-win-x64-nsis-setup.exe`         | 99.2 MB  | 静默安装 → 运行自检 24/24 → 静默卸载（目录清空）                   |
+| Windows | `BBPlayer-0.1.0-win-x64-portable.exe`           | 99.0 MB  | 构建成功                                                           |
+| Linux   | `BBPlayer-0.1.0-linux-amd64.deb`                | 100.3 MB | `apt-get install` 自动解依赖 → 运行自检 24/24（xvfb 下含渲染进程） |
+| Linux   | `BBPlayer-0.1.0-linux-x86_64.rpm`               | 88.2 MB  | `rpm -ivh` 安装成功，元数据完整                                    |
+| Linux   | `BBPlayer-0.1.0-linux-x86_64.AppImage`          | 129.3 MB | `--appimage-extract-and-run` 自检通过                              |
+| 两者    | `latest.yml` / `latest-linux.yml` + `.blockmap` | —        | electron-updater 的 feed 与增量更新块                              |
+
+**只有真机才能发现的问题（都在 Linux 上暴露）**
+
+1. **`executableName` 从包名派生会得到非法名。** Linux 上它默认取
+   `package.json` 的 `name`，而我们是 pnpm 作用域包 `@bbplayer/desktop`
+   → `@bbplayerdesktop`，AppImage 直接拒绝：
+   `contains characters that cannot be safely used in file paths`。
+   **Windows 用的是 productName，所以这个坑只在 Linux 暴露。**
+   显式设 `linux.executableName: bbplayer` 解决。
+
+2. **deb/rpm 需要 `package.json` 里有 `homepage`。** 缺了 fpm 直接失败：
+   `Please specify project homepage`。AppImage 不需要，所以排在它后面的
+   deb/rpm 才报错。
+
+3. **electron-builder 的默认依赖清单不含 ALSA。** 最小化安装的 Linux 上
+   启动时报 `error while loading shared libraries: libasound.so.2`。
+   一个**音乐播放器**没声明 ALSA 依赖说不过去，已显式补上
+   `libasound2`（Debian）/ `alsa-lib`（RPM）。
+
+4. **`artifactName` 里不能用 `${target}`。** electron-builder 的可用宏只有
+   `${productName}` `${version}` `${arch}` `${ext}` `${os}` `${channel}`。
+   而 `.exe` 在 NSIS 与 portable 之间**有歧义**，所以在各 target 下分别
+   声明 `artifactName`（`-nsis-setup` / `-portable` 后缀）——这同时也是
+   `update-publisher` 能正确分类的前提。
+
+**关于更新机制：桌面端走 electron-updater，不扩展 `update.json`**
+
+计划文档早已指明这一点（§2.4、§3.5、§6）。调研进一步核对源码后确认，
+合并两条通道是**做不到**的：
+
+- 移动端 `updateService.ts` 的 `parseDownloads` **只读 `downloads.android`**，
+  其它键被静默丢弃；
+- `update.json` 只有一个全局 `version` 与一个 `url`，而桌面端是独立版本线
+  （`0.1.0`）与移动端（`2.7.0-alpha.1`）无法共用一个 version；
+- 移动端拿这个 version 与**自己**的原生版本比较，把桌面版本写进去会得出
+  「有 0.1.0 更新」而自己的 2.7.x 更大 —— 逻辑上直接矛盾。
+
+所以 `update-publisher` 对桌面端做的是**收集 / 校验 / 报告**，其中
+**校验是真价值**：读 `latest*.yml` 并核对每个文件的 `sha512` 与 `size`
+是否与实际文件一致 —— 这正是 electron-updater 更新时会核对的两项，对不上
+它会拒绝更新，而那时往往已经发过版了。实测：往安装包尾部追加 100 字节，
+两项都被抓到、退出码 1。
 
 ---
 

@@ -12,6 +12,20 @@ const { app, BrowserWindow, ipcMain, protocol } = require('electron')
 const fs = require('node:fs')
 const path = require('node:path')
 
+/**
+ * 设置应用名，**必须在任何 `app.getPath('userData')` 之前**。
+ *
+ * 不设的话 Electron 用 `package.json` 的 `name`，而我们是 pnpm 作用域包
+ * `@bbplayer/desktop` —— 于是配置目录变成 `~/.config/@bbplayer/desktop`
+ * （Windows 上是 `%APPDATA%\@bbplayer\desktop`）。带 `@` 与 `/` 的路径虽然能用，
+ * 但对用户很不友好（在文件管理器里像个错误路径）。
+ *
+ * 在 Linux VPS 上跑打包产物时实测到（`userData=/root/.config/@bbplayer/desktop`）。
+ * 注意 `getPath` 会在首次访问后缓存，所以这里必须排在最前面 ——
+ * 早于 `ports.cjs`（它读 `getPath('userData')`）。
+ */
+app.setName('BBPlayer')
+
 // 必须尽早执行：把 userData / sessionData 指到 BBPLAYER_DATA_DIR。
 // 放在其他 require 之前，确保 Chromium 初始化缓存时路径已经正确
 // （在 ready 之后改路径会导致 network service 崩溃，见 ports.cjs 的说明）。
@@ -412,11 +426,32 @@ void app.whenReady().then(() => {
 	} else if (VERIFY_GATING_MODE) {
 		// 门控验证：本模式**不在** PROBE_ENABLED 里，所以 bbProbe **不应**暴露。
 		// 主进程自己去渲染进程读全局对象（不受 preload 暴露与否影响）。
+		//
+		// ⚠️ 必须处理 headless：没有 X server 时创建窗口会**挂住**（实测在
+		// Debian VPS 上 `--verify-gating` 一直不退出，探针等到 90s 超时，
+		// 报「没有输出」）。headless 下改为只报主进程算出的 PROBE_ENABLED，
+		// 并把渲染进程那项标为跳过 —— 少了最强的那条证据，但不能因此挂死。
+		if (HEADLESS) {
+			setTimeout(() => {
+				console.log(
+					`__GATING__${JSON.stringify({
+						headless: true,
+						probeEnabled: PROBE_ENABLED,
+						note: 'headless：未创建窗口，无法读取渲染进程侧的 typeof window.bbProbe；完整门控验证需要显示环境（VPS 上可用 xvfb-run）',
+					})}`,
+				)
+				setTimeout(() => app.exit(0), 200)
+			}, 500)
+			return
+		}
+
+		createWindow()
 		mainWindow.webContents.once('did-finish-load', () => {
 			setTimeout(async () => {
 				try {
 					const result = await mainWindow.webContents.executeJavaScript(
 						`(() => ({
+							probeEnabled: ${PROBE_ENABLED},
 							hasBbProbe: typeof window.bbProbe,
 							hasBbplayer: typeof window.bbplayer,
 							hasSettings: typeof window.bbplayer?.settings,
