@@ -235,8 +235,27 @@ async function run(window) {
 		`${strictRange?.bytes} 字节`,
 	)
 
+	// 上游是否 206 取决于**这一轮被路由到哪个 CDN 节点**：
+	// 主线（`upos-*` 等）对 Range 回 206，而 PCDN（`*.mcdn.bilivideo.cn`）
+	// 会直接回整段 200。这是上游行为差异，不是我们的缺陷 ——
+	// **代理自身的 206 已经由上面那条严格测试断言**，所以这里只要求
+	// 「上游接受了带 Range 的请求」（200 或 206 都算），否则就会因
+	// 上游抖动而假失败（实测遇到过）。
+	const rangeResponses = resolvedEntries.filter(
+		(entry) => entry.upstreamStatus === 206 || entry.upstreamStatus === 200,
+	)
 	const r206 = resolvedEntries.filter((entry) => entry.upstreamStatus === 206)
-	check('上游对 Range 请求返回 206', r206.length > 0, `${r206.length} 次 206`)
+	check(
+		'上游接受了带 Range 的请求（200 或 206）',
+		rangeResponses.length > 0,
+		`${rangeResponses.length} 次（其中 206 有 ${r206.length} 次）`,
+	)
+	if (r206.length === 0 && rangeResponses.length > 0) {
+		console.log(
+			'[probe] ⚠ 本轮上游全是 200：本次被路由到了 PCDN 节点（`mcdn`），' +
+				'它不实现 Range。代理侧仍是正确的 206，播放/seek 不受影响。',
+		)
+	}
 
 	const hosts = [...new Set(resolvedEntries.map((entry) => entry.host))]
 	check('记录到上游 CDN 主机', hosts.length > 0, hosts.join(', ') || '无')
