@@ -1,8 +1,10 @@
 # BBPlayer Desktop（Electron）
 
-Windows / Linux 桌面端。**Phase 0–3 已完成，Phase 4 主体完成**（媒体集成 / 下载 /
-WebDAV 备份），下一步是 Phase 4 剩余项（独立歌词窗口、主题、定时关闭）与
-Phase 5（打包发布）。
+Windows / Linux 桌面端。**Phase 0–5 已完成**：播放 / 搜索 / 歌单 / 歌词 / 登录同步 /
+下载 / WebDAV 备份 / 媒体集成 / 独立歌词窗口 / 主题 / 定时关闭 / 响度均衡，
+并且 Windows 与 Linux 的安装包均已构建并在真机验证。
+
+未做的只有 Phase 5.3（代码签名）与 Phase 3.3–3.5（外部歌单导入 / 共享歌单 / 播放历史）。
 
 方案与阶段划分见 [`docs/DESKTOP_PLAN.md`](../../docs/DESKTOP_PLAN.md)。
 
@@ -93,6 +95,7 @@ apps/desktop/
     backup.cjs                备份格式（ZIP + SQLite 快照）+ 迁移表规范化
     backup-webdav.cjs         WebDAV 传输（复用 core 的平台无关客户端）
     backup-manager.cjs        配置持久化 + WebDAV 密码加密 + 编排
+    lyrics-window.cjs         独立歌词窗口（无边框透明置顶）的主进程侧
     media-integration.cjs     任务栏缩略图按钮 + 硬件媒体键兜底
     thumbar-icons.cjs         32×32 PNG 图标运行时生成（零依赖）
     ipc-handlers.cjs          全部 IPC handler
@@ -101,6 +104,8 @@ apps/desktop/
     renderer/
       index.html  style.css  state.js  player.js  library.js
       keyboard.js  lyrics-panel.js  media-session.js
+      lyrics-window.html  lyrics-window.css  lyrics-window.js
+      desktop-features.js  settings-panel.js
       auth.js  favorites.js  renderer.js
 ```
 
@@ -116,6 +121,19 @@ apps/desktop/
 
 `apps/desktop/drizzle/` 与 `apps/mobile/drizzle/` 是**两条独立的链**，
 只保证最终结构一致，不保证迁移历史一致。
+
+---
+
+## 独立歌词窗口（Phase 4.1）
+
+无边框 + 透明背景 + 置顶的悬浮歌词窗口，数据由主窗口经主进程转发
+（渲染进程之间不能直接通信）。用 Ctrl+Alt+L 或右栏工具栏的「独立窗口」开关。
+
+**它也是主窗口歌词渲染问题的可用绕过路径**：主窗口右栏那个已知问题
+（setLyrics 状态正确但行元素不渲染）在独立窗口里不存在 —— 后者用的是
+完全独立的渲染实现，实测 5 行全部进 DOM、高亮类与 ranslateY 都正确
+（见 \pnpm verify:desktop:lyrics-win\，38 项断言）。详见
+[\docs/LYRICS.md\](../../docs/LYRICS.md) §6。
 
 ---
 
@@ -258,19 +276,19 @@ WebDAV 复用 `packages/core` 的平台无关客户端（移动端注入 RN fetc
 
 ## 已知限制 / 下一步
 
-- **`window.bbProbe` 无条件暴露**，生产化前必须加开关或移除。
+- ~~`window.bbProbe` 无条件暴露~~ —— 已修：只在探针模式下通过 `additionalArguments` 暴露，并有专门的 `--verify-gating` 模式做端到端断言（它故意不属于探针模式，否则永远测不出问题）。
 - 渲染进程**没有实现 `AudioPort`**：播放仍直接用 `<audio>` + 自定义协议。
-  `packages/core/src/ports/index.ts` 里的 `AudioPort` 尚未接入，Phase 4 对齐。
+  `packages/core/src/ports/index.ts` 里的 `AudioPort` 接口未接入 —— 这是
+  **有意的取舍**：桌面端的播放引擎就是 `<audio>`，抽一层端口目前只增加间接性。
+  若将来要与移动端共享播放引擎，这里是接入点。
 - **歌词面板的已知缺陷（未定位）**：主界面里 `setLyrics(48)` 状态正确、
   `data-active` 也写进 DOM，但**行元素不渲染**（`li` 为 0、`meta` 显示
   `— / 0`）。同一面板在独立的 `lyrics-lab.html` 里 30/30 通过，所以问题在
   「主界面集成」这一层。详见 [`docs/LYRICS.md`](../../docs/LYRICS.md) §6。
   验证脚本把它记为**警告**而不是通过 —— 不用「状态正确」掩盖「DOM 没渲染」。
-- **打包**：Windows 上只有 `--linux dir` 与 `--linux tar.gz` 能出；
-  `deb`/`rpm` 报 `spawn fpm ENOENT`，AppImage 报 `mksquashfs ENOENT`。
-  正式 Linux 包需要 Docker 或 Linux runner（计划用 VPS）。
-- Phase 4 未做：4.1 独立歌词窗口、4.4 主题换肤、4.6 定时关闭 / 响度均衡。
-- 下载与备份的 IPC 已接好并通过验证，但**渲染进程还没有对应的界面**
-  （目前可用 `window.bbplayer.download.*` / `window.bbplayer.backup.*` 调用，
-  或由验证脚本驱动）。设置页是 Phase 4 的收尾项。
-- Phase 3 的 3.3（外部歌单导入）/ 3.4（共享歌单）/ 3.5（播放历史）本轮**不做**。
+  独立歌词窗口走的是另一份渲染实现，**没有这个问题**，可作为绕过路径。
+- Phase 5.3（代码签名）未做：Windows 的 NSIS 包未签名，SmartScreen 会提示；
+  Linux 包也未签名。
+- Phase 3.3（外部歌单导入）/ 3.4（共享歌单）/ 3.5（播放历史）未做。
+- 歌词窗口的「锁定」只做到不可拖动；真正的鼠标穿透需要
+  `setIgnoreMouseEvents`，属于另一个交互决策。

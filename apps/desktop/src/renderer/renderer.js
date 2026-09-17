@@ -177,6 +177,11 @@
 		void player.play()
 	})
 
+	// 独立歌词窗口：Ctrl+Alt+L（Ctrl+Shift+L 已用于日志开关）
+	keys.register('ctrl+alt+l', { description: '切换独立歌词窗口' }, () => {
+		void toggleLyricsWindow()
+	})
+
 	// —— 调试 ——
 	keys.register('ctrl+shift+l', { description: '显示/隐藏日志' }, () => {
 		if (logEl) logEl.hidden = !logEl.hidden
@@ -206,6 +211,15 @@
 		if (el) el.textContent = text
 	}
 
+	/**
+	 * 独立歌词窗口（Phase 4.1）：当前歌词行。
+	 *
+	 * 声明放在 `loadLyricsFor` **之前** —— 那里会给它赋值。虽然 `let` 的
+	 * 暂时性死区只在执行到赋值时才有影响（`loadLyricsFor` 是初始化之后才被
+	 * 调用，放后面也不会报错），但「先赋值后声明」读起来像 bug。
+	 */
+	let lyricsWindowLines = []
+
 	/** 当前曲目变化时自动匹配歌词 */
 	async function loadLyricsFor(track) {
 		if (!lyricsPanel || !track) return
@@ -213,6 +227,9 @@
 		const seq = ++lyricsRequestSeq
 		setLyricsStatus('正在匹配歌词…')
 		lyricsPanel.setLyrics([])
+		// 独立歌词窗口也用同一份数据，换曲时先清空（避免显示上一首的歌词）
+		lyricsWindowLines = []
+		pushLyricsWindowState()
 
 		try {
 			const result = await window.bbplayer.autoMatchLyrics({
@@ -235,6 +252,9 @@
 
 			// 解析在主进程完成（渲染进程没有模块系统），这里只负责渲染
 			lyricsPanel.setLyrics(result.data.lines ?? [])
+			// 独立歌词窗口用同一份行数据（主进程只转发，不重复匹配）
+			lyricsWindowLines = result.data.lines ?? []
+			pushLyricsWindowState()
 			setLyricsStatus(
 				`${result.data.candidate.title} — ${result.data.candidate.artist}（匹配度 ${Number(result.data.score).toFixed(2)}，${result.data.lineCount} 行）`,
 			)
@@ -243,6 +263,25 @@
 			if (seq !== lyricsRequestSeq) return
 			setLyricsStatus(`歌词匹配异常：${error.message}`)
 		}
+	}
+
+	/** 独立歌词窗口的开关（右栏工具栏按钮 + Ctrl+Alt+L） */
+	async function toggleLyricsWindow() {
+		try {
+			const result = await window.bbplayer?.lyricsWindow?.toggle?.()
+			if (result?.ok) {
+				log(`独立歌词窗口：${result.data.open ? '已打开' : '已关闭'}`)
+			} else if (result?.error) {
+				log(`独立歌词窗口切换失败：${result.error}`)
+			}
+		} catch (error) {
+			log(`独立歌词窗口切换异常：${error.message}`)
+		}
+	}
+
+	const popoutButton = document.getElementById('lyrics-popout')
+	if (popoutButton) {
+		popoutButton.addEventListener('click', () => void toggleLyricsWindow())
 	}
 
 	const reloadButton = document.getElementById('lyrics-reload')
@@ -254,10 +293,56 @@
 
 	// 播放位置驱动高亮（时间更新频繁，直接挂 timeupdate）
 	player.getAudio().addEventListener('timeupdate', () => {
+		// 独立歌词窗口：**不管右栏面板是否在歌词页**都要推 ——
+		// 歌词窗口本来就是「把歌词挪到别处看」，右栏可能正显示队列。
+		// 这也是「右栏歌词不渲染」那个已知问题的一个绕过路径。
+		const audio = player.getAudio()
+		void window.bbplayer?.lyricsWindow?.pushPosition?.(audio.currentTime)
+		if (Number.isFinite(audio.duration) && audio.duration > 0) {
+			void window.bbplayer?.lyricsWindow?.pushProgress?.(
+				audio.currentTime / audio.duration,
+			)
+		}
+
 		if (!lyricsPanel) return
 		if (window.bbState.get().rightPanel !== 'lyrics') return
-		lyricsPanel.setPosition(player.getAudio().currentTime)
+		lyricsPanel.setPosition(audio.currentTime)
 	})
+
+	// ---------------------------------------------------------------
+	// 独立歌词窗口（Phase 4.1）
+	// ---------------------------------------------------------------
+
+	/**
+	 * 把当前歌词/曲目/位置整理成歌词窗口需要的形状推过去。
+	 *
+	 * 主进程只做转发、不理解内容，所以整理在这里做。窗口没开时 IPC 会静默
+	 * 返回（主进程侧 `sendToLyricsWindow` 会跳过），所以**不需要**在这里
+	 * 判断开关状态 —— 少一个会与主进程漂移的状态。
+	 */
+	function pushLyricsWindowState() {
+		const bridge = window.bbplayer?.lyricsWindow
+		if (!bridge) return
+		void bridge.pushLyrics?.(lyricsWindowLines)
+		const current = player.getCurrent()
+		void bridge.pushTrack?.({
+			title: current?.title ?? null,
+			artist: current?.artist ?? current?.artist_name ?? null,
+		})
+		const audio = player.getAudio()
+		if (Number.isFinite(audio.duration) && audio.duration > 0) {
+			void bridge.pushProgress?.(audio.currentTime / audio.duration)
+		}
+		void bridge.pushPosition?.(audio.currentTime)
+	}
+
+	window.bbplayer?.lyricsWindow?.onOpened?.(() => {
+		log('独立歌词窗口已打开，推送当前状态')
+		pushLyricsWindowState()
+	})
+	window.bbplayer?.lyricsWindow?.onClosed?.(() => log('独立歌词窗口已关闭'))
+	// 歌词窗口就绪后主动要一次状态（否则要等下一次 timeupdate 才有内容）
+	window.bbplayer?.lyricsWindow?.onRequestState?.(() => pushLyricsWindowState())
 
 	// ---------------------------------------------------------------
 	// 播放器事件 → 界面同步

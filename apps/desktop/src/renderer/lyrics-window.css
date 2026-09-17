@@ -1,0 +1,168 @@
+/*
+ * 独立歌词窗口的样式。
+ *
+ * 关键约束：**无边框 + 透明背景**。
+ *   * 透明窗口必须让 `html` / `body` 背景为 `transparent`，否则会出现一块
+ *     不透明的黑底（Electron 的透明窗口只对真正透明的像素生效）；
+ *   * 内容自己画圆角与半透明底，这样「悬浮在桌面/其它窗口上」才好看。
+ */
+
+:root {
+	--bg: rgb(28 27 31 / 78%);
+	--on-surface: #e6e1e5;
+	--on-surface-variant: #cac4d0;
+	--primary: #d0bcff;
+	--outline: rgb(73 69 79 / 70%);
+}
+
+* {
+	box-sizing: border-box;
+}
+
+html,
+body {
+	margin: 0;
+	/* ⚠️ 必须透明：无边框透明窗口的关键 */
+	background: transparent;
+	color: var(--on-surface);
+	font-family:
+		'Segoe UI', 'Microsoft YaHei', system-ui, -apple-system, sans-serif;
+	overflow: hidden;
+	/* 整个窗口可拖动（toolbar 里的按钮会覆盖为 no-drag） */
+	-webkit-app-region: drag;
+	user-select: none;
+}
+
+.wrap {
+	height: 100vh;
+	display: flex;
+	flex-direction: column;
+	background: var(--bg);
+	border: 1px solid var(--outline);
+	border-radius: 14px;
+	/* 内容不超出圆角 */
+	overflow: hidden;
+	backdrop-filter: blur(12px);
+}
+
+/* 锁定拖动时取消 drag 区域（变成「点击穿透到下面的窗口」的语义更复杂，
+   这里只做「不可拖动」——够用且不会让用户误以为窗口坏了） */
+body.is-locked {
+	-webkit-app-region: no-drag;
+}
+
+.toolbar {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 8px;
+	padding: 6px 10px;
+	border-bottom: 1px solid var(--outline);
+	flex: 0 0 auto;
+}
+
+.title {
+	font-size: 12px;
+	color: var(--on-surface-variant);
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.actions {
+	display: flex;
+	gap: 2px;
+	/* 按钮必须 no-drag，否则被拖动区域吞掉点击 */
+	-webkit-app-region: no-drag;
+}
+
+.actions button {
+	background: transparent;
+	border: none;
+	color: var(--on-surface-variant);
+	cursor: pointer;
+	font-size: 12px;
+	line-height: 1;
+	padding: 3px 6px;
+	border-radius: 6px;
+}
+
+.actions button:hover {
+	background: rgb(255 255 255 / 12%);
+	color: var(--on-surface);
+}
+
+/*
+ * 歌词区：`flex: 1` + `overflow: hidden`，只显示中间几行。
+ * 用 translateY 把一个长列表整体滚动，而不是让容器自己滚动 ——
+ * 这样「当前行居中」是精确可控的（容器滚动会有惯性/滚动条等干扰）。
+ */
+.lyrics {
+	flex: 1 1 auto;
+	min-height: 0;
+	overflow: hidden;
+	position: relative;
+	padding: 0 14px;
+}
+
+.lyrics__line {
+	/* 行高固定，translateY 的计算依赖它 —— 改这里必须同步改 JS 的 LINE_HEIGHT */
+	height: 30px;
+	line-height: 30px;
+	font-size: 15px;
+	color: var(--on-surface-variant);
+	opacity: 0.55;
+	text-align: center;
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	transition:
+		color 180ms ease,
+		opacity 180ms ease,
+		transform 180ms ease;
+}
+
+.lyrics__line.is-active {
+	color: var(--primary);
+	opacity: 1;
+	font-size: 18px;
+	font-weight: 600;
+}
+
+/* 翻译行：紧贴主行下方、字号更小，用负 margin 拉近 */
+.lyrics__translation {
+	font-size: 12px;
+	color: var(--on-surface-variant);
+	opacity: 0.7;
+	text-align: center;
+	height: 16px;
+	line-height: 16px;
+	margin-top: -6px;
+}
+
+.empty {
+	flex: 1 1 auto;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	margin: 0;
+	color: var(--on-surface-variant);
+	font-size: 13px;
+}
+
+.empty[hidden] {
+	display: none;
+}
+
+.progress {
+	flex: 0 0 auto;
+	height: 2px;
+	background: rgb(255 255 255 / 10%);
+}
+
+.progress__bar {
+	height: 100%;
+	width: 0;
+	background: var(--primary);
+	transition: width 200ms linear;
+}

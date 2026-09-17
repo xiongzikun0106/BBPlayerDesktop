@@ -6,6 +6,13 @@
  */
 const { contextBridge, ipcRenderer } = require('electron')
 
+/** 把主进程推来的事件包成「注册回调」的形式，并返回取消订阅 */
+const subscribe = (channel) => (handler) => {
+	const listener = (_event, payload) => handler(payload)
+	ipcRenderer.on(channel, listener)
+	return () => ipcRenderer.removeListener(channel, listener)
+}
+
 contextBridge.exposeInMainWorld('bbplayer', {
 	// ---------- 音频 ----------
 	/** 解析一个 bvid 为可播放代理地址 */
@@ -105,6 +112,27 @@ contextBridge.exposeInMainWorld('bbplayer', {
 		upload: () => ipcRenderer.invoke('backup:upload'),
 		downloadRemote: (remotePath) =>
 			ipcRenderer.invoke('backup:downloadRemote', remotePath),
+	},
+
+	// ---------- 独立歌词窗口（Phase 4.1）----------
+	//
+	// 数据流：主窗口 -> 主进程 -> 歌词窗口。渲染进程之间不能直接通信，
+	// 所以主进程只做转发（它不理解歌词内容）。
+	lyricsWindow: {
+		open: () => ipcRenderer.invoke('lyrics-window:open'),
+		close: () => ipcRenderer.invoke('lyrics-window:close'),
+		toggle: () => ipcRenderer.invoke('lyrics-window:toggle'),
+		status: () => ipcRenderer.invoke('lyrics-window:status'),
+		/** 推整首歌词（换曲或重新匹配时） */
+		pushLyrics: (lines) => ipcRenderer.invoke('lw:update', lines),
+		/** 推当前位置（高频） */
+		pushPosition: (seconds) => ipcRenderer.invoke('lw:position', seconds),
+		pushTrack: (info) => ipcRenderer.invoke('lw:track', info),
+		pushProgress: (ratio) => ipcRenderer.invoke('lw:progress', ratio),
+		/** 歌词窗口开/关、以及它就绪后主动要状态时的事件 */
+		onOpened: subscribe('lyrics-window:opened'),
+		onClosed: subscribe('lyrics-window:closed'),
+		onRequestState: subscribe('lyrics-window:requestState'),
 	},
 
 	// ---------- 设置（Phase 4 收尾）----------

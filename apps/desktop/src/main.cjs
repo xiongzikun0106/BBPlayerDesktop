@@ -74,6 +74,8 @@ const HEADLESS = process.argv.includes('--headless')
  * 「已暴露」，测不出问题。
  */
 const VERIFY_GATING_MODE = process.argv.includes('--verify-gating')
+/** 独立歌词窗口验收模式（Phase 4.1，见 lyrics-window-probe-driver.cjs） */
+const LYRICS_PROBE_MODE = process.argv.includes('--lyrics-probe')
 
 /** 对比模式的「不安全」变体：关掉 webSecurity，用于量化其代价 */
 const INSECURE_MODE = process.argv.includes('--insecure')
@@ -101,6 +103,7 @@ const PROBE_ENABLED = [
 	'--compare',
 	'--diagnose',
 	'--selfcheck',
+	'--lyrics-probe',
 ].some((flag) => process.argv.includes(flag))
 
 const SHOT_DIR = path.join(__dirname, '..', 'probe-output')
@@ -261,6 +264,8 @@ void app.whenReady().then(() => {
 	}
 
 	registerIpcHandlers()
+	// 独立歌词窗口（Phase 4.1）：主窗口 <-> 主进程 <-> 歌词窗口 的转发
+	require('./lyrics-window.cjs').registerLyricsWindowIpc()
 
 	/** 截图到文件，供多模态核对 */
 	ipcMain.handle('probe:screenshot', async (_event, name) => {
@@ -467,6 +472,16 @@ void app.whenReady().then(() => {
 				}
 				setTimeout(() => app.exit(0), 300)
 			}, 3000)
+		})
+	} else if (LYRICS_PROBE_MODE) {
+		// 独立歌词窗口验收（Phase 4.1）
+		mainWindow.webContents.once('did-finish-load', () => {
+			const { run } = require('./lyrics-window-probe-driver.cjs')
+			void run(mainWindow)
+				.catch((error) =>
+					console.error('[desktop] 歌词窗口探针执行失败:', error),
+				)
+				.finally(() => setTimeout(() => app.exit(0), 500))
 		})
 	} else if (COMPARE_MODE) {
 		installWebRequestHeaderInjection()

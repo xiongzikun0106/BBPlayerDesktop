@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="zh-CN">
+	<head>
+		<meta charset="utf-8" />
+		<!--
+			独立歌词窗口：无边框 + 透明背景 + 置顶。
+			CSP 与主窗口一致（只允许本地脚本、https 图片）。
+		-->
+		<meta
+			http-equiv="Content-Security-Policy"
+			content="default-src 'self'; img-src 'self' data: https:; style-src 'self' 'unsafe-inline'"
+		/>
+		<title>BBPlayer 歌词</title>
+		<link rel="stylesheet" href="lyrics-window.css" />
+	</head>
+	<body>
+		<!--
+			整个窗口都可以拖动：`-webkit-app-region: drag` 加在 body 上。
+			按钮必须显式设 `no-drag`，否则点不动（这是 Electron 无边框窗口的
+			常见坑：drag 区域会吞掉鼠标事件）。
+		-->
+		<div class="wrap" id="wrap" data-testid="lyrics-window">
+			<div class="toolbar" data-testid="lyrics-toolbar">
+				<span class="title" id="title" data-testid="lw-title">未在播放</span>
+				<div class="actions">
+					<button id="btn-lock" data-testid="lw-lock" title="锁定/解锁拖动">🔓</button>
+					<button id="btn-close" data-testid="lw-close" title="关闭歌词窗口">✕</button>
+				</div>
+			</div>
+
+			<div class="lyrics" id="lyrics" data-testid="lw-lyrics"></div>
+
+			<p class="empty" id="empty" data-testid="lw-empty">等待播放…</p>
+
+			<div class="progress">
+				<div class="progress__bar" id="progress-bar" data-testid="lw-progress"></div>
+			</div>
+		</div>
+
+		<script src="lyrics-window.js"></script>
+	</body>
+</html>
