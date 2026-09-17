@@ -23,11 +23,13 @@
 		"verify:desktop:download": "node scripts/verify-download.mjs",
 		"verify:desktop:history": "node scripts/verify-desktop-history.mjs",
 		"verify:desktop:icons": "node scripts/verify-thumbar-icons.mjs",
+		"verify:desktop:import": "node scripts/verify-desktop-import.mjs",
 		"verify:desktop:login": "node scripts/verify-desktop-login.mjs",
 		"verify:desktop:lyrics-win": "node scripts/verify-desktop-lyrics-window.mjs",
 		"verify:desktop:media": "node scripts/verify-desktop-media.mjs",
 		"verify:desktop:settings": "node scripts/verify-desktop-settings.mjs",
 		"verify:desktop:ui": "node scripts/verify-desktop-ui.mjs",
+		"verify:external-import": "pnpm exec tsx scripts/verify-external-import.mts",
 		"verify:login": "pnpm exec tsx scripts/verify-bilibili-login.mts",
 		"verify:packaged": "node scripts/verify-packaged.mjs",
 		"verify:play-history": "pnpm exec tsx scripts/verify-play-history.mts"

@@ -114,6 +114,16 @@ contextBridge.exposeInMainWorld('bbplayer', {
 			ipcRenderer.invoke('backup:downloadRemote', remotePath),
 	},
 
+	// ---------- 外部歌单导入（Phase 3.3）----------
+	//
+	// 流程：fetchPlaylist -> 逐首 matchTrack -> start。
+	// 匹配由渲染进程驱动循环，所以进度是天然的、可中断的。
+	externalImport: {
+		fetchPlaylist: (input) => ipcRenderer.invoke('import:fetchPlaylist', input),
+		matchTrack: (track) => ipcRenderer.invoke('import:matchTrack', track),
+		start: (payload) => ipcRenderer.invoke('import:start', payload),
+	},
+
 	// ---------- 播放历史（Phase 3.5）----------
 	history: {
 		/** 开始一次播放会话，返回 historyId */

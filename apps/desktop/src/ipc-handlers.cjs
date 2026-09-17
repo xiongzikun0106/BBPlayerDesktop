@@ -887,6 +887,63 @@ function registerIpcHandlers() {
 		}
 	})
 
+	// ---------- 外部歌单导入（Phase 3.3）----------
+	//
+	// 分三步，**由渲染进程驱动循环**：
+	//   1. `import:fetchPlaylist` 拉远端歌单（一次）
+	//   2. `import:matchTrack` 逐首匹配（渲染进程一首一次 IPC）
+	//   3. `import:start` 把用户确认后的结果落库
+	//
+	// 为什么不把匹配做成「一次调用整批」：那样进度只能靠推送通道回传，
+	// 而多一条推送通道就多一处状态同步。逐首 IPC 让渲染进程天然知道进度，
+	// 而且用户能中途停（不发下一次调用即可）。
+
+	ipcMain.handle('import:fetchPlaylist', async (_event, input) => {
+		try {
+			const { fetchPlaylist } = require('./netease-playlist.cjs')
+			return { ok: true, data: await fetchPlaylist(input) }
+		} catch (error) {
+			return { ok: false, error: error.message }
+		}
+	})
+
+	ipcMain.handle('import:matchTrack', async (_event, track) => {
+		try {
+			const { matchTrack } = require('./track-matcher.cjs')
+			return { ok: true, data: await matchTrack(track) }
+		} catch (error) {
+			return { ok: false, error: error.message }
+		}
+	})
+
+	/**
+	 * 落库导入结果。
+	 *
+	 * `items` 由渲染进程给出（用户可能改过匹配、或剔除了几首），所以这里
+	 * **不再重新匹配** —— 尊重用户的选择。
+	 */
+	ipcMain.handle('import:start', async (_event, payload) => {
+		try {
+			const { title, remoteId, cover, items, source } = payload ?? {}
+			if (!Array.isArray(items) || items.length === 0) {
+				throw new Error('没有要导入的曲目')
+			}
+			const { importMatched } = require('./track-matcher.cjs')
+			const data = await importMatched({
+				title: title ?? `导入歌单 ${remoteId ?? ''}`,
+				remoteId: remoteId ?? '',
+				cover: cover ?? null,
+				items,
+				// 复用 bilibili-api 的 view 接口取 cid/作者（与收藏夹导入同一路径）
+				resolveInfo: (bvid) => bilibiliApi.getVideoInfo(bvid),
+				db,
+			})
+			return { ok: true, data: { ...data, source: source ?? 'netease' } }
+		} catch (error) {
+			return { ok: false, error: error.message }
+		}
+	})
+
 	// ---------- 诊断 ----------
 	ipcMain.handle('probe:request-log', () => requestLog)
 	ipcMain.handle('probe:ports', () => describePorts())

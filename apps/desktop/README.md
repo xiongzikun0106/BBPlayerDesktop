@@ -1,10 +1,10 @@
 # BBPlayer Desktop（Electron）
 
 Windows / Linux 桌面端。**Phase 0–5 已完成**：播放 / 搜索 / 歌单 / 歌词 / 登录同步 /
-下载 / WebDAV 备份 / 媒体集成 / 独立歌词窗口 / 主题 / 定时关闭 / 响度均衡，
-并且 Windows 与 Linux 的安装包均已构建并在真机验证。
+下载 / WebDAV 备份 / 媒体集成 / 独立歌词窗口 / 主题 / 定时关闭 / 响度均衡 /
+播放历史 / 外部歌单导入，并且 Windows 与 Linux 的安装包均已构建并在真机验证。
 
-未做的只有 Phase 5.3（代码签名）与 Phase 3.3–3.5（外部歌单导入 / 共享歌单 / 播放历史）。
+未做的只有 Phase 5.3（代码签名）与 Phase 3.4（共享歌单，依赖后端 share 接口）。
 
 方案与阶段划分见 [`docs/DESKTOP_PLAN.md`](../../docs/DESKTOP_PLAN.md)。
 
@@ -42,6 +42,7 @@ pnpm verify:desktop:login      # 38 项：登录三条路 / 收藏夹 / 增量�
 pnpm verify:desktop:media      # 27 项：MediaSession / 任务栏按钮 / 媒体动作链路
 pnpm verify:desktop:lyrics-win # 38 项：独立歌词窗口
 pnpm verify:desktop:history    # 31 项：播放历史视图（记录 + 三个页签）
+pnpm verify:desktop:import     # 25 项：外部歌单导入 UI（解析 / 匹配 / 导入落库）
 pnpm verify:desktop:settings   # 50 项：设置页 / 主题 / 定时关闭 / 响度均衡
 pnpm verify:desktop:icons      # 25 项：任务栏图标生成器
 pnpm verify:desktop:download   # 34 项：下载 / 续传 / 完整性 / 并发
@@ -50,6 +51,7 @@ pnpm verify:backup             # 48 项：备份格式与移动端互通
 pnpm verify:backup:webdav      # 28 项：真实回环 WebDAV 服务器
 pnpm verify:login              # 52 项：登录接口与 RSA 加密链路
 pnpm verify:play-history       # 35 项：播放历史 SQL 层
+pnpm verify:external-import    # 65 项：外部歌单导入后端（含真实网易云歌单）
 
 # 需要 tsx 的其它验证
 pnpm exec tsx scripts/verify-core-on-node.mjs
@@ -103,15 +105,18 @@ apps/desktop/
     lyrics-window.cjs         独立歌词窗口（无边框透明置顶）的主进程侧
     media-integration.cjs     任务栏缩略图按钮 + 硬件媒体键兜底
     thumbar-icons.cjs         32×32 PNG 图标运行时生成（零依赖）
+    netease-playlist.cjs      网易云歌单抓取（匿名接口 + 字段裁剪）
+    track-matcher.cjs         歌单匹配：权重打分 + 负向词罚分 + 落库
     ipc-handlers.cjs          全部 IPC handler
     探针：probe-driver / ui-probe-driver / compare-driver /
-          login-probe-driver / media-probe-driver
+          login-probe-driver / media-probe-driver / settings-probe-driver /
+          lyrics-window-probe-driver / history-probe-driver / import-probe-driver
     renderer/
       index.html  style.css  state.js  player.js  library.js
       keyboard.js  lyrics-panel.js  media-session.js
       lyrics-window.html  lyrics-window.css  lyrics-window.js
       desktop-features.js  settings-panel.js
-      auth.js  favorites.js  history.js  renderer.js
+      auth.js  favorites.js  history.js  import.js  renderer.js
 ```
 
 ### 为什么数据库 schema 与移动端同源
@@ -279,6 +284,31 @@ WebDAV 复用 `packages/core` 的平台无关客户端（移动端注入 RN fetc
 
 ---
 
+## 外部歌单导入（Phase 3.3）
+
+粘贴一个**网易云歌单链接或 id**，桌面端抓下歌单（匿名接口即可，不需要登录），
+逐首到 B 站搜索、打分、匹配，再把选中的结果落进本地库。
+
+网易云与 B 站**没有共同 id**，所以匹配只能靠模糊打分：
+
+| 维度 | 权重 | 说明                                                       |
+| ---- | ---: | ---------------------------------------------------------- |
+| 标题 | 0.50 | 归一化后**一方包含另一方**记 1.0，否则退化为软相似度       |
+| 歌手 | 0.25 | 取「UP 主名相似度」与「歌手名出现在标题里」的**最大值**    |
+| 时长 | 0.25 | 两侧单位不同：网易云是**毫秒**，B 站搜索是 **`"4:21"` 串** |
+
+- **负向词罚分**：B 站搜索「歌名」的前几名常年是伴奏 / 鼓谱 / 吉他指弹 / 铃声。
+  强负向系数 `0.45`、弱负向 `0.85`，同时命中则叠乘。
+- **不做强过滤**：分数低的落到 `review` 交给用户一键确认，**不静默丢弃** ——
+  丢一首本来能导入的歌比多问一次更糟。
+- 三家权重里有**两家踩过「恒为 0」的坑**（时长单位不对、分隔符拆分方式不对），
+  所以每一项都有独立断言，见 `scripts/verify-external-import.mts`。
+
+**QQ 音乐不做**：它的歌单接口需要 `uin` + zzc 签名，**未登录拿不到完整列表**，
+属于「先做登录再谈导入」的量级。
+
+---
+
 ## 已知限制 / 下一步
 
 - ~~`window.bbProbe` 无条件暴露~~ —— 已修：只在探针模式下通过 `additionalArguments` 暴露，并有专门的 `--verify-gating` 模式做端到端断言（它故意不属于探针模式，否则永远测不出问题）。
@@ -294,6 +324,9 @@ WebDAV 复用 `packages/core` 的平台无关客户端（移动端注入 RN fetc
   独立歌词窗口走的是另一份渲染实现，**没有这个问题**，可作为绕过路径。
 - Phase 5.3（代码签名）未做：Windows 的 NSIS 包未签名，SmartScreen 会提示；
   Linux 包也未签名。
-- Phase 3.3（外部歌单导入）/ 3.4（共享歌单）/ 3.5（播放历史）未做。
+- Phase 3.3（外部歌单导入）只支持**网易云**；QQ 音乐与 Phase 3.4（共享歌单）未做。
+- 外部歌单导入的**匹配语义正确性**（自动匹配上的 B 站视频是否真的是那首歌）
+  需要人耳/人眼确认，探针只能断言「分数与负向词符合预期」。200 首量级的
+  全量匹配 UI 表现（进度 / 取消 / 滚动）也只做了逻辑断言，未做端到端点击验证。
 - 歌词窗口的「锁定」只做到不可拖动；真正的鼠标穿透需要
   `setIgnoreMouseEvents`，属于另一个交互决策。

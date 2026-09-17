@@ -1143,3 +1143,82 @@ input[type='range'] {
 	border-color: var(--bad);
 	color: var(--bad);
 }
+
+/* ── 外部歌单导入（Phase 3.3）──────────────────────────── */
+.import-form {
+	display: flex;
+	flex-direction: column;
+	gap: var(--sp-xs);
+	margin-bottom: var(--sp-md);
+}
+
+.import-form input[type='text'] {
+	background: var(--surface-2);
+	border: 1px solid var(--outline);
+	border-radius: var(--r-sm);
+	color: var(--on-surface);
+	font: inherit;
+	padding: 6px var(--sp-sm);
+	width: 100%;
+	max-width: 640px;
+}
+
+.import-progress {
+	font-size: 13px;
+	color: var(--primary);
+	margin-bottom: var(--sp-xs);
+}
+
+.import-table td.col-pick {
+	width: 34px;
+	text-align: center;
+}
+
+.import-table td.col-match {
+	max-width: 360px;
+}
+
+.import-table td.col-match select,
+.import-table td.col-match input {
+	background: var(--surface-2);
+	border: 1px solid var(--outline);
+	border-radius: var(--r-sm);
+	color: var(--on-surface);
+	font: inherit;
+	font-size: 12px;
+	margin-top: 2px;
+	padding: 2px var(--sp-xxs);
+	width: 100%;
+}
+
+.import-table td.col-status {
+	width: 78px;
+	white-space: nowrap;
+}
+
+.import-status--ok {
+	color: var(--ok);
+}
+
+.import-status--warn {
+	color: var(--warn);
+}
+
+.import-status--bad {
+	color: var(--bad);
+}
+
+.import-status--busy {
+	color: var(--primary);
+}
+
+.import-manual {
+	color: var(--primary);
+	font-family: monospace;
+	font-size: 12px;
+}
+
+/* 选中行的视觉反馈 */
+.import-table tbody tr[data-selected='true'] {
+	background: rgb(208 188 255 / 8%);
+}

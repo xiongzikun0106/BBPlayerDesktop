@@ -67,6 +67,8 @@
 					input.focus()
 					input.select()
 				}
+			} else if (view === 'import') {
+				void window.bbImport.show()
 			} else if (view === 'history') {
 				void window.bbHistory.show()
 			} else if (view === 'favorites') {

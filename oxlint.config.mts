@@ -169,14 +169,21 @@ export default defineConfig({
 			 * 触发源里，仍然报）。重复 resolve 的真实风险由「脚本给出错误
 			 * 结论」暴露，代价很低。
 			 *
-			 * 只关这三条；`no-unused-vars` / `typescript/*` 这些能抓到真问题的
-			 * 规则保持开启。
+			 * `typescript/no-explicit-any` 也一并关掉，但**仅限这些脚本**：探针
+			 * 的断言对象是子进程 `JSON.stringify` 出来的，跨进程边界后静态类型
+			 * 已经丢失，写 `as ProbeResult` 只是把 `any` 换成名字更好听的
+			 * `any`（真正能保护这些断言的是运行时的 `check()`，不是类型）。
+			 * 业务代码里的 `any` 依然报错 —— 那里类型是真的、能抓到问题。
+			 *
+			 * 只关这四条；`no-unused-vars` / 其余 `typescript/*` 这些能抓到真
+			 * 问题的规则保持开启。
 			 */
 			files: ['scripts/**/*.{mjs,mts,js,ts}'],
 			rules: {
 				'no-shadow': 'allow',
 				'no-underscore-dangle': 'allow',
 				'promise/no-multiple-resolved': 'allow',
+				'typescript/no-explicit-any': 'allow',
 			},
 		},
 	],

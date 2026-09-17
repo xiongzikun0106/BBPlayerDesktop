@@ -302,6 +302,8 @@ function getPlaylistTracks(playlistId) {
 const REMOTE_SOURCE = {
 	FAVORITE: 'fav',
 	SEASON: 'season',
+	/** 外部歌单导入（Phase 3.3）：网易云 / QQ 等。哈希里带平台前缀时用这个值 */
+	NETEASE: 'netease',
 }
 
 /** 描述字段里的来源标记前缀，形如 `[[bb:fav:4026748432]]` */

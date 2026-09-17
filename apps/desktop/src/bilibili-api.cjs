@@ -177,6 +177,42 @@ async function getAudioStream(
 	throw new Error('响应里既没有 dash.audio 也没有 durl')
 }
 
+/**
+ * 把 B 站搜索返回的时长字符串解析成**秒**。
+ *
+ * ⚠️ 实测：搜索接口的 `duration` 是 `"4:21"` / `"1:02:33"` 这种**格式化字符串**，
+ * 不是秒数（`typeof` 是 `string`）。第一版直接 `typeof === 'number' ? … : undefined`
+ * 就把它丢了，于是所有下游的「时长相似度」恒为 0 —— 表现是匹配分数整体偏低，
+ * 而且不容易看出来（分数只是「有点低」，不报错）。
+ *
+ * 支持三种形态：`"295"`（纯秒）、`"4:21"`、`"1:02:33"`。
+ * 解析不出来返回 `null`（而不是 0 —— 0 会被当成「时长为 0 秒」参与打分）。
+ */
+function parseDuration(value) {
+	if (typeof value === 'number' && Number.isFinite(value))
+		return Math.round(value)
+	if (typeof value !== 'string') return null
+
+	const trimmed = value.trim()
+	if (!trimmed) return null
+
+	// 纯数字：直接是秒
+	if (/^\d+$/.test(trimmed)) return Number(trimmed)
+
+	// mm:ss 或 hh:mm:ss
+	const parts = trimmed.split(':')
+	if (parts.length < 2 || parts.length > 3) return null
+	if (!parts.every((part) => /^\d+$/.test(part.trim()))) return null
+
+	const numbers = parts.map((part) => Number(part.trim()))
+	if (parts.length === 2) {
+		const [minutes, seconds] = numbers
+		return minutes * 60 + seconds
+	}
+	const [hours, minutes, seconds] = numbers
+	return hours * 3600 + minutes * 60 + seconds
+}
+
 /** 搜索视频（WBI 签名接口） */
 async function searchVideos(keyword, page = 1) {
 	const { bilibiliApiClient, getWbiEncodedParams } = core
@@ -203,9 +239,13 @@ async function searchVideos(keyword, page = 1) {
 		.filter((item) => item.bvid)
 		.map((item) => ({
 			bvid: item.bvid,
+			// 搜索结果的标题带 `<em class="keyword">` 高亮标签，必须剥掉
 			title: item.title?.replaceAll(/<[^>]+>/g, '') ?? '',
 			author: item.author,
-			duration: item.duration,
+			// ⚠️ 这里过去直接透传原值（`"4:21"` 字符串），见 parseDuration 的说明
+			duration: parseDuration(item.duration),
+			/** 原始时长字符串，保留下来便于排查与显示 */
+			durationText: typeof item.duration === 'string' ? item.duration : null,
 			cover: item.pic?.startsWith('//') ? `https:${item.pic}` : item.pic,
 			play: item.play,
 		}))
@@ -388,4 +428,5 @@ module.exports = {
 	listFavoriteFolders,
 	listFavoriteResources,
 	memberTiersAvailable,
+	parseDuration,
 }

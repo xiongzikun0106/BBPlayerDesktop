@@ -78,6 +78,8 @@ const VERIFY_GATING_MODE = process.argv.includes('--verify-gating')
 const LYRICS_PROBE_MODE = process.argv.includes('--lyrics-probe')
 /** 播放历史验收模式（Phase 3.5，见 history-probe-driver.cjs） */
 const HISTORY_PROBE_MODE = process.argv.includes('--history-probe')
+/** 外部歌单导入验收模式（Phase 3.3，见 import-probe-driver.cjs） */
+const IMPORT_PROBE_MODE = process.argv.includes('--import-probe')
 
 /** 对比模式的「不安全」变体：关掉 webSecurity，用于量化其代价 */
 const INSECURE_MODE = process.argv.includes('--insecure')
@@ -107,6 +109,7 @@ const PROBE_ENABLED = [
 	'--selfcheck',
 	'--lyrics-probe',
 	'--history-probe',
+	'--import-probe',
 ].some((flag) => process.argv.includes(flag))
 
 const SHOT_DIR = path.join(__dirname, '..', 'probe-output')
@@ -494,6 +497,14 @@ void app.whenReady().then(() => {
 				.catch((error) =>
 					console.error('[desktop] 播放历史探针执行失败:', error),
 				)
+				.finally(() => setTimeout(() => app.exit(0), 500))
+		})
+	} else if (IMPORT_PROBE_MODE) {
+		// 外部歌单导入验收（Phase 3.3）
+		mainWindow.webContents.once('did-finish-load', () => {
+			const { run } = require('./import-probe-driver.cjs')
+			void run(mainWindow)
+				.catch((error) => console.error('[desktop] 导入探针执行失败:', error))
 				.finally(() => setTimeout(() => app.exit(0), 500))
 		})
 	} else if (COMPARE_MODE) {

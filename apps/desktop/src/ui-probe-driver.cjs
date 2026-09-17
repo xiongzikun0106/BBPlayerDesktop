@@ -155,9 +155,9 @@ async function run(window) {
 	check('中栏渲染', ui.main)
 	check('右栏渲染', ui.rightbar)
 	check('底部播放条渲染', ui.playbar)
-	// Phase 3 加了「收藏夹」，Phase 3.5 加了「最近播放」，
-	// 因此现在是 5 个（音乐库 / 搜索 / 最近播放 / 收藏夹 / 合集）
-	check('导航项数量正确（5）', ui.navItems === 5, `实际 ${ui.navItems}`)
+	// Phase 3 加了「收藏夹」，Phase 3.5 加了「最近播放」，Phase 3.3 加了「导入歌单」，
+	// 因此现在是 6 个（音乐库 / 搜索 / 导入歌单 / 最近播放 / 收藏夹 / 合集）
+	check('导航项数量正确（6）', ui.navItems === 6, `实际 ${ui.navItems}`)
 	check(
 		'右栏默认显示队列',
 		ui.activePanel === 'queue',
