@@ -10,9 +10,29 @@ const { ipcMain } = require('electron')
 
 const bilibiliApi = require('./bilibili-api.cjs')
 const db = require('./db.cjs')
-const { requestLog, resolveAudio } = require('./audio-proxy.cjs')
+const {
+	requestLog,
+	resolveAudio,
+	clearAudioCache,
+} = require('./audio-proxy.cjs')
 const { core, describePorts } = require('./ports.cjs')
 const { loadTsFile } = require('./core-loader.cjs')
+const { getLoginManager } = require('./bilibili-login-holder.cjs')
+
+/**
+ * 取登录管理器；未初始化时抛出明确错误。
+ *
+ * 管理器在 `main.cjs` 的 `app.whenReady()` 里注册。验证脚本直接调
+ * `registerIpcHandlers()` 而不走 Electron 启动流程，那种场景下不会有管理器 ——
+ * 所以登录相关 handler 必须容忍「没有管理器」，返回可读的错误而不是崩。
+ */
+function requireLoginManager() {
+	const manager = getLoginManager()
+	if (!manager) {
+		throw new Error('登录管理器未初始化（未经过 Electron 启动流程？）')
+	}
+	return manager
+}
 
 /** 建库（幂等），应用启动时调用一次 */
 function ensureDatabase() {
@@ -276,6 +296,196 @@ function registerIpcHandlers() {
 					candidate: best.candidate,
 					lineCount: lines.length,
 					lines,
+				},
+			}
+		} catch (error) {
+			return { ok: false, error: error.message }
+		}
+	})
+
+	// ---------- 登录（Phase 3）----------
+
+	ipcMain.handle('login:status', async () => {
+		try {
+			const manager = getLoginManager()
+			if (!manager) {
+				return {
+					ok: true,
+					data: { loggedIn: false, encrypted: false, available: false },
+				}
+			}
+			return {
+				ok: true,
+				data: { ...(await manager.status()), available: true },
+			}
+		} catch (error) {
+			return { ok: false, error: error.message }
+		}
+	})
+
+	ipcMain.handle('login:qrCreate', async () => {
+		try {
+			const data = await requireLoginManager().createQrCode()
+			return { ok: true, data }
+		} catch (error) {
+			return { ok: false, error: error.message }
+		}
+	})
+
+	ipcMain.handle('login:qrPoll', async (_event, qrcodeKey) => {
+		try {
+			const manager = requireLoginManager()
+			const result = await manager.pollQrCode(qrcodeKey)
+
+			if (result.state !== 'confirmed') {
+				return { ok: true, data: result }
+			}
+
+			// 确认成功：收下 cookie，并让音频缓存失效
+			// （登录后同一视频可能升级到杜比/Hi-Res，旧缓存会挡住升级）
+			const adopted = await manager.confirmQrLogin(result.cookie)
+			clearAudioCache()
+			return {
+				ok: true,
+				data: { state: 'confirmed', ...adopted },
+			}
+		} catch (error) {
+			return { ok: false, error: error.message }
+		}
+	})
+
+	ipcMain.handle('login:password', async (_event, payload) => {
+		try {
+			const { username, password } = payload ?? {}
+			const manager = requireLoginManager()
+			const result = await manager.loginWithPassword(username, password)
+			clearAudioCache()
+			return { ok: true, data: result }
+		} catch (error) {
+			return { ok: false, error: error.message }
+		}
+	})
+
+	ipcMain.handle('login:importCookie', async (_event, input) => {
+		try {
+			const manager = requireLoginManager()
+			const result = await manager.importCookie(input)
+			clearAudioCache()
+			return { ok: true, data: result }
+		} catch (error) {
+			return { ok: false, error: error.message }
+		}
+	})
+
+	ipcMain.handle('login:logout', () => {
+		try {
+			const manager = requireLoginManager()
+			const data = manager.logout()
+			clearAudioCache()
+			return { ok: true, data }
+		} catch (error) {
+			return { ok: false, error: error.message }
+		}
+	})
+
+	// ---------- 收藏夹（Phase 3）----------
+	//
+	// 注意：**公开收藏夹无需登录**（实测 `created/list-all` 与
+	// `resource/list` 匿名均 `code=0`）。登录只影响能否看到私密收藏夹。
+
+	ipcMain.handle('bili:favoriteFolders', async (_event, mid) => {
+		try {
+			return { ok: true, data: await bilibiliApi.listFavoriteFolders(mid) }
+		} catch (error) {
+			return { ok: false, error: error.message }
+		}
+	})
+
+	ipcMain.handle('bili:favoriteResources', async (_event, mediaId) => {
+		try {
+			return {
+				ok: true,
+				data: await bilibiliApi.listFavoriteResources(mediaId, {
+					maxItems: 500,
+				}),
+			}
+		} catch (error) {
+			return { ok: false, error: error.message }
+		}
+	})
+
+	/**
+	 * 把收藏夹同步成本地歌单（**增量**）。
+	 *
+	 * 「增量」的含义：已在本歌单里的 bvid 直接跳过，不重新请求 view/playurl。
+	 * 首次同步 500 条会很慢（每条一次 `view` 请求），但之后每次只处理新增。
+	 *
+	 * 失败条目逐个记录而不是整体回滚：B 站收藏夹里常有已删除/受限视频，
+	 * 一条失败不该让整个同步放弃。
+	 */
+	ipcMain.handle('bili:syncFavoriteToPlaylist', async (_event, payload) => {
+		const { mediaId, title, cover, maxItems = 200 } = payload ?? {}
+		try {
+			if (!mediaId) throw new Error('缺少 mediaId')
+
+			const resources = await bilibiliApi.listFavoriteResources(mediaId, {
+				maxItems,
+			})
+
+			const playlist = db.upsertRemotePlaylist({
+				source: db.REMOTE_SOURCE.FAVORITE,
+				remoteId: mediaId,
+				title: title ?? `收藏夹 ${mediaId}`,
+				coverUrl: cover ?? null,
+			})
+
+			const known = db.getPlaylistBvids(playlist.id)
+			const failures = []
+			let added = 0
+			let skipped = 0
+			let index = db.countPlaylistTracks(playlist.id)
+
+			for (const resource of resources) {
+				if (known.has(resource.bvid)) {
+					skipped += 1
+					continue
+				}
+				try {
+					// 这里必须请求 view：collection 列表不带 cid，而播放要用
+					const info = await bilibiliApi.getVideoInfo(resource.bvid)
+					const track = db.upsertTrack({
+						uniqueKey: `bilibili::${resource.bvid}`,
+						title: info.title,
+						artistName: info.owner ?? resource.upperName ?? '未知作者',
+						artistRemoteId: info.ownerMid ?? resource.upperMid,
+						coverUrl: info.cover ?? resource.cover,
+						duration: info.duration ?? resource.duration,
+						bvid: resource.bvid,
+						cid: info.cid,
+						isMultiPage: info.pages > 1,
+					})
+					if (db.addTrackToPlaylist(playlist.id, track.id, index)) {
+						added += 1
+						index += 1
+					}
+				} catch (error) {
+					failures.push({ bvid: resource.bvid, error: error.message })
+				}
+			}
+
+			const total = db.markPlaylistSynced(playlist.id)
+
+			return {
+				ok: true,
+				data: {
+					playlistId: playlist.id,
+					title: playlist.title,
+					created: playlist.created,
+					remoteTotal: resources.length,
+					added,
+					skipped,
+					itemCount: total,
+					failures,
 				},
 			}
 		} catch (error) {

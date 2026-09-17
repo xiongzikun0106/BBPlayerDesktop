@@ -50,6 +50,9 @@
 		for (const item of document.querySelectorAll('.nav__item')) {
 			item.classList.toggle('is-active', item.dataset.view === view)
 		}
+		// 收藏夹工具条只在收藏夹视图显示
+		const bar = document.getElementById('favorite-bar')
+		if (bar) bar.hidden = view !== 'favorites'
 	}
 
 	for (const item of document.querySelectorAll('.nav__item')) {
@@ -64,6 +67,8 @@
 					input.focus()
 					input.select()
 				}
+			} else if (view === 'favorites') {
+				void window.bbFavorites.show()
 			} else if (view === 'collection') {
 				window.bbLibrary.renderTrackTable([], { title: '合集' })
 			}
@@ -122,8 +127,15 @@
 	keys.register('ctrl+2', { description: '切到搜索' }, () => {
 		document.querySelector('[data-view="search"]')?.click()
 	})
-	keys.register('ctrl+3', { description: '切到合集' }, () => {
+	keys.register('ctrl+3', { description: '切到收藏夹' }, () => {
+		document.querySelector('[data-view="favorites"]')?.click()
+	})
+	keys.register('ctrl+4', { description: '切到合集' }, () => {
 		document.querySelector('[data-view="collection"]')?.click()
+	})
+	// 登录：Ctrl+Shift+A（`Ctrl+L` 在很多系统上是地址栏语义，避开）
+	keys.register('ctrl+shift+a', { description: '打开登录面板' }, () => {
+		window.bbAuth?.open('qr')
 	})
 	keys.register('ctrl+q', { description: '队列/歌词面板切换' }, () => {
 		const current = window.bbState.get().rightPanel
@@ -271,6 +283,10 @@
 		lyricsPanel: () => lyricsPanel,
 		/** 手动触发当前曲目的歌词匹配 */
 		reloadLyrics: () => loadLyricsFor(player.getCurrent()),
+		/** 认证面板（Phase 3） */
+		auth: () => window.bbAuth,
+		/** 收藏夹视图（Phase 3） */
+		favorites: () => window.bbFavorites,
 		/** 模拟按键（供脚本驱动，避免依赖真实键盘事件） */
 		press(combo) {
 			const parts = combo.split('+')
@@ -304,16 +320,11 @@
 
 		initLyricsPanel()
 
+		// 登录徽标由 auth.js 自己初始化（走正式的 loginStatus IPC，
+		// 不再依赖只有探针模式才有的 bbProbe）；这里只把数据目录记进日志。
 		try {
 			const info = await window.bbProbe?.ports?.()
-			if (info?.ok) {
-				log(`数据目录：${info.dataDir}`)
-				const badge = document.getElementById('account-badge')
-				if (badge) {
-					badge.textContent = info.hasCookie ? '已登录' : '未登录'
-					badge.classList.toggle('is-online', Boolean(info.hasCookie))
-				}
-			}
+			if (info?.ok) log(`数据目录：${info.dataDir}`)
 		} catch {
 			// 诊断信息拿不到不影响主流程
 		}

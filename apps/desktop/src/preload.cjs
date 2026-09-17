@@ -26,6 +26,25 @@ contextBridge.exposeInMainWorld('bbplayer', {
 	importSeasonToPlaylist: (payload) =>
 		ipcRenderer.invoke('bili:importSeasonToPlaylist', payload),
 
+	// ---------- 登录（Phase 3）----------
+	//
+	// ⚠️ cookie 的值**从不**回传渲染进程：`loginStatus` 给的是账号摘要，
+	// `qrCreate` 给的是二维码 PNG，`importCookie` 是单向写入。
+	loginStatus: () => ipcRenderer.invoke('login:status'),
+	loginQrCreate: () => ipcRenderer.invoke('login:qrCreate'),
+	loginQrPoll: (qrcodeKey) => ipcRenderer.invoke('login:qrPoll', qrcodeKey),
+	loginWithPassword: (username, password) =>
+		ipcRenderer.invoke('login:password', { username, password }),
+	importCookie: (input) => ipcRenderer.invoke('login:importCookie', input),
+	logout: () => ipcRenderer.invoke('login:logout'),
+
+	// ---------- 收藏夹（Phase 3）----------
+	favoriteFolders: (mid) => ipcRenderer.invoke('bili:favoriteFolders', mid),
+	favoriteResources: (mediaId) =>
+		ipcRenderer.invoke('bili:favoriteResources', mediaId),
+	syncFavoriteToPlaylist: (payload) =>
+		ipcRenderer.invoke('bili:syncFavoriteToPlaylist', payload),
+
 	// ---------- 歌词（网易云）----------
 	searchLyrics: (keyword, limit) =>
 		ipcRenderer.invoke('lyrics:search', keyword, limit),

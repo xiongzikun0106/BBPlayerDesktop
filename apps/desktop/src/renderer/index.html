@@ -28,6 +28,9 @@
 					<button class="nav__item" data-view="search" data-testid="nav-search">
 						<span class="nav__icon">⌕</span> 搜索
 					</button>
+					<button class="nav__item" data-view="favorites" data-testid="nav-favorites">
+						<span class="nav__icon">★</span> 收藏夹
+					</button>
 					<button class="nav__item" data-view="collection" data-testid="nav-collection">
 						<span class="nav__icon">▤</span> 合集
 					</button>
@@ -63,6 +66,29 @@
 				<section class="content" id="content" data-testid="content">
 					<!-- 由 renderer.js 按视图渲染 -->
 				</section>
+
+				<!-- 收藏夹工具条：仅在收藏夹视图显示 -->
+				<div
+					class="favorite-bar"
+					id="favorite-bar"
+					data-testid="favorite-bar"
+					hidden
+				>
+					<label for="favorite-mid">UID</label>
+					<input
+						id="favorite-mid"
+						data-testid="favorite-mid"
+						type="text"
+						inputmode="numeric"
+						placeholder="B 站用户 UID"
+						spellcheck="false"
+					/>
+					<button id="favorite-use-mine" data-testid="favorite-use-mine">
+						用我的 UID
+					</button>
+					<button id="favorite-load" data-testid="favorite-load">读取收藏夹</button>
+					<span class="muted" id="favorite-status" data-testid="favorite-status"></span>
+				</div>
 			</main>
 
 			<!-- ── 右栏：播放队列 / 歌词 ─────────────────────────── -->
@@ -145,6 +171,171 @@
 			<span class="muted mono" id="build-info" data-testid="build-info"></span>
 		</div>
 
+		<!-- ── 登录弹窗 ──────────────────────────────────────── -->
+		<div
+			class="modal"
+			id="login-modal"
+			data-testid="login-modal"
+			hidden
+			role="dialog"
+			aria-modal="true"
+			aria-label="登录 B 站"
+		>
+			<div class="modal__card login-card">
+				<header class="modal__head">
+					<h2>登录 B 站</h2>
+					<button
+						class="modal__close"
+						id="login-close"
+						data-testid="login-close"
+						title="关闭"
+					>
+						✕
+					</button>
+				</header>
+
+				<div class="tabs tabs--inline" data-testid="login-tabs">
+					<button
+						class="tab is-active"
+						data-login-tab="qr"
+						data-testid="login-tab-qr"
+					>
+						扫码登录
+					</button>
+					<button class="tab" data-login-tab="cookie" data-testid="login-tab-cookie">
+						粘贴 Cookie
+					</button>
+					<button
+						class="tab"
+						data-login-tab="password"
+						data-testid="login-tab-password"
+					>
+						密码登录
+					</button>
+					<button
+						class="tab"
+						data-login-tab="account"
+						data-testid="login-tab-account"
+					>
+						账号
+					</button>
+				</div>
+
+				<!-- 扫码 -->
+				<section
+					class="login-panel is-active"
+					data-login-panel="qr"
+					data-testid="login-panel-qr"
+				>
+					<div class="login-qr">
+						<img
+							id="login-qr-image"
+							data-testid="login-qr-image"
+							alt="二维码加载中"
+							width="220"
+							height="220"
+						/>
+					</div>
+					<p class="login-status" id="login-qr-status" data-testid="login-qr-status">
+						正在获取二维码…
+					</p>
+					<div class="row-actions">
+						<button id="login-qr-refresh" data-testid="login-qr-refresh">
+							刷新二维码
+						</button>
+					</div>
+					<p class="muted login-hint">
+						用 <strong>哔哩哔哩 App</strong> 扫描上方二维码并在手机上确认。二维码约 3
+						分钟过期。
+					</p>
+				</section>
+
+				<!-- 粘贴 Cookie -->
+				<section class="login-panel" data-login-panel="cookie" data-testid="login-panel-cookie">
+					<p class="muted login-hint">
+						在浏览器中登录 B 站后，按 F12 → Application → Cookies →
+						<code>https://www.bilibili.com</code>，至少复制
+						<code>SESSDATA</code>；或直接在控制台执行
+						<code>document.cookie</code> 并整段粘贴到下面。
+					</p>
+					<textarea
+						id="login-cookie-input"
+						data-testid="login-cookie-input"
+						rows="5"
+						placeholder="SESSDATA=...; bili_jct=...; DedeUserID=..."
+						spellcheck="false"
+					></textarea>
+					<div class="row-actions">
+						<button id="login-cookie-submit" data-testid="login-cookie-submit">
+							导入并校验
+						</button>
+					</div>
+					<p
+						class="login-status"
+						id="login-cookie-status"
+						data-testid="login-cookie-status"
+					></p>
+				</section>
+
+				<!-- 密码 -->
+				<section
+					class="login-panel"
+					data-login-panel="password"
+					data-testid="login-panel-password"
+				>
+					<p class="muted login-hint">
+						⚠️ 密码登录受 B 站风控约束：若服务端要求验证码，本应用无法完成，
+						请改用扫码或粘贴 Cookie。密码只在本地做 RSA 加密后提交，不落盘。
+					</p>
+					<input
+						id="login-username"
+						data-testid="login-username"
+						type="text"
+						placeholder="手机号 / 邮箱"
+						spellcheck="false"
+						autocomplete="off"
+					/>
+					<input
+						id="login-password"
+						data-testid="login-password"
+						type="password"
+						placeholder="密码"
+						autocomplete="off"
+					/>
+					<div class="row-actions">
+						<button
+							id="login-password-submit"
+							data-testid="login-password-submit"
+						>
+							登录
+						</button>
+					</div>
+					<p
+						class="login-status"
+						id="login-password-status"
+						data-testid="login-password-status"
+					></p>
+				</section>
+
+				<!-- 账号 -->
+				<section
+					class="login-panel"
+					data-login-panel="account"
+					data-testid="login-panel-account"
+				>
+					<div id="login-account" data-testid="login-account"></div>
+					<p
+						class="login-status"
+						id="login-security"
+						data-testid="login-security"
+					></p>
+					<div class="row-actions">
+						<button id="login-logout" data-testid="login-logout">退出登录</button>
+					</div>
+				</section>
+			</div>
+		</div>
+
 		<pre id="log" data-testid="log" class="log" hidden></pre>
 
 		<script src="state.js"></script>
@@ -152,6 +343,8 @@
 		<script src="library.js"></script>
 		<script src="keyboard.js"></script>
 		<script src="lyrics-panel.js"></script>
+		<script src="auth.js"></script>
+		<script src="favorites.js"></script>
 		<script src="renderer.js"></script>
 	</body>
 </html>

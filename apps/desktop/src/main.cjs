@@ -25,6 +25,8 @@ const PROBE_MODE = process.argv.includes('--probe')
 const COMPARE_MODE = process.argv.includes('--compare')
 /** UI 验收模式：跑 Phase 2 的界面断言序列（见 ui-probe-driver.cjs） */
 const UI_PROBE_MODE = process.argv.includes('--ui-probe')
+/** 登录验收模式：跑 Phase 3 的登录/收藏夹断言序列（见 login-probe-driver.cjs） */
+const LOGIN_PROBE_MODE = process.argv.includes('--login-probe')
 /** 对比模式的「不安全」变体：关掉 webSecurity，用于量化其代价 */
 const INSECURE_MODE = process.argv.includes('--insecure')
 const SHOT_DIR = path.join(__dirname, '..', 'probe-output')
@@ -137,6 +139,27 @@ void app.whenReady().then(() => {
 	if (migration.executed.length > 0) {
 		console.log(`[desktop] 已应用迁移: ${migration.executed.join(', ')}`)
 	}
+
+	// 登录管理器：必须在 registerIpcHandlers() / createWindow() 之前注册，
+	// 因为 IPC handler 与 core 的凭据端口都通过 holder 取它。
+	// 也必须放在 app ready 之后 —— safeStorage 只有 ready 后才可用。
+	const { createLoginManager } = require('./bilibili-login.cjs')
+	const { setLoginManager } = require('./bilibili-login-holder.cjs')
+	const ports = require('./ports.cjs')
+	const loginManager = createLoginManager({
+		cookieFile: path.join(ports.DATA_DIR, 'bilibili-cookie.json'),
+		warn: (level, message) => {
+			// 统一走 logger 端口：写文件 + 控制台（error 级别总输出）
+			const log = ports.logger.extend('login')
+			const write = log[level] ?? log.info
+			write.call(log, message)
+		},
+	})
+	setLoginManager(loginManager)
+	if (!loginManager.describe().encrypted) {
+		console.log('[desktop] 系统密钥环不可用，cookie 将以混淆方式（非加密）存储')
+	}
+
 	registerIpcHandlers()
 
 	/** 截图到文件，供多模态核对 */
@@ -208,6 +231,18 @@ void app.whenReady().then(() => {
 			void run(mainWindow)
 				.catch((error) => {
 					console.error('[desktop] UI 探针执行失败:', error)
+				})
+				.finally(() => {
+					setTimeout(() => app.exit(0), 500)
+				})
+		})
+	} else if (LOGIN_PROBE_MODE) {
+		// 登录验收：跑 Phase 3 的登录/收藏夹界面断言序列
+		mainWindow.webContents.once('did-finish-load', () => {
+			const { run } = require('./login-probe-driver.cjs')
+			void run(mainWindow)
+				.catch((error) => {
+					console.error('[desktop] 登录探针执行失败:', error)
 				})
 				.finally(() => {
 					setTimeout(() => app.exit(0), 500)

@@ -1,0 +1,370 @@
+/**
+ * 收藏夹视图（Phase 3）。
+ *
+ * ## 关键事实（实测，见 docs/DESKTOP_PLAN.md §3）
+ *
+ * `fav/folder/created/list-all` 与 `fav/resource/list` **匿名可读**，
+ * 只要知道 UP 的 `mid`。所以：
+ *   * 输入任意 UP 的 `mid` 就能列出并导入其**公开**收藏夹，无需登录；
+ *   * 登录状态下，接口才会把自己的**私密**收藏夹一并返回
+ *     （`attr !== 0`），因此这里也支持「用我的 UID」一键填入。
+ *
+ * ## 与「合集」的区别
+ *
+ * * **合集**（`seasons_series_list`）是 UP 自己组织的、有明确顺序的系列；
+ * * **收藏夹**（`fav/folder`）是用户对任意视频的收藏，可以是别人的视频。
+ *
+ * 两者都是「远端歌单」，但接口不同、ID 空间不同，因此在 `db.cjs` 里用
+ * `remote_sync_id` 的**命名空间**区分，避免 id 撞车互相认领。
+ */
+;(function () {
+	'use strict'
+
+	const els = {
+		content: document.getElementById('content'),
+		midInput: document.getElementById('favorite-mid'),
+		useMine: document.getElementById('favorite-use-mine'),
+		load: document.getElementById('favorite-load'),
+		status: document.getElementById('favorite-status'),
+	}
+
+	const setStatus = (text, kind) => {
+		if (!els.status) return
+		els.status.textContent = text ?? ''
+		els.status.className = `status status--${kind || 'idle'}`
+	}
+
+	function unwrap(result, what) {
+		if (!result || result.ok !== true) {
+			throw new Error(`${what}失败：${result?.error ?? '未知错误'}`)
+		}
+		return result.data
+	}
+
+	// ---------------------------------------------------------------
+	// 渲染
+	// ---------------------------------------------------------------
+
+	/** 折叠/展开的曲目预览缓存：mediaId -> items */
+	const resourceCache = new Map()
+
+	function renderFolders(folders, mid) {
+		const content = els.content
+		if (!content) return
+		content.textContent = ''
+
+		const head = document.createElement('div')
+		head.className = 'view-head'
+		const h2 = document.createElement('h2')
+		h2.textContent = '收藏夹'
+		head.appendChild(h2)
+		const meta = document.createElement('span')
+		meta.className = 'muted'
+		meta.textContent = `UID ${mid} · ${folders.length} 个`
+		head.appendChild(meta)
+		content.appendChild(head)
+
+		if (folders.length === 0) {
+			const empty = document.createElement('p')
+			empty.className = 'empty muted'
+			empty.dataset.testid = 'favorites-empty'
+			empty.textContent =
+				'没有读到收藏夹。若确认该用户有收藏夹，可能是私密收藏夹 —— 需要先登录。'
+			content.appendChild(empty)
+			return
+		}
+
+		const list = document.createElement('ul')
+		list.className = 'favorite-list'
+		list.dataset.testid = 'favorite-list'
+
+		for (const folder of folders) {
+			const item = document.createElement('li')
+			item.className = 'favorite-list__item'
+			item.dataset.testid = `favorite-${folder.mediaId}`
+			item.dataset.mediaId = String(folder.mediaId)
+
+			const main = document.createElement('div')
+			main.className = 'favorite-list__main'
+
+			const title = document.createElement('div')
+			title.className = 'favorite-list__title'
+			title.textContent = folder.title
+			main.appendChild(title)
+
+			const sub = document.createElement('div')
+			sub.className = 'favorite-list__sub muted'
+			const badges = [`${folder.mediaCount} 个视频`]
+			if (folder.isPrivate) badges.push('私密')
+			sub.textContent = badges.join(' · ')
+			main.appendChild(sub)
+
+			item.appendChild(main)
+
+			const actions = document.createElement('div')
+			actions.className = 'favorite-list__actions'
+
+			const preview = document.createElement('button')
+			preview.dataset.testid = `favorite-preview-${folder.mediaId}`
+			preview.textContent = '预览'
+			preview.addEventListener(
+				'click',
+				() => void togglePreview(folder, item, preview),
+			)
+			actions.appendChild(preview)
+
+			const sync = document.createElement('button')
+			sync.dataset.testid = `favorite-sync-${folder.mediaId}`
+			sync.textContent = '导入为歌单'
+			sync.addEventListener('click', () => void syncFolder(folder, sync))
+			actions.appendChild(sync)
+
+			item.appendChild(actions)
+
+			// 预览容器（懒加载）
+			const previewBox = document.createElement('div')
+			previewBox.className = 'favorite-list__preview'
+			previewBox.dataset.testid = `favorite-preview-box-${folder.mediaId}`
+			previewBox.hidden = true
+			item.appendChild(previewBox)
+
+			list.appendChild(item)
+		}
+
+		content.appendChild(list)
+	}
+
+	async function togglePreview(folder, item, button) {
+		const box = item.querySelector('.favorite-list__preview')
+		if (!box) return
+
+		if (!box.hidden) {
+			box.hidden = true
+			button.textContent = '预览'
+			return
+		}
+
+		box.hidden = false
+		button.textContent = '收起'
+
+		let items = resourceCache.get(folder.mediaId)
+		if (!items) {
+			box.textContent = '加载中…'
+			try {
+				items = unwrap(
+					await window.bbplayer.favoriteResources(folder.mediaId),
+					'读取收藏夹内容',
+				)
+				resourceCache.set(folder.mediaId, items)
+			} catch (error) {
+				box.textContent = error.message
+				return
+			}
+		}
+
+		box.textContent = ''
+		if (items.length === 0) {
+			const p = document.createElement('p')
+			p.className = 'muted'
+			p.textContent = '没有可播放的条目（可能全是已失效视频）。'
+			box.appendChild(p)
+			return
+		}
+
+		const table = document.createElement('table')
+		table.className = 'track-table'
+		table.dataset.testid = `favorite-table-${folder.mediaId}`
+		const tbody = document.createElement('tbody')
+		for (const [index, entry] of items.slice(0, 50).entries()) {
+			const tr = document.createElement('tr')
+			for (const [text, cls] of [
+				[String(index + 1), 'col-index'],
+				[entry.title || '(无标题)', 'col-title'],
+				[entry.upperName || '—', 'col-artist'],
+				[window.bbPlayer.formatTime(entry.duration), 'col-duration'],
+			]) {
+				const td = document.createElement('td')
+				td.className = cls
+				td.textContent = text
+				td.title = text
+				tr.appendChild(td)
+			}
+			tbody.appendChild(tr)
+		}
+		table.appendChild(tbody)
+		box.appendChild(table)
+
+		if (items.length > 50) {
+			const more = document.createElement('p')
+			more.className = 'muted'
+			more.textContent = `仅预览前 50 条（共 ${items.length} 条）`
+			box.appendChild(more)
+		}
+	}
+
+	async function syncFolder(folder, button) {
+		const original = button.textContent
+		button.disabled = true
+		button.textContent = '导入中…'
+		setStatus(`正在导入「${folder.title}」…`, 'busy')
+
+		try {
+			const data = unwrap(
+				await window.bbplayer.syncFavoriteToPlaylist({
+					mediaId: folder.mediaId,
+					title: folder.title,
+					cover: folder.cover,
+					maxItems: 200,
+				}),
+				'导入收藏夹',
+			)
+
+			await window.bbLibrary.refreshPlaylists()
+			await window.bbLibrary.openPlaylist(data.playlistId)
+
+			const failureNote =
+				data.failures.length > 0
+					? `，${data.failures.length} 条失败（多为已失效视频）`
+					: ''
+			setStatus(
+				`已导入「${data.title}」：新增 ${data.added}，跳过 ${data.skipped}，共 ${data.itemCount} 首${failureNote}`,
+				data.failures.length > 0 ? 'busy' : 'ok',
+			)
+		} catch (error) {
+			setStatus(error.message, 'bad')
+		} finally {
+			button.disabled = false
+			button.textContent = original
+		}
+	}
+
+	// ---------------------------------------------------------------
+	// 加载
+	// ---------------------------------------------------------------
+
+	async function loadFolders(mid) {
+		if (!mid) {
+			setStatus('请填写 UID', 'bad')
+			return []
+		}
+		setStatus(`正在读取 UID ${mid} 的收藏夹…`, 'busy')
+		try {
+			const folders = unwrap(
+				await window.bbplayer.favoriteFolders(mid),
+				'读取收藏夹列表',
+			)
+			resourceCache.clear()
+			renderFolders(folders, mid)
+			const privateCount = folders.filter((f) => f.isPrivate).length
+			setStatus(
+				`读到 ${folders.length} 个收藏夹${privateCount > 0 ? `（含 ${privateCount} 个私密）` : ''}`,
+				'ok',
+			)
+			return folders
+		} catch (error) {
+			setStatus(error.message, 'bad')
+			return []
+		}
+	}
+
+	/** 主入口：切到收藏夹视图 */
+	async function show() {
+		const content = els.content
+		if (!content) return
+
+		// 已登录则预填自己的 UID，省一步输入
+		let mid = els.midInput?.value?.trim() ?? ''
+		if (!mid) {
+			try {
+				const status = unwrap(await window.bbplayer.loginStatus(), '读取登录态')
+				if (status?.user?.mid) {
+					mid = String(status.user.mid)
+					if (els.midInput) els.midInput.value = mid
+				}
+			} catch {
+				// 拿不到登录态就留空，走手填
+			}
+		}
+
+		if (mid) {
+			await loadFolders(mid)
+			return
+		}
+
+		// 无 UID：给一个示例（B 站官方 UP，公开收藏夹实测可读）
+		content.textContent = ''
+		const head = document.createElement('div')
+		head.className = 'view-head'
+		const h2 = document.createElement('h2')
+		h2.textContent = '收藏夹'
+		head.appendChild(h2)
+		content.appendChild(head)
+
+		const intro = document.createElement('p')
+		intro.className = 'muted'
+		intro.style.marginBottom = '16px'
+		intro.textContent =
+			'填入任意 B 站用户的 UID 即可读取其公开收藏夹（无需登录）。登录后还能读到自己的私密收藏夹。'
+		content.appendChild(intro)
+
+		const actions = document.createElement('div')
+		actions.className = 'row-actions'
+		const demo = document.createElement('button')
+		demo.dataset.testid = 'favorite-load-demo'
+		demo.textContent = '加载示例（UID 8047632）'
+		demo.addEventListener('click', () => {
+			if (els.midInput) els.midInput.value = '8047632'
+			void loadFolders('8047632')
+		})
+		actions.appendChild(demo)
+		content.appendChild(actions)
+	}
+
+	if (els.load) {
+		els.load.addEventListener(
+			'click',
+			() => void loadFolders(els.midInput?.value?.trim()),
+		)
+	}
+	if (els.midInput) {
+		els.midInput.addEventListener('keydown', (event) => {
+			if (event.key === 'Enter') void loadFolders(els.midInput.value.trim())
+		})
+	}
+	if (els.useMine) {
+		els.useMine.addEventListener('click', () => {
+			void (async () => {
+				try {
+					const status = unwrap(
+						await window.bbplayer.loginStatus(),
+						'读取登录态',
+					)
+					if (!status?.user?.mid) {
+						setStatus('尚未登录，无法使用「我的 UID」', 'bad')
+						return
+					}
+					const mid = String(status.user.mid)
+					if (els.midInput) els.midInput.value = mid
+					await loadFolders(mid)
+				} catch (error) {
+					setStatus(error.message, 'bad')
+				}
+			})()
+		})
+	}
+
+	window.bbFavorites = {
+		show,
+		loadFolders,
+		syncFolder,
+		renderFolders,
+		/** 供自动化断言 */
+		getFolders: () =>
+			Array.from(document.querySelectorAll('.favorite-list__item')).map(
+				(item) => ({
+					mediaId: Number(item.dataset.mediaId),
+					title: item.querySelector('.favorite-list__title')?.textContent,
+				}),
+			),
+	}
+})()

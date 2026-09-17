@@ -267,7 +267,7 @@ body {
 }
 
 .content {
-	flex: 1;
+	flex: 1 1 auto;
 	min-height: 0;
 	overflow-y: auto;
 	padding: var(--sp-md);
@@ -564,4 +564,294 @@ input[type='range'] {
 	color: var(--on-surface-variant);
 	font-size: 11px;
 	z-index: 50;
+}
+
+/* ══════════════════════════════════════════════════════════
+   Phase 3：登录弹窗 + 收藏夹
+   ────────────────────────────────────────────────────────── */
+
+/* ── 收藏夹工具条 ─────────────────────────────────────── */
+.favorite-bar {
+	display: flex;
+	align-items: center;
+	gap: var(--sp-xs);
+	padding: var(--sp-xs) var(--sp-md);
+	border-bottom: 1px solid var(--outline);
+	background: var(--surface);
+	flex-wrap: wrap;
+}
+
+.favorite-bar label {
+	color: var(--on-surface-variant);
+}
+
+.favorite-bar input {
+	background: var(--surface-2);
+	border: 1px solid var(--outline);
+	border-radius: var(--r-sm);
+	color: var(--on-surface);
+	font: inherit;
+	padding: 4px var(--sp-xs);
+	width: 140px;
+}
+
+.favorite-bar button,
+.row-actions button {
+	background: var(--surface-2);
+	color: var(--on-surface);
+	border: 1px solid var(--outline);
+	border-radius: var(--r-sm);
+	padding: 4px var(--sp-sm);
+	cursor: pointer;
+	font: inherit;
+}
+
+.favorite-bar button:hover,
+.row-actions button:hover {
+	background: var(--surface-3);
+}
+
+.favorite-bar button:disabled {
+	opacity: 0.5;
+	cursor: default;
+}
+
+/* ── 收藏夹列表 ───────────────────────────────────────── */
+.favorite-list {
+	list-style: none;
+	margin: 0;
+	padding: 0;
+	display: flex;
+	flex-direction: column;
+	gap: var(--sp-xs);
+}
+
+.favorite-list__item {
+	background: var(--surface);
+	border: 1px solid var(--outline);
+	border-radius: var(--r-md);
+	padding: var(--sp-sm);
+	display: grid;
+	grid-template-columns: minmax(0, 1fr) auto;
+	gap: var(--sp-xs) var(--sp-sm);
+	align-items: center;
+}
+
+.favorite-list__main {
+	min-width: 0;
+}
+
+.favorite-list__title {
+	font-weight: 600;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.favorite-list__sub {
+	font-size: 12px;
+}
+
+.favorite-list__actions {
+	display: flex;
+	gap: var(--sp-xs);
+}
+
+.favorite-list__actions button {
+	background: var(--surface-2);
+	color: var(--on-surface);
+	border: 1px solid var(--outline);
+	border-radius: var(--r-sm);
+	padding: 4px var(--sp-sm);
+	cursor: pointer;
+	font: inherit;
+	white-space: nowrap;
+}
+
+.favorite-list__actions button:hover {
+	background: var(--surface-3);
+}
+
+.favorite-list__actions button:disabled {
+	opacity: 0.5;
+	cursor: default;
+}
+
+/* 预览块横跨两列 */
+.favorite-list__preview {
+	grid-column: 1 / -1;
+	max-height: 260px;
+	overflow-y: auto;
+	border-top: 1px solid var(--outline);
+	padding-top: var(--sp-xs);
+}
+
+/* ── 侧栏徽标可点 ─────────────────────────────────────── */
+.sidebar__badge {
+	cursor: pointer;
+	user-select: none;
+}
+
+/* ── 通用弹窗 ─────────────────────────────────────────── */
+.modal[hidden] {
+	display: none;
+}
+
+.modal {
+	position: fixed;
+	inset: 0;
+	background: rgb(0 0 0 / 55%);
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	z-index: 100;
+}
+
+.modal__card {
+	background: var(--surface);
+	border: 1px solid var(--outline);
+	border-radius: var(--r-lg);
+	box-shadow: 0 12px 40px rgb(0 0 0 / 45%);
+	display: flex;
+	flex-direction: column;
+	max-height: 86vh;
+	overflow: hidden;
+}
+
+.modal__head {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	padding: var(--sp-md);
+	border-bottom: 1px solid var(--outline);
+}
+
+.modal__head h2 {
+	margin: 0;
+	font-size: 16px;
+}
+
+.modal__close {
+	background: transparent;
+	border: none;
+	color: var(--on-surface-variant);
+	cursor: pointer;
+	font-size: 16px;
+	padding: 2px 6px;
+	border-radius: var(--r-sm);
+}
+
+.modal__close:hover {
+	background: var(--surface-2);
+	color: var(--on-surface);
+}
+
+/* ── 登录卡片 ─────────────────────────────────────────── */
+.login-card {
+	width: 460px;
+}
+
+.tabs--inline {
+	flex: 0 0 auto;
+}
+
+.login-panel {
+	display: none;
+	flex-direction: column;
+	gap: var(--sp-sm);
+	padding: var(--sp-md);
+	overflow-y: auto;
+}
+
+.login-panel.is-active {
+	display: flex;
+}
+
+.login-qr {
+	display: flex;
+	justify-content: center;
+	align-items: center;
+	background: #fff;
+	border-radius: var(--r-md);
+	padding: var(--sp-sm);
+	align-self: center;
+	min-width: 236px;
+	min-height: 236px;
+}
+
+.login-qr img {
+	display: block;
+	width: 220px;
+	height: 220px;
+	/* 未加载出来时显示占位底色，而不是破图图标 */
+	background: #fff;
+}
+
+.login-status {
+	margin: 0;
+	font-size: 13px;
+	color: var(--on-surface-variant);
+	min-height: 1.3em;
+}
+
+.login-status--ok {
+	color: var(--ok);
+}
+
+.login-status--bad {
+	color: var(--bad);
+}
+
+.login-status--busy {
+	color: var(--primary);
+}
+
+.login-status--warn {
+	color: var(--warn);
+}
+
+.login-hint {
+	font-size: 12px;
+	line-height: 1.6;
+	margin: 0;
+}
+
+.login-hint code {
+	background: var(--surface-2);
+	border-radius: 4px;
+	padding: 0 4px;
+	font-size: 12px;
+}
+
+.login-panel input[type='text'],
+.login-panel input[type='password'],
+.login-panel textarea {
+	background: var(--surface-2);
+	border: 1px solid var(--outline);
+	border-radius: var(--r-sm);
+	color: var(--on-surface);
+	font: inherit;
+	padding: var(--sp-xs);
+	width: 100%;
+	resize: vertical;
+}
+
+/* ── 账号信息 ─────────────────────────────────────────── */
+.login-account__list {
+	display: grid;
+	grid-template-columns: auto minmax(0, 1fr);
+	gap: 4px var(--sp-sm);
+	margin: 0;
+	font-size: 13px;
+}
+
+.login-account__list dt {
+	color: var(--on-surface-variant);
+}
+
+.login-account__list dd {
+	margin: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
 }

@@ -101,6 +101,9 @@ importers:
       jiti:
         specifier: ^2.7.0
         version: 2.7.0
+      qrcode:
+        specifier: ^1.5.4
+        version: 1.5.4
     devDependencies:
       electron:
         specifier: 42.11.3

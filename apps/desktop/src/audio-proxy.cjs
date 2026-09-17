@@ -137,9 +137,24 @@ async function handleAudioRequest(request) {
 	})
 }
 
+/**
+ * 清空解析缓存。
+ *
+ * **登录/退出登录后必须调用**：音轨档位取决于登录态（未登录时服务端
+ * 不下发杜比/Hi-Res，见 `bilibili-api.cjs` 的 `memberTiersAvailable`），
+ * 而这里的缓存以 bvid 为键、没有登录态维度。不清就可能一直播登录前
+ * 解析出来的低档音轨，表现为「登录了但音质没提升」。
+ */
+function clearAudioCache() {
+	const size = resolved.size
+	resolved.clear()
+	return size
+}
+
 module.exports = {
 	handleAudioRequest,
 	resolveAudio,
+	clearAudioCache,
 	requestLog,
 	DESKTOP_UA,
 	REFERER,

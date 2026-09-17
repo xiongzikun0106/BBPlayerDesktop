@@ -9,7 +9,8 @@
 		"start:headless": "electron . --headless-probe"
 	},
 	"dependencies": {
-		"jiti": "^2.7.0"
+		"jiti": "^2.7.0",
+		"qrcode": "^1.5.4"
 	},
 	"devDependencies": {
 		"electron": "42.11.3"

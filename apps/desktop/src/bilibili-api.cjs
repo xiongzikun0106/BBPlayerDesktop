@@ -8,6 +8,7 @@
  *   杜比全景声 -> Hi-Res -> 指定音质 -> 兜底最高带宽音轨 -> durl（老视频）
  */
 const { core } = require('./ports.cjs')
+const { getLoginManager } = require('./bilibili-login-holder.cjs')
 
 /** B 站音频容器：30216=64K, 30232=132K, 30280=192K, 30250=杜比, 30251=Hi-Res */
 const AUDIO_QUALITY = {
@@ -16,6 +17,20 @@ const AUDIO_QUALITY = {
 	HIGH_192K: 30280,
 	DOLBY: 30250,
 	HI_RES: 30251,
+}
+
+/**
+ * 会员音轨（杜比 / Hi-Res）是否可用。
+ *
+ * 实测（`docs/DESKTOP_PLAN.md` §2.3 补记）：匿名请求 `fnval=4048` 时
+ * `dash.flac` 缺失、`dash.dolby.audio` 为空数组，只有
+ * 30216 / 30232 / 30280 三档标准音质；且**带宽随视频而异**
+ * （同一个视频匿名只拿到 46096 / 100395 / 183360）。
+ * 即使请求里已经声明要杜比和 Hi-Res（`fnval=4048`），服务端也只按
+ * **登录态**下发会员音轨 —— 所以这里必须登录后才打开开关。
+ */
+function memberTiersAvailable() {
+	return Boolean(getLoginManager()?.getCookie())
 }
 
 /**
@@ -64,8 +79,10 @@ async function getAudioStream(
 	cid,
 	{
 		audioQuality = AUDIO_QUALITY.HIGH_192K,
-		enableDolby = false,
-		enableHiRes = false,
+		// 默认跟随登录态：未登录时服务端本来就不下发会员音轨，
+		// 打开开关只是多走一次判断，不会有副作用。
+		enableDolby = memberTiersAvailable(),
+		enableHiRes = memberTiersAvailable(),
 	} = {},
 ) {
 	const { bilibiliApiClient, getWbiEncodedParams } = core
@@ -273,6 +290,94 @@ async function listSeasonArchives(
 	return items
 }
 
+/**
+ * 列出某个用户的**收藏夹**（视频收藏，不是合集）。
+ *
+ * 实测（见 `docs/DESKTOP_PLAN.md` §3 补记）：`fav/folder/created/list-all`
+ * **匿名可读**，只要知道 `mid`。所以「导入公开收藏夹」不需要登录；
+ * 登录的意义在于能读到**私密收藏夹**，以及 `list-all` 会带上自己的
+ * `fav_state` / `attr` 等字段。
+ */
+async function listFavoriteFolders(mid) {
+	const { bilibiliApiClient } = core
+	const result = await bilibiliApiClient.get({
+		endpoint: '/x/v3/fav/folder/created/list-all',
+		params: { up_mid: mid },
+	})
+	if (result.isErr()) {
+		throw new Error(`收藏夹列表接口失败: ${result.error.message}`)
+	}
+
+	const list = result.value?.list ?? []
+	return list.map((entry) => ({
+		mediaId: entry.id,
+		title: entry.title,
+		mediaCount: entry.media_count,
+		// 私密收藏夹匿名看不到，登录后才出现在列表里
+		isPrivate: entry.attr !== 0,
+		cover: entry.cover,
+		favState: entry.fav_state ?? null,
+	}))
+}
+
+/**
+ * 取收藏夹内容（分页全量拉取）。
+ *
+ * ⚠️ 该接口的**失效条目**（已删除的视频）在返回里 `title === '已失效视频'`
+ * 且 `bvid` 为空 —— 必须过滤，否则导入时会在 `upsertTrack` 处报错。
+ */
+async function listFavoriteResources(
+	mediaId,
+	{ pageSize = 20, maxItems = Number.POSITIVE_INFINITY } = {},
+) {
+	const { bilibiliApiClient } = core
+	const items = []
+	let pageNumber = 1
+
+	while (items.length < maxItems) {
+		const result = await bilibiliApiClient.get({
+			endpoint: '/x/v3/fav/resource/list',
+			params: {
+				media_id: mediaId,
+				pn: pageNumber,
+				ps: pageSize,
+				platform: 'web',
+			},
+		})
+		if (result.isErr()) {
+			throw new Error(`收藏夹内容接口失败: ${result.error.message}`)
+		}
+
+		const medias = result.value?.medias ?? []
+		if (medias.length === 0) break
+
+		for (const media of medias) {
+			// 失效条目没有 bvid，直接跳过（不是错误）
+			if (!media.bvid) continue
+			items.push({
+				bvid: media.bvid,
+				aid: media.id,
+				title: media.title,
+				cover: media.cover,
+				duration: media.duration,
+				pubdate: media.pubtime,
+				upperMid: media.upper?.mid != null ? String(media.upper.mid) : null,
+				upperName: media.upper?.name ?? null,
+				favTime: media.fav_time ?? null,
+			})
+			if (items.length >= maxItems) break
+		}
+
+		const total = result.value?.info?.media_count ?? 0
+		if (items.length >= total) break
+		pageNumber += 1
+		// 防御：接口异常时避免死循环
+		if (pageNumber > 200) break
+	}
+
+	return items
+}
+
 module.exports = {
 	AUDIO_QUALITY,
 	getVideoInfo,
@@ -280,4 +385,7 @@ module.exports = {
 	searchVideos,
 	listUserSeasons,
 	listSeasonArchives,
+	listFavoriteFolders,
+	listFavoriteResources,
+	memberTiersAvailable,
 }

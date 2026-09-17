@@ -146,16 +146,27 @@ const sqlite = {
 }
 
 // ---------------------------------------------------------------
-// B 站凭据（cookie 落盘）
+// B 站凭据
 // ---------------------------------------------------------------
+//
+// cookie 的**读写都归 `bilibili-login.cjs` 管**（那边负责 safeStorage 加密落盘），
+// 这里只做端口适配：core 的客户端调 `getCookie()`，我们从登录管理器取。
+//
+// 用 holder 而不是直接 require 登录模块，是为了避免
+// `ports.cjs` → `bilibili-login.cjs` → （将来可能的）core 客户端 → `ports.cjs`
+// 成环。`main.cjs` 在启动时注册管理器。
 
-let cookieCache = readJsonFile(COOKIE_FILE, null)
+const { getLoginManager } = require('./bilibili-login-holder.cjs')
 
 const bilibili = {
-	getCookie: async () => cookieCache,
+	getCookie: async () => getLoginManager()?.getCookie() ?? null,
 	setCookie: async (cookie) => {
-		cookieCache = cookie
-		writeJsonFile(COOKIE_FILE, cookie)
+		// 由登录模块统一处理校验与加密，这里只在确实拿到管理器时转发
+		const manager = getLoginManager()
+		if (!manager) {
+			throw new Error('登录管理器未初始化，无法写入 cookie')
+		}
+		await manager.importCookie(cookie)
 	},
 }
 
@@ -217,13 +228,16 @@ const desktopPorts = {
 
 /** 采集诊断信息，验证脚本会检查这些值 */
 function describePorts() {
+	const login = getLoginManager()
 	return {
 		dataDir: DATA_DIR,
 		kvFile: KV_FILE,
 		cookieFile: COOKIE_FILE,
 		dbFile: DB_FILE,
 		logFile: LOG_FILE,
-		hasCookie: Boolean(cookieCache),
+		hasCookie: Boolean(login?.getCookie()),
+		// 不含 cookie 值，只报结构与加密状态
+		login: login?.describe() ?? null,
 	}
 }
 
@@ -248,6 +262,8 @@ module.exports = {
 	db,
 	storage,
 	DATA_DIR,
+	/** 做 scope 为 `desktop` 的 logger；主进程各处用它统一写日志文件 */
+	logger: desktopPorts.logger,
 	/** 已注册的 core 模块（避免各文件重复 loadCore） */
 	core,
 }

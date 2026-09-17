@@ -1,37 +1,111 @@
 # BBPlayer Desktop（Electron）
 
-Windows / Linux 桌面端。当前处于 **Phase 1：骨架 + 可行性验证**。
+Windows / Linux 桌面端。**Phase 0–3 已完成**，下一步是 Phase 4（桌面专属能力）
+与 Phase 5（打包发布）。
 
 方案与阶段划分见 [`docs/DESKTOP_PLAN.md`](../../docs/DESKTOP_PLAN.md)。
 
 ---
 
-## 这个骨架验证了什么
+## 快速开始
 
-Phase 1 的 go/no-go 关卡是「Electron 到底能不能播 B 站音频」。**结论：能，且已自动化验证。**
-
+```bash
+# 手动运行（开窗口）
+pnpm --filter @bbplayer/desktop start
 ```
-node scripts/verify-desktop.mjs
+
+国内网络下载 Electron 二进制（首次安装需要，约 142 MB）：
+
+```bash
+ELECTRON_MIRROR=https://registry.npmmirror.com/-/binary/electron/ pnpm install
 ```
 
-18 项断言全部通过（最近一次运行）：
-
-| 验证项                            | 结果                                                                |
-| --------------------------------- | ------------------------------------------------------------------- |
-| 自定义协议 + `<audio>` 加载元数据 | ✅ `readyState=3`，时长 212.31s                                     |
-| 真正开始播放                      | ✅ 时间推进 0.02s → 2.52s                                           |
-| 拖动 seek                         | ✅ 3.27s → 30.03s                                                   |
-| 上游 CDN 响应                     | ✅ **206**（`Referer` 注入生效，否则 403）                          |
-| 代理透传 Range（严格测试）        | ✅ `Content-Range: bytes 1000000-1001023/5408198`，只回传 1024 字节 |
-| 严格 Range 测试                   | ✅ 完整通过                                                         |
-| 解码缓冲建立                      | ✅ `buffered [[0, 130.54]]`                                         |
-| 全程无媒体错误                    | ✅                                                                  |
-
-验证脚本会把截图写到 `probe-output/shots/`，报告写到 `probe-output/report.json`。
+> Electron ≥ 42 移除了 `postinstall`，二进制是**懒下载**的 —— 所以刚装完
+> `dist/` 是空的属于正常现象。实测走镜像约 24 s，直连约 50 min。
 
 ---
 
-## 为什么必须走主进程代理
+## 验证套件
+
+全部验证都是**自动化的**，跑完自动退出；UI 类会用
+`webContents.executeJavaScript` 做**点击级**操作并截图，报告落
+`apps/desktop/probe-output/`。
+
+```bash
+# 仅需 Node
+node scripts/verify-desktop.mjs          # 18 项：真实播放 / seek / Range 透传
+node scripts/verify-desktop-ui.mjs       # 33 项：三栏 shell / 导入 / 播放 / 快捷键 / 搜索 / 歌词
+node scripts/verify-desktop-login.mjs    # 35 项：登录三条路 / 收藏夹 / 增量同步
+node scripts/verify-bilibili-login.mjs   # 需 tsx：52 项（含离线纯函数 + 真实接口）
+
+# 需要 tsx（core 是 TS + 无扩展名 ESM，纯 node 跑不了）
+pnpm exec tsx scripts/verify-core-on-node.mjs
+pnpm exec tsx scripts/verify-bilibili-api.mts
+pnpm exec tsx scripts/verify-lyrics.mts
+pnpm exec tsx scripts/verify-desktop-db.mts
+pnpm exec tsx scripts/verify-bilibili-login.mts
+```
+
+⚠️ **跑 Electron 类验证前先清掉遗留进程**，否则探针会静默失败：
+
+```powershell
+Get-Process -Name electron -ErrorAction SilentlyContinue | Stop-Process -Force
+```
+
+### Phase 3 的验证边界（重要）
+
+扫码登录的**最后一跳需要真人用手机确认**，自动化到不了。因此
+`verify-desktop-login.mjs` 把这类项记为 **「待人工验证」**，既不算通过也不算
+失败，并在输出里显式列出——**不用「状态正确」掩盖「没验证」**。
+
+设置 `BILIBILI_TEST_COOKIE` 后，探针会额外自动验证「登录后的行为」
+（会员音轨、私密收藏夹）。
+
+---
+
+## 架构
+
+```
+apps/desktop/
+  package.json
+  drizzle/0000_baseline.sql   schema 基线（与移动端同源，见下）
+  src/
+    main.cjs                  主进程：特权协议、窗口、IPC、探针模式
+    preload.cjs               contextBridge：只暴露必要能力
+    ports.cjs                 端口实现（node:sqlite / 文件 KV / fetch / logger）
+    core-loader.cjs           jiti 加载 core 的 TS/ESM
+    db.cjs                    迁移运行器 + 歌单/曲目/远端来源映射
+    audio-proxy.cjs           bvid 解析 + bbplayer-audio:// 代理
+    bilibili-api.cjs          core 端口注入客户端 + WBI 签名
+    bilibili-login.cjs        登录门面：扫码/密码/粘贴 + 凭据加密落盘
+    bilibili-rsa.cjs          密码登录的 RSA 加密（动态 PEM 为主 + BigInt 兜底）
+    bilibili-cookie.cjs       cookie 解析/校验（纯函数，便于离线验证）
+    bilibili-login-holder.cjs 登录管理器持有者（打断循环依赖）
+    ipc-handlers.cjs          全部 IPC handler
+    ipc-handlers 之外的探针：probe-driver / ui-probe-driver /
+                            compare-driver / login-probe-driver
+    renderer/
+      index.html  style.css  state.js  player.js  library.js
+      keyboard.js  lyrics-panel.js  auth.js  favorites.js  renderer.js
+```
+
+### 为什么数据库 schema 与移动端同源
+
+建表 SQL 来自 `drizzle-kit` 从 `packages/core/src/db/schema.ts` 生成的
+**单文件基线** `drizzle/0000_baseline.sql`（9 张表 + 全部索引/外键）。
+
+上游那套增量迁移链**在空库上跑不通**：`0002_groovy_maximus.sql` 去读
+`artists.source` / `artists.remote_id` / `playlists.remote_sync_id`，而这几个列
+**没有任何迁移创建过**（全仓搜索确认），跑到 0002 必然
+`no such column: "source"`。基线方案保证最终结构与移动端一致，因此 Phase 4 的
+备份互通仍然成立。
+
+`apps/desktop/drizzle/` 与 `apps/mobile/drizzle/` 是**两条独立的链**，
+只保证最终结构一致，不保证迁移历史一致。
+
+---
+
+## 为什么音频必须走主进程代理
 
 实测（`node scripts/probe-bilibili-audio.mjs`，3 视频 × 3 地址 = 9 样本）：
 
@@ -41,97 +115,78 @@ node scripts/verify-desktop.mjs
 | other            |    2 |     0/2 |           2/2 |       2/2 |     2/2 |
 | PCDN（`mcdn.*`） |    2 |     2/2 |           2/2 |       2/2 |     2/2 |
 
-两个结论决定了架构：
+结论：主线 CDN **强制校验 `Referer`**（裸请求 403，**只带 UA 仍然 403**），
+而 `Referer` 属于 Fetch 规范的 forbidden request header，渲染进程设不上去。
+所以音频由主进程代发：自定义协议 `bbplayer-audio://`，主进程注入请求头、
+透传 Range、流式回传。**不需要 `webSecurity: false`。**
 
-1. **主线 CDN 检查 `Referer`** —— 裸请求 403。渲染进程无法自行加这个头。
-2. **主线 CDN 不返回 `Access-Control-Allow-Origin`** —— 渲染进程直接
-   `<audio src="https://…bilivideo.com/…">` 会被 CORS 拦。
+⚠️ 实现约束：`protocol.handle` 必须在 `createWindow()` **之前**注册，
+否则会静默失效（`<audio>` 报 `MediaError 4 Format error`）。
 
-所以音频必须由主进程代发请求。这里用自定义协议 `bbplayer-audio://`：
-渲染进程只拿到本协议地址，主进程负责注入请求头、透传 Range、流式回传。
-**不需要 `webSecurity: false`。**
+### 被实测推翻的三个早期结论
 
-> 注意：PCDN 节点（`mcdn.bilivideo.cn`）会放行裸请求。第一版探测只测到一个
-> PCDN 地址，因此得出过「不需要代理」的错误结论 —— 不要在单样本上下结论。
+1. ~~「CDN 不发 CORS 头」~~ —— 错。`upos-sz-*` **会回显 Origin**，也允许
+   Range 预检。真正的阻塞点是 `Referer`。
+2. ~~「必须用桌面 UA」~~ —— 错。`Referer` 充分且必要，UA 对结果无影响。
+3. ~~「PCDN 放行所以不需要代理」~~ —— 单样本结论。PCDN 不稳定，不能依赖。
 
----
-
-## 目录结构
-
-```
-apps/desktop/
-  package.json
-  src/
-    main.cjs           主进程：注册特权协议、创建窗口、IPC
-    preload.cjs        contextBridge：只暴露必要能力
-    audio-proxy.cjs    bvid 解析 + bbplayer-audio:// 代理实现
-    probe-driver.cjs   自动化验证序列（截图 + 点击级断言）
-    renderer/
-      index.html       验证界面
-      style.css        M3 深色配色（token 取自 packages/design-tokens）
-      renderer.js      播放控制 + window.bbTest 自验证接口
-```
-
-## 运行
-
-```bash
-# 首次需要下载 Electron 二进制（约 142 MB）
-cd node_modules/.pnpm/electron@*/node_modules/electron && node install.js
-
-# 手动运行（会开一个窗口）
-pnpm --filter @bbplayer/desktop start
-
-# 自动化验证（无人工介入，跑完自动退出）
-node scripts/verify-desktop.mjs
-```
-
-国内网络下载 Electron 可用镜像：
-
-```bash
-ELECTRON_MIRROR=https://npmmirror.com/mirrors/electron/ node install.js
-```
+> 关于这个 CDN，**单样本结论已经错过两次**。所有相关脚本默认多轮取样，
+> 只看成功率。
 
 ---
 
-## 两种方案的实测对比
+## 登录（Phase 3）
 
-Phase 1 对比了「自定义协议代理」与「`webRequest` 注入头 + 渲染进程直连」两条路。
+三条路并存，各有明确适用面：
 
-`node scripts/compare-audio-strategies.mjs`（`COMPARE_ROUNDS` 控制轮数）
+| 方式            | 适用面                                                                                                      |
+| --------------- | ----------------------------------------------------------------------------------------------------------- |
+| **扫码**        | 桌面端首选（手机在旁），不接触密码                                                                          |
+| **粘贴 Cookie** | 成本最低、最稳的兜底                                                                                        |
+| **密码**        | 受 B 站风控：`-105`（要验证码）/ `-106`（要短信）本实现不处理，只如实提示改用前两种；本地另有 5 次/分钟限流 |
 
-| 方案                            | 结果                                                                                                           |
-| ------------------------------- | -------------------------------------------------------------------------------------------------------------- |
-| **A. 自定义协议代理**（已采用） | ✅ 可用。`verify-desktop.mjs` 18/18 通过                                                                       |
-| B. `webRequest` 注入 + 直连 CDN | ❌ **7/7 全部失败**，`MEDIA_ELEMENT_ERROR: Format error`；关掉 `webSecurity` + `--disable-web-security` 也一样 |
+### 关键事实
 
-**失败原因不是 CORS**（这一点很重要，早先的推断是错的）：
+- **公开收藏夹与 UP 合集无需登录**：`fav/folder/created/list-all` 与
+  `fav/resource/list` 匿名均 `code=0`。登录只解锁**私密收藏夹**、会员音轨
+  与个人化推荐。
+- **会员音轨由登录态决定**：匿名时即使 `fnval=4048` 声明要杜比/Hi-Res，
+  响应里也只有 `30216 / 30232 / 30280` 三档。
+- **密码登录公钥是动态的**：`/x/passport-login/web/key` 返回 PEM 且
+  **每次请求都不同**。明文格式是 `hash + 密码`。因此不硬编码公钥。
+- **凭据落盘**：优先 Electron `safeStorage`（Windows DPAPI 实测可用）；
+  系统无密钥环时退回未加密并**如实告知**（UI 显示「等同明文」警告），
+  不静默降级。
+- **cookie 从不到达渲染进程**：二维码在主进程生成为 PNG data URL，
+  轮询也在主进程；渲染进程拿不到 `qrcode_key`。已由探针断言。
 
-| 观测                                    | 结果                                                                                                                      |
-| --------------------------------------- | ------------------------------------------------------------------------------------------------------------------------- |
-| 渲染进程 `fetch()` 同一地址（带 Range） | ✅ 7/7 成功：206、`video/mp4`、`Content-Range: bytes 0-1023/5408198`，首字节 `00 00 00 24 66 74 79 70`（合法 MP4 "ftyp"） |
-| 渲染进程 `<audio>` 播同一地址           | ❌ 7/7 失败，`readyState` 停在 0                                                                                          |
+### `remote_sync_id` 的编码（踩坑记录）
 
-即**渲染进程能拿到数据，但媒体加载器不接受这些 CDN 地址**。所以必须走代理。
+「远端歌单 → 本地歌单」的映射**不能用算术打包**：
 
-排查过程中踩到一个自己挖的坑：`renderer/index.html` 最初只声明了 `media-src`、
-没声明 `connect-src`，导致 `fetch` 被 CSP 拦下，被误读成 CORS 问题。补上
-`connect-src` 后 `fetch` 立刻正常，但 `<audio>` 依然失败——两个问题才被分开。
+- 第一版 `命名空间 + id*1000 + 后缀` 限 `id < 1e9` —— 真实收藏夹
+  `media_id` 达 `4026748432`（约 40 亿），直接抛错；
+- 第二版 `命名空间*1e9 + id` —— 40 亿会**溢出到另一个命名空间**，
+  解包成「合集 3026748432」，**静默错包**。
 
-> 关于这个 CDN：**单样本结论已经错了两次**。第一次是 PCDN 节点放行裸请求；
-> 第二次是某一次 Case A 偶然成功。所以对比脚本默认跑多轮，只看成功率。
+最终方案：`remote_sync_id = 哈希("fav:<id>")`（值域 `[5e15, 5e15+2^48)`），
+原始 id 存进 `description` 的 `[[bb:fav:<id>]]` 标记。这样没有「宽度」这个会
+失效的假设，id 再大也不会溢出，且值域与移动端同步来的小整数后端 id
+不可能相撞。
 
 ---
 
 ## 已知限制 / 下一步
 
-- 这个骨架**只做播放验证**，没有接 `packages/core`（Phase 2 才接）。
-- 用的是 B 站公开的 `view` + `playurl` 接口，**未处理 WBI 签名与登录态**，
-  因此音质受限。完整实现应复用 `packages/core` 的
-  `lib/api`（含 WBI 签名）与端口注入。
-- 播放引擎是渲染进程的 `<audio>`，尚未实现 `AudioPort` 接口
-  （见 `packages/core/src/ports/index.ts`），Phase 2 对齐。
-- `window.bbProbe` 自验证通道目前无条件暴露，生产化时要加开关或移除。
-- `installNetworkTracer()` 目前抓不到 `<audio>` 的请求（`webRequest.onCompleted`
-  似乎不覆盖媒体加载器的请求），所以「媒体加载器到底收到什么」仍未查明。
-  **不影响结论**（A 可用、B 不可用已由播放结果本身证明），但若将来要深究 B 的
-  失败机制，这里需要换一种追踪方式（如 CDP Network 域）。
+- **`window.bbProbe` 无条件暴露**，生产化前必须加开关或移除。
+- 渲染进程**没有实现 `AudioPort`**：播放仍直接用 `<audio>` + 自定义协议。
+  `packages/core/src/ports/index.ts` 里的 `AudioPort` 尚未接入，Phase 4 对齐。
+- **歌词面板的已知缺陷（未定位）**：主界面里 `setLyrics(48)` 状态正确、
+  `data-active` 也写进 DOM，但**行元素不渲染**（`li` 为 0、`meta` 显示
+  `— / 0`）。同一面板在独立的 `lyrics-lab.html` 里 30/30 通过，所以问题在
+  「主界面集成」这一层。详见 [`docs/LYRICS.md`](../../docs/LYRICS.md) §6。
+  验证脚本把它记为**警告**而不是通过 —— 不用「状态正确」掩盖「DOM 没渲染」。
+- **打包**：Windows 上只有 `--linux dir` 与 `--linux tar.gz` 能出；
+  `deb`/`rpm` 报 `spawn fpm ENOENT`，AppImage 报 `mksquashfs ENOENT`。
+  正式 Linux 包需要 Docker 或 Linux runner（计划用 VPS）。
+- Phase 3 的 3.3（外部歌单导入）/ 3.4（共享歌单）/ 3.5（播放历史）本轮**不做**。

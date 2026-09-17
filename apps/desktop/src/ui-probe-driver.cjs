@@ -155,7 +155,8 @@ async function run(window) {
 	check('中栏渲染', ui.main)
 	check('右栏渲染', ui.rightbar)
 	check('底部播放条渲染', ui.playbar)
-	check('导航项数量正确（3）', ui.navItems === 3, `实际 ${ui.navItems}`)
+	// Phase 3 加了「收藏夹」，因此是 4 个（音乐库 / 搜索 / 收藏夹 / 合集）
+	check('导航项数量正确（4）', ui.navItems === 4, `实际 ${ui.navItems}`)
 	check(
 		'右栏默认显示队列',
 		ui.activePanel === 'queue',
