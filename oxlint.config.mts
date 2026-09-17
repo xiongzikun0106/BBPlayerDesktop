@@ -90,7 +90,8 @@ export default defineConfig({
 		// react-you-might-not-need-an-effect
 		'react-you-might-not-need-an-effect/no-empty-effect': 'warn',
 		'react-you-might-not-need-an-effect/no-adjust-state-on-prop-change': 'warn',
-		'react-you-might-not-need-an-effect/no-reset-all-state-on-prop-change': 'warn',
+		'react-you-might-not-need-an-effect/no-reset-all-state-on-prop-change':
+			'warn',
 		'react-you-might-not-need-an-effect/no-event-handler': 'warn',
 		'react-you-might-not-need-an-effect/no-pass-live-state-to-parent': 'warn',
 		'react-you-might-not-need-an-effect/no-pass-data-to-parent': 'warn',
@@ -149,6 +150,33 @@ export default defineConfig({
 			files: ['apps/hot-update-cli/**/*.{ts,js}'],
 			rules: {
 				'no-console': 'allow',
+			},
+		},
+		{
+			/**
+			 * 验证脚本（`scripts/verify-*.{mjs,mts}`）。
+			 *
+			 * 这些脚本有一种固有写法：把**一段函数序列化**后交给子进程执行
+			 * （见 `verify-download.mjs` 的 `runInDesktop`）。函数体在子进程里
+			 * 是自包含的，因此会重新 `require('node:fs')` —— 在静态分析看来
+			 * 就是对外层同名导入的 shadow，但在运行时是**两个不同进程**，
+			 * 不存在真正的遮蔽。`__RESULT__` / `__error` 这类哨兵名同理，
+			 * 用双下划线是为了避免与业务字段撞名。
+			 *
+			 * `promise/no-multiple-resolved` 也一并关掉：脚本里常用
+			 * 「轮询 + 超时」两个触发源，标准写法就是 `settled` 布尔守卫，
+			 * 但该规则**不识别这个模式**（实测加了守卫、并把清理拆到两个
+			 * 触发源里，仍然报）。重复 resolve 的真实风险由「脚本给出错误
+			 * 结论」暴露，代价很低。
+			 *
+			 * 只关这三条；`no-unused-vars` / `typescript/*` 这些能抓到真问题的
+			 * 规则保持开启。
+			 */
+			files: ['scripts/**/*.{mjs,mts,js,ts}'],
+			rules: {
+				'no-shadow': 'allow',
+				'no-underscore-dangle': 'allow',
+				'promise/no-multiple-resolved': 'allow',
 			},
 		},
 	],

@@ -5,6 +5,7 @@
  * 主进程完成（渲染进程没有 Node 权限，contextIsolation 打开）。
  */
 const path = require('node:path')
+const fs = require('node:fs')
 
 const { ipcMain } = require('electron')
 
@@ -15,9 +16,47 @@ const {
 	resolveAudio,
 	clearAudioCache,
 } = require('./audio-proxy.cjs')
-const { core, describePorts } = require('./ports.cjs')
+const { core, describePorts, storage, DATA_DIR } = require('./ports.cjs')
 const { loadTsFile } = require('./core-loader.cjs')
 const { getLoginManager } = require('./bilibili-login-holder.cjs')
+
+/**
+ * 懒创建下载管理器与备份管理器。
+ *
+ * 为什么不在这里直接建：
+ *   * 下载管理器会 `mkdirSync` 下载目录；纯 Node 验证脚本（如
+ *     `verify-desktop-db.mjs`）只调 `registerIpcHandlers()`、并不需要下载功能，
+ *     提前创建会多出无用目录。
+ *   * 备份管理器要读 KV 与 `safeStorage`，而 `safeStorage` 要 app ready 后才可用。
+ */
+let downloadManager = null
+let backupManager = null
+
+function getDownloadManager() {
+	if (!downloadManager) {
+		const { createDownloadManager } = require('./download.cjs')
+		downloadManager = createDownloadManager({
+			downloadDir: path.join(DATA_DIR, 'downloads'),
+			maxParallel: 2,
+			log: (message) => core?.logger?.info?.(message),
+		})
+	}
+	return downloadManager
+}
+
+function getBackupManager() {
+	if (!backupManager) {
+		const { createBackupManager } = require('./backup-manager.cjs')
+		backupManager = createBackupManager({
+			dataDir: DATA_DIR,
+			dbFile: path.join(DATA_DIR, 'bbplayer.db'),
+			baselineName: db.BASELINE_MIGRATION,
+			storage,
+			log: (message) => core?.logger?.info?.(message),
+		})
+	}
+	return backupManager
+}
 
 /**
  * 取登录管理器；未初始化时抛出明确错误。
@@ -488,6 +527,209 @@ function registerIpcHandlers() {
 					failures,
 				},
 			}
+		} catch (error) {
+			return { ok: false, error: error.message }
+		}
+	})
+
+	// ---------- 系统媒体集成（Phase 4）----------
+	//
+	// 任务栏缩略图按钮与硬件媒体键都发生在主进程，但**队列状态在渲染进程**，
+	// 所以主进程只负责把「动作名」推回去，由渲染进程决定怎么做。
+	// 这样主进程不需要镜像一份播放状态（两份状态必然漂移）。
+
+	ipcMain.handle('media:setThumbnailPlaying', (event, playing) => {
+		try {
+			const integration = require('./media-integration.cjs')
+			return {
+				ok: true,
+				data: integration.setThumbarPlaying(event.sender, Boolean(playing)),
+			}
+		} catch (error) {
+			return { ok: false, error: error.message }
+		}
+	})
+
+	ipcMain.handle('media:setKeysEnabled', (event, enabled) => {
+		try {
+			const integration = require('./media-integration.cjs')
+			if (!enabled) {
+				integration.uninstallMediaKeys()
+				return { ok: true, data: { registered: [], failed: [] } }
+			}
+			const result = integration.installMediaKeys((action) =>
+				sendMediaAction(event.sender, action),
+			)
+			return { ok: true, data: result }
+		} catch (error) {
+			return { ok: false, error: error.message }
+		}
+	})
+
+	ipcMain.handle('media:info', () => {
+		try {
+			const integration = require('./media-integration.cjs')
+			return { ok: true, data: integration.describe() }
+		} catch (error) {
+			return { ok: false, error: error.message }
+		}
+	})
+
+	// ---------- 下载（Phase 4.3）----------
+
+	ipcMain.handle('download:enqueue', (_event, track) => {
+		try {
+			return { ok: true, data: getDownloadManager().enqueue(track) }
+		} catch (error) {
+			return { ok: false, error: error.message }
+		}
+	})
+
+	ipcMain.handle('download:enqueueMany', (_event, tracks) => {
+		try {
+			return { ok: true, data: getDownloadManager().enqueueMany(tracks) }
+		} catch (error) {
+			return { ok: false, error: error.message }
+		}
+	})
+
+	ipcMain.handle('download:cancel', (_event, bvid) => {
+		try {
+			return { ok: true, data: getDownloadManager().cancel(bvid) }
+		} catch (error) {
+			return { ok: false, error: error.message }
+		}
+	})
+
+	ipcMain.handle('download:listTasks', () => {
+		try {
+			return { ok: true, data: getDownloadManager().listTasks() }
+		} catch (error) {
+			return { ok: false, error: error.message }
+		}
+	})
+
+	ipcMain.handle('download:listDownloaded', () => {
+		try {
+			return { ok: true, data: getDownloadManager().listDownloaded() }
+		} catch (error) {
+			return { ok: false, error: error.message }
+		}
+	})
+
+	ipcMain.handle('download:clearFinished', () => {
+		try {
+			return { ok: true, data: getDownloadManager().clearFinished() }
+		} catch (error) {
+			return { ok: false, error: error.message }
+		}
+	})
+
+	ipcMain.handle('download:info', () => {
+		try {
+			return { ok: true, data: getDownloadManager().describe() }
+		} catch (error) {
+			return { ok: false, error: error.message }
+		}
+	})
+
+	/** 在系统文件管理器里打开下载目录（桌面端比移动端简单得多） */
+	ipcMain.handle('download:openFolder', async () => {
+		try {
+			const { shell } = require('electron')
+			const dir = getDownloadManager().downloadDir
+			const error = await shell.openPath(dir)
+			if (error) throw new Error(error)
+			return { ok: true, data: { dir } }
+		} catch (error) {
+			return { ok: false, error: error.message }
+		}
+	})
+
+	// ---------- 备份 / 恢复（Phase 4.5）----------
+	//
+	// ⚠️ `backup:restore` 会**关闭数据库连接**（Windows 上替换文件的前提），
+	// 之后整个进程不能再访问数据库。所以恢复成功后 UI 必须提示重启。
+
+	ipcMain.handle('backup:config', async () => {
+		try {
+			return { ok: true, data: await getBackupManager().describe() }
+		} catch (error) {
+			return { ok: false, error: error.message }
+		}
+	})
+
+	ipcMain.handle('backup:saveConfig', async (_event, payload) => {
+		try {
+			return {
+				ok: true,
+				data: await getBackupManager().saveConfig(payload ?? {}),
+			}
+		} catch (error) {
+			return { ok: false, error: error.message }
+		}
+	})
+
+	/** 本地导出一份备份到数据目录下的 backups/ */
+	ipcMain.handle('backup:exportLocal', async () => {
+		try {
+			const manager = getBackupManager()
+			const config = await manager.describe()
+			const result = manager.createBackupToFile(config.defaultExportDir)
+			return { ok: true, data: result }
+		} catch (error) {
+			return { ok: false, error: error.message }
+		}
+	})
+
+	/** 恢复本地文件；`path` 由渲染进程给出（用户选择或「最近导出」） */
+	ipcMain.handle('backup:restoreLocal', async (_event, filePath) => {
+		try {
+			const buffer = fs.readFileSync(filePath)
+			return { ok: true, data: getBackupManager().restoreFromBuffer(buffer) }
+		} catch (error) {
+			return { ok: false, error: error.message }
+		}
+	})
+
+	/** 只校验，不动数据库（用于「先看看这份备份是什么」） */
+	ipcMain.handle('backup:inspectLocal', async (_event, filePath) => {
+		try {
+			const buffer = fs.readFileSync(filePath)
+			return { ok: true, data: getBackupManager().inspect(buffer) }
+		} catch (error) {
+			return { ok: false, error: error.message }
+		}
+	})
+
+	ipcMain.handle('backup:testConnection', async () => {
+		try {
+			return { ok: true, data: await getBackupManager().testConnection() }
+		} catch (error) {
+			return { ok: false, error: error.message }
+		}
+	})
+
+	ipcMain.handle('backup:listRemote', async () => {
+		try {
+			return { ok: true, data: await getBackupManager().listRemote() }
+		} catch (error) {
+			return { ok: false, error: error.message }
+		}
+	})
+
+	ipcMain.handle('backup:upload', async () => {
+		try {
+			return { ok: true, data: await getBackupManager().uploadLatest() }
+		} catch (error) {
+			return { ok: false, error: error.message }
+		}
+	})
+
+	ipcMain.handle('backup:downloadRemote', async (_event, remotePath) => {
+		try {
+			const buffer = await getBackupManager().downloadRemote(remotePath)
+			return { ok: true, data: getBackupManager().restoreFromBuffer(buffer) }
 		} catch (error) {
 			return { ok: false, error: error.message }
 		}

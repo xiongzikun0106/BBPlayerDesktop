@@ -50,6 +50,62 @@ contextBridge.exposeInMainWorld('bbplayer', {
 		ipcRenderer.invoke('lyrics:search', keyword, limit),
 	fetchLyrics: (songId) => ipcRenderer.invoke('lyrics:fetch', songId),
 	autoMatchLyrics: (meta) => ipcRenderer.invoke('lyrics:autoMatch', meta),
+
+	// ---------- 系统媒体集成（Phase 4）----------
+	//
+	// 主进程会在任务栏缩略图按钮 / 硬件媒体键被按下时推一个动作名过来；
+	// 渲染进程只认识动作名（`toggle` / `next` / ...），不知道来源。
+	onMediaAction: (handler) => {
+		const listener = (_event, action) => handler(action)
+		ipcRenderer.on('media:action', listener)
+		// 返回取消订阅，便于测试里卸载
+		return () => ipcRenderer.removeListener('media:action', listener)
+	},
+	/** 同步任务栏按钮的播放/暂停图标 */
+	setThumbnailPlaying: (playing) =>
+		ipcRenderer.invoke('media:setThumbnailPlaying', playing),
+	/** 启用硬件媒体键兜底（默认关闭，见 media-integration.cjs 说明） */
+	setMediaKeysEnabled: (enabled) =>
+		ipcRenderer.invoke('media:setKeysEnabled', enabled),
+	/** 媒体集成诊断 */
+	mediaInfo: () => ipcRenderer.invoke('media:info'),
+
+	// ---------- 下载（Phase 4.3）----------
+	download: {
+		enqueue: (track) => ipcRenderer.invoke('download:enqueue', track),
+		enqueueMany: (tracks) => ipcRenderer.invoke('download:enqueueMany', tracks),
+		cancel: (bvid) => ipcRenderer.invoke('download:cancel', bvid),
+		listTasks: () => ipcRenderer.invoke('download:listTasks'),
+		listDownloaded: () => ipcRenderer.invoke('download:listDownloaded'),
+		clearFinished: () => ipcRenderer.invoke('download:clearFinished'),
+		openFolder: () => ipcRenderer.invoke('download:openFolder'),
+		info: () => ipcRenderer.invoke('download:info'),
+		/**
+		 * 订阅下载进度。
+		 *
+		 * 主进程目前**不主动推**进度（渲染进程按需轮询 `listTasks`）——
+		 * 桌面端是本地磁盘写入，轮询 500ms 的开销可忽略，
+		 * 而少一条推送通道就少一处状态同步 bug。
+		 */
+	},
+
+	// ---------- 备份 / 恢复（Phase 4.5）----------
+	//
+	// ⚠️ `restore*` 成功后数据库连接会被关闭，**必须重启应用**。
+	backup: {
+		config: () => ipcRenderer.invoke('backup:config'),
+		saveConfig: (payload) => ipcRenderer.invoke('backup:saveConfig', payload),
+		testConnection: () => ipcRenderer.invoke('backup:testConnection'),
+		exportLocal: () => ipcRenderer.invoke('backup:exportLocal'),
+		inspectLocal: (filePath) =>
+			ipcRenderer.invoke('backup:inspectLocal', filePath),
+		restoreLocal: (filePath) =>
+			ipcRenderer.invoke('backup:restoreLocal', filePath),
+		listRemote: () => ipcRenderer.invoke('backup:listRemote'),
+		upload: () => ipcRenderer.invoke('backup:upload'),
+		downloadRemote: (remotePath) =>
+			ipcRenderer.invoke('backup:downloadRemote', remotePath),
+	},
 })
 
 /**

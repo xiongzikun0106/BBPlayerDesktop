@@ -8,15 +8,24 @@
 		"packages/*/example"
 	],
 	"scripts": {
-		"check:deps": "syncpack list-mismatches",
 		"check:core": "node scripts/check-core-purity.mjs",
+		"check:deps": "syncpack list-mismatches",
 		"fix:deps": "syncpack fix-mismatches",
 		"format": "oxfmt --write .",
 		"lint": "oxlint --type-aware",
 		"lint:fix": "oxlint --type-aware --fix",
 		"postinstall": "lefthook install",
 		"publish:update": "pnpm --filter @bbplayer/update-publisher start",
-		"type-check": "tsgo --build --noEmit"
+		"type-check": "tsgo --build --noEmit",
+		"verify:backup": "pnpm exec tsx scripts/verify-backup.mts",
+		"verify:backup:webdav": "pnpm exec tsx scripts/verify-backup-webdav.mts",
+		"verify:desktop": "node scripts/verify-desktop.mjs",
+		"verify:desktop:download": "node scripts/verify-download.mjs",
+		"verify:desktop:icons": "node scripts/verify-thumbar-icons.mjs",
+		"verify:desktop:login": "node scripts/verify-desktop-login.mjs",
+		"verify:desktop:media": "node scripts/verify-desktop-media.mjs",
+		"verify:desktop:ui": "node scripts/verify-desktop-ui.mjs",
+		"verify:login": "pnpm exec tsx scripts/verify-bilibili-login.mts"
 	},
 	"devDependencies": {
 		"@bbplayer/eslint-plugin": "workspace:*",

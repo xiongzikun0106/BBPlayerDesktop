@@ -20,6 +20,15 @@ const MIGRATIONS_DIR = path.resolve(__dirname, '..', 'drizzle')
 const BREAKPOINT = '--> statement-breakpoint'
 
 /**
+ * 基线迁移的文件名。
+ *
+ * 桌面端**不用**上游那套增量链，而是单个基线（原因见下面的说明）。
+ * 恢复移动端的备份时需要把这一条记为「已应用」，否则 runner 会重放基线，
+ * 而基线里没有任何 `IF NOT EXISTS`，必然 `table artists already exists`。
+ */
+const BASELINE_MIGRATION = '0000_baseline.sql'
+
+/**
  * 上游迁移链的缺陷（已通过「改用基线迁移」绕开，保留说明以免后人重踩）。
  *
  * 原链在**空库**上跑不通：
@@ -514,5 +523,6 @@ module.exports = {
 	resolveRemoteSource,
 	REMOTE_SOURCE,
 	REMOTE_TAG_PREFIX,
+	BASELINE_MIGRATION,
 	MIGRATIONS_DIR,
 }

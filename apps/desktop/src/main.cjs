@@ -18,6 +18,7 @@ const path = require('node:path')
 require('./ports.cjs').configureElectronPaths()
 
 const { handleAudioRequest } = require('./audio-proxy.cjs')
+const mediaIntegration = require('./media-integration.cjs')
 
 /** 自验证模式：跑完验证就退出，便于脚本化 */
 const PROBE_MODE = process.argv.includes('--probe')
@@ -27,8 +28,18 @@ const COMPARE_MODE = process.argv.includes('--compare')
 const UI_PROBE_MODE = process.argv.includes('--ui-probe')
 /** 登录验收模式：跑 Phase 3 的登录/收藏夹断言序列（见 login-probe-driver.cjs） */
 const LOGIN_PROBE_MODE = process.argv.includes('--login-probe')
+/** 媒体集成验收模式：跑 Phase 4 的 MediaSession 断言序列（见 media-probe-driver.cjs） */
+const MEDIA_PROBE_MODE = process.argv.includes('--media-probe')
 /** 对比模式的「不安全」变体：关掉 webSecurity，用于量化其代价 */
 const INSECURE_MODE = process.argv.includes('--insecure')
+/**
+ * 硬件媒体键兜底模式（见 media-integration.cjs）。
+ *
+ * 默认**关闭**：`globalShortcut` 与渲染进程的 `navigator.mediaSession`
+ * 同时生效会让一次按键触发两次。只在需要排查「MediaSession 收不到媒体键」
+ * 时打开。
+ */
+const MEDIA_KEYS_MODE = process.argv.includes('--media-keys')
 const SHOT_DIR = path.join(__dirname, '..', 'probe-output')
 
 // 自定义协议必须在 app ready 之前声明特权：
@@ -65,6 +76,18 @@ function createWindow() {
 			// 仅在 `--compare --insecure` 下才关闭，用来量化「方案 B 到底要付什么代价」。
 			webSecurity: !INSECURE_MODE,
 		},
+	})
+
+	// 媒体键交给渲染进程的 `navigator.mediaSession`。
+	// Electron 默认可能把媒体键吃在应用菜单的快捷键上，这会抢走 MediaSession
+	// 的按键；打开这个开关把它们让出去（Windows 上尤其明显）。
+	if (process.platform !== 'darwin') {
+		mainWindow.webContents.setIgnoreMenuShortcuts(true)
+	}
+
+	// 任务栏缩略图按钮（Windows）：把动作发回本窗口的渲染进程
+	mediaIntegration.attach(mainWindow, (action) => {
+		mediaIntegration.sendMediaAction(mainWindow, action)
 	})
 
 	void mainWindow.loadFile(path.join(__dirname, 'renderer', 'index.html'))
@@ -160,6 +183,17 @@ void app.whenReady().then(() => {
 		console.log('[desktop] 系统密钥环不可用，cookie 将以混淆方式（非加密）存储')
 	}
 
+	// 媒体键兜底：默认关闭（与 MediaSession 并存会双触发）。
+	// 这里只记录「是否被要求」，真正注册由渲染进程读 `mediaInfo()` 后发起 ——
+	// 那才代表确实有窗口要这个能力。
+	mediaIntegration.setHardwareKeysRequested(MEDIA_KEYS_MODE)
+	if (MEDIA_KEYS_MODE) {
+		console.log(
+			'[desktop] 已要求启用硬件媒体键兜底（globalShortcut）；' +
+				'它与 MediaSession 并存会双触发，仅用于排查',
+		)
+	}
+
 	registerIpcHandlers()
 
 	/** 截图到文件，供多模态核对 */
@@ -243,6 +277,18 @@ void app.whenReady().then(() => {
 			void run(mainWindow)
 				.catch((error) => {
 					console.error('[desktop] 登录探针执行失败:', error)
+				})
+				.finally(() => {
+					setTimeout(() => app.exit(0), 500)
+				})
+		})
+	} else if (MEDIA_PROBE_MODE) {
+		// 媒体集成验收：跑 Phase 4 的 MediaSession 断言序列
+		mainWindow.webContents.once('did-finish-load', () => {
+			const { run } = require('./media-probe-driver.cjs')
+			void run(mainWindow)
+				.catch((error) => {
+					console.error('[desktop] 媒体探针执行失败:', error)
 				})
 				.finally(() => {
 					setTimeout(() => app.exit(0), 500)

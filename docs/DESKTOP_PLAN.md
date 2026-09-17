@@ -511,14 +511,100 @@ ELECTRON_MIRROR=https://registry.npmmirror.com/-/binary/electron/ node install.j
 
 ### Phase 4 — 桌面专属能力
 
-| 步骤 | 产出                                            |
-| ---- | ----------------------------------------------- |
-| 4.1  | 独立歌词窗口（无边框透明 + always-on-top）      |
-| 4.2  | `MediaSession`（媒体键 / 任务栏缩略图 / MPRIS） |
-| 4.3  | 下载与导出（主进程 `fs`，比移动端简单）         |
-| 4.4  | 主题换肤（保留配色，砍视频开屏）                |
-| 4.5  | WebDAV 备份 / 恢复（**必须与移动端格式互通**）  |
-| 4.6  | 定时关闭、响度均衡                              |
+| 步骤 | 产出                                            | 状态                                                   |
+| ---- | ----------------------------------------------- | ------------------------------------------------------ |
+| 4.1  | 独立歌词窗口（无边框透明 + always-on-top）      | ⬜ 未做                                                |
+| 4.2  | `MediaSession`（媒体键 / 任务栏缩略图 / MPRIS） | ✅ 27/27 + 图标 25/25                                  |
+| 4.3  | 下载与导出（主进程 `fs`，比移动端简单）         | ✅ 下载 34/34；导出只做「下载落盘」，不做格式转换      |
+| 4.4  | 主题换肤（保留配色，砍视频开屏）                | ⬜ 未做                                                |
+| 4.5  | WebDAV 备份 / 恢复（**必须与移动端格式互通**）  | ✅ 备份 48/48 + WebDAV 28/28（真实回环 WebDAV 服务器） |
+| 4.6  | 定时关闭、响度均衡                              | ⬜ 未做                                                |
+
+#### Phase 4 实测结论（都是踩过才写下的）
+
+1. **`navigator.mediaSession` 在 Electron 里直接可用**，Windows 对接 SMTC、
+   Linux 对接 MPRIS —— 不需要写任何原生代码。但有两个坑：
+   - Electron 默认可能把媒体键吃在应用菜单快捷键上，需要
+     `webContents.setIgnoreMenuShortcuts(true)` 把按键让给 MediaSession；
+   - `globalShortcut` 兜底与 MediaSession **同时生效会双触发**
+     （播放→暂停→播放，表现为「按了没反应」），所以兜底默认**关闭**，
+     只在 `--media-keys` 下启用。`globalShortcut` 在 Wayland 上通常无效。
+
+2. **`setPositionState` 的 duration 为 `NaN`/`0`/`Infinity` 时会抛错**（规范
+   要求）。曲目刚加载、时长未知时直接调用会不断抛异常，必须先过滤。
+
+3. **`MediaMetadata` 的去重不能只看封面**。第一版用「封面 URL 是否变化」去重，
+   于是**连续两首都没有封面**时 `null === null` 成立、直接 return，系统面板会
+   一直显示第一首的标题。指纹必须覆盖标题/作者/封面。此 bug 由
+   `verify-desktop-media.mjs` 的「切换曲目后元数据已更新」断言抓到。
+
+4. **下载的 `.part` 续传必须显式传写入位置**。只写 `fs.writeSync(handle, chunk)`
+   会依赖文件游标，而 `ftruncateSync` 把游标留在末尾 —— 续传时首个 chunk 被写到
+   `startByte` 而不是 0，结果文件「前半段是空洞 + 后半段是数据」且长度不足。
+   由 `verify-download.mjs` 的「续传后逐字节相同」断言抓到。
+
+5. **上游中途断开时 Node 的 fetch 抛 `TypeError: terminated`**，对用户毫无意义。
+   需要翻译成「下载中断：已收到 N 字节，期望 M 字节」，**保留 `.part`** 供重试，
+   同时**不能**生成成品文件（否则用户以为下好了）。
+
+6. **B 站的 `backupUrl` 值得用**。移动端的下载只读 `baseUrl`（`backup_url`
+   解析了但从不使用）；桌面端逐个尝试主/备用地址，减少「某个 CDN 节点抽风就
+   整首失败」。实测同一逻辑下主节点 500、备用节点正常。
+
+7. **`.m4a` 不需要转码**：dash 音频是 `.m4s`，而 m4s 与 m4a 同为 ISOBMFF
+   容器，改扩展名即可播放（移动端也是这么做的）。因此桌面端**不引入 ffmpeg**，
+   省掉几十 MB 体积与签名麻烦。
+
+#### 备份与移动端互通（🔴 两个会静默毁数据的陷阱）
+
+移动端的备份**不是 JSON 记录级导出**，而是**一个 ZIP，内含原始 SQLite 快照**
+（`apps/mobile/src/lib/backup/export.ts`）：
+
+```
+backup-<ISO 时间戳，冒号与点都换成 ->.bbplayer
+  ├── database.db     VACUUM INTO 的原始字节（不压缩 —— JSZip 默认 STORE）
+  └── manifest.json   {"version":2,"exportedAt":…,"mmkv":{…},"orpheus":{…}}
+```
+
+远端文件名**必须**匹配 `/^backup-.+\.bbplayer$/`，否则移动端列不出来。目录默认
+`/BBPlayer`。移动端**没有删除/保留策略**（它的 WebDAV 适配器压根没有
+`deleteFile`），所以桌面端也不清理，不引入移动端没有的行为。
+
+**🔴 H1：`__drizzle_migrations` 两端结构不同。** `VACUUM INTO` 会把迁移日志
+复制进快照，于是「谁生成的备份」决定表结构：
+
+| 生成方                     | 表结构                                             |
+| -------------------------- | -------------------------------------------------- |
+| 移动端（drizzle migrator） | `(id SERIAL, hash text, created_at numeric)`       |
+| 桌面端（手写 runner）      | `(id TEXT, applied_at INTEGER)`，`id` 存迁移文件名 |
+
+两个方向都会炸：移动端备份在桌面恢复 → 桌面 runner 拿到整数 id，永不等于文件名
+→ 重放 `0000_baseline.sql`，而它**一个 `IF NOT EXISTS` 都没有** →
+`table artists already exists`；桌面端备份在移动端恢复 → drizzle 查 `created_at`
+→ `no such column: created_at` → 迁移失败。**处理**：导出时规范成移动端形状
+（并记为「已应用全部迁移」，让 drizzle 无事可做），导入时规范成桌面形状
+（并把基线记为已应用）。
+
+**🔴 H2：五个 JS 数据迁移此前只在移动端跑过。** `migrateSortKeysV2/V3`、
+`migratePlayHistory`、`migrateIndependentAccountReset`、`migratePlayHistoryToMs`
+由移动端 `useFastMigrations.ts` 调用，桌面端从不调用 —— 于是桌面生成的库里
+`sort_key` 等字段可能没被规范化。**处理**：恢复时调用它们（幂等，由
+`__bbplayer_data_migrations` 记账）。
+
+⚠️ 调用它们时必须把 core 的**端口临时重指**到正在处理的那个库：核心迁移函数从
+端口注册表取数据库（不是从参数），而恢复流程已经关掉了活跃库的连接。第一版因此
+让五个迁移全部报「数据库已关闭」，只是被「单个迁移失败不阻断整体」的容错吞掉了
+（探针把这条断言抓了出来）。
+
+**🟡 H3：`manifest.orpheus` 必须存在。** 移动端 `import.ts` 是
+`Orpheus.importData(manifest.orpheus)`，**没有判空**，而 Kotlin 签名是
+`Map<String, Any>` —— 缺字段会在原生参数转换处失败。桌面端没有 Orpheus，
+固定发 `{playerQueue:{},loudness:{}}`。
+
+**恢复后必须重启应用**：Windows 上打开着的文件不能被 rename（实测 `EBUSY`），
+所以恢复前必须关掉数据库连接，之后本进程不能再访问数据库。这与移动端一致
+（它也先 `closeSync()` 再换文件并要求重启）。桌面端为此加了断路器：关闭后任何
+访问都抛「需要重启应用」，而不是让调用方拿到一个「读到旧内存页」的连接。
 
 ### Phase 5 — 打包发布
 

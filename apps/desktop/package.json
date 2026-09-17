@@ -10,7 +10,8 @@
 	},
 	"dependencies": {
 		"jiti": "^2.7.0",
-		"qrcode": "^1.5.4"
+		"qrcode": "^1.5.4",
+		"webdav": "^5.10.0"
 	},
 	"devDependencies": {
 		"electron": "42.11.3"

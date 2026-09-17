@@ -1,7 +1,8 @@
 # BBPlayer Desktop（Electron）
 
-Windows / Linux 桌面端。**Phase 0–3 已完成**，下一步是 Phase 4（桌面专属能力）
-与 Phase 5（打包发布）。
+Windows / Linux 桌面端。**Phase 0–3 已完成，Phase 4 主体完成**（媒体集成 / 下载 /
+WebDAV 备份），下一步是 Phase 4 剩余项（独立歌词窗口、主题、定时关闭）与
+Phase 5（打包发布）。
 
 方案与阶段划分见 [`docs/DESKTOP_PLAN.md`](../../docs/DESKTOP_PLAN.md)。
 
@@ -32,18 +33,23 @@ ELECTRON_MIRROR=https://registry.npmmirror.com/-/binary/electron/ pnpm install
 `apps/desktop/probe-output/`。
 
 ```bash
-# 仅需 Node
-node scripts/verify-desktop.mjs          # 18 项：真实播放 / seek / Range 透传
-node scripts/verify-desktop-ui.mjs       # 33 项：三栏 shell / 导入 / 播放 / 快捷键 / 搜索 / 歌词
-node scripts/verify-desktop-login.mjs    # 35 项：登录三条路 / 收藏夹 / 增量同步
-node scripts/verify-bilibili-login.mjs   # 需 tsx：52 项（含离线纯函数 + 真实接口）
+# 根目录已加好脚本（推荐）
+pnpm verify:desktop            # 18 项：真实播放 / seek / Range 透传
+pnpm verify:desktop:ui         # 33 项：三栏 shell / 导入 / 播放 / 快捷键 / 搜索 / 歌词
+pnpm verify:desktop:login      # 38 项：登录三条路 / 收藏夹 / 增量同步
+pnpm verify:desktop:media      # 27 项：MediaSession / 任务栏按钮 / 媒体动作链路
+pnpm verify:desktop:icons      # 25 项：任务栏图标生成器
+pnpm verify:desktop:download   # 34 项：下载 / 续传 / 完整性 / 并发
+pnpm verify:backup             # 48 项：备份格式与移动端互通
+pnpm verify:backup:webdav      # 28 项：真实回环 WebDAV 服务器
+pnpm verify:login              # 52 项：登录接口与 RSA 加密链路
 
-# 需要 tsx（core 是 TS + 无扩展名 ESM，纯 node 跑不了）
+# 需要 tsx 的其它验证
 pnpm exec tsx scripts/verify-core-on-node.mjs
 pnpm exec tsx scripts/verify-bilibili-api.mts
 pnpm exec tsx scripts/verify-lyrics.mts
 pnpm exec tsx scripts/verify-desktop-db.mts
-pnpm exec tsx scripts/verify-bilibili-login.mts
+pnpm exec tsx scripts/verify-md5.mts
 ```
 
 ⚠️ **跑 Electron 类验证前先清掉遗留进程**，否则探针会静默失败：
@@ -52,14 +58,16 @@ pnpm exec tsx scripts/verify-bilibili-login.mts
 Get-Process -Name electron -ErrorAction SilentlyContinue | Stop-Process -Force
 ```
 
-### Phase 3 的验证边界（重要）
+### 验证的边界（重要）
 
-扫码登录的**最后一跳需要真人用手机确认**，自动化到不了。因此
-`verify-desktop-login.mjs` 把这类项记为 **「待人工验证」**，既不算通过也不算
-失败，并在输出里显式列出——**不用「状态正确」掩盖「没验证」**。
-
-设置 `BILIBILI_TEST_COOKIE` 后，探针会额外自动验证「登录后的行为」
-（会员音轨、私密收藏夹）。
+- **扫码登录的最后一跳需要真人用手机确认**，自动化到不了。因此
+  `verify:desktop:login` 把这类项记为 **「待人工验证」**，既不算通过也不算
+  失败，并在输出里显式列出 —— **不用「状态正确」掩盖「没验证」**。
+  设置 `BILIBILI_TEST_COOKIE` 后，探针会额外自动验证登录后的行为。
+- **系统媒体面板的呈现**（Windows 的 SMTC、Linux 的 MPRIS）无法从应用内部
+  断言，需要看操作系统 UI。`verify:desktop:media` 断言的是应用**交给系统**的
+  那份数据（标题 / 作者 / 封面 / 播放状态 / 进度）以及主进程侧的任务栏按钮
+  与图标。
 
 ---
 
@@ -81,12 +89,19 @@ apps/desktop/
     bilibili-rsa.cjs          密码登录的 RSA 加密（动态 PEM 为主 + BigInt 兜底）
     bilibili-cookie.cjs       cookie 解析/校验（纯函数，便于离线验证）
     bilibili-login-holder.cjs 登录管理器持有者（打断循环依赖）
+    download.cjs              下载：Range 续传 / 完整性校验 / 备用地址回退
+    backup.cjs                备份格式（ZIP + SQLite 快照）+ 迁移表规范化
+    backup-webdav.cjs         WebDAV 传输（复用 core 的平台无关客户端）
+    backup-manager.cjs        配置持久化 + WebDAV 密码加密 + 编排
+    media-integration.cjs     任务栏缩略图按钮 + 硬件媒体键兜底
+    thumbar-icons.cjs         32×32 PNG 图标运行时生成（零依赖）
     ipc-handlers.cjs          全部 IPC handler
-    ipc-handlers 之外的探针：probe-driver / ui-probe-driver /
-                            compare-driver / login-probe-driver
+    探针：probe-driver / ui-probe-driver / compare-driver /
+          login-probe-driver / media-probe-driver
     renderer/
       index.html  style.css  state.js  player.js  library.js
-      keyboard.js  lyrics-panel.js  auth.js  favorites.js  renderer.js
+      keyboard.js  lyrics-panel.js  media-session.js
+      auth.js  favorites.js  renderer.js
 ```
 
 ### 为什么数据库 schema 与移动端同源
@@ -97,11 +112,76 @@ apps/desktop/
 上游那套增量迁移链**在空库上跑不通**：`0002_groovy_maximus.sql` 去读
 `artists.source` / `artists.remote_id` / `playlists.remote_sync_id`，而这几个列
 **没有任何迁移创建过**（全仓搜索确认），跑到 0002 必然
-`no such column: "source"`。基线方案保证最终结构与移动端一致，因此 Phase 4 的
-备份互通仍然成立。
+`no such column: "source"`。基线方案保证最终结构与移动端一致，因此备份互通成立。
 
 `apps/desktop/drizzle/` 与 `apps/mobile/drizzle/` 是**两条独立的链**，
 只保证最终结构一致，不保证迁移历史一致。
+
+---
+
+## 系统媒体集成
+
+`navigator.mediaSession` 在 Electron 里直接可用：Windows 走 **SMTC**、
+Linux 走 **MPRIS**，不需要写原生代码。另外两件渲染进程做不到的事由主进程做：
+
+- **任务栏缩略图按钮**（`setThumbarButtons`）：图标是**运行时生成**的
+  32×32 PNG（Node 内置 `zlib`，零依赖）。第一版把 base64 硬编码进源码，
+  结果四个图标是同一串占位图、而且只有 16×16，所以现在有专门的验证脚本
+  （`verify:desktop:icons`）。
+- **硬件媒体键兜底**（`globalShortcut`）：**默认关闭**。它与 MediaSession
+  同时生效会让一次按键触发两次（播放→暂停→播放，表现为「按了没反应」），
+  且 `globalShortcut` 在 Wayland 上通常无效。只在 `--media-keys` 下启用。
+
+---
+
+## 下载
+
+- 落 `userData/downloads`，扩展名恒为 **`.m4a`**。dash 音频是 `.m4s`，
+  而 m4s 与 m4a 同为 ISOBMFF 容器，**改扩展名即可播放** —— 因此不引入 ffmpeg。
+- `.part` 临时文件 + HTTP `Range` 断点续传；带 `Content-Length` 时校验完整性，
+  不完整则失败并**保留 `.part`**，且**不生成成品文件**（否则用户以为下好了）。
+- 主地址失败时逐个尝试 `backupUrl`（移动端解析了备用地址但从不使用）。
+- 并发默认 2（夹在 1–6，与移动端同区间）。
+
+---
+
+## 备份与恢复（**与移动端格式互通**）
+
+移动端的备份是一个 **ZIP，内含原始 SQLite 快照**，不是 JSON 记录级导出：
+
+```
+backup-<ISO 时间戳，冒号与点都换成 ->.bbplayer
+  ├── database.db     VACUUM INTO 的原始字节（不压缩 —— JSZip 默认 STORE）
+  └── manifest.json   {"version":2,"exportedAt":…,"mmkv":{…},"orpheus":{…}}
+```
+
+远端文件名**必须**匹配 `/^backup-.+\.bbplayer$/`，否则移动端列不出来。
+WebDAV 复用 `packages/core` 的平台无关客户端（移动端注入 RN fetch、
+桌面注入 Node fetch，两端同一份代码，Basic → Digest 回退也由 core 处理）。
+
+### 两个会静默毁数据的互通陷阱
+
+**🔴 `__drizzle_migrations` 两端结构不同**，而 `VACUUM INTO` 会把它复制进快照：
+
+| 生成方                     | 表结构                                             |
+| -------------------------- | -------------------------------------------------- |
+| 移动端（drizzle migrator） | `(id SERIAL, hash text, created_at numeric)`       |
+| 桌面端（手写 runner）      | `(id TEXT, applied_at INTEGER)`，`id` 存迁移文件名 |
+
+两个方向都会炸：移动端备份在桌面恢复 → 桌面 runner 拿到整数 id，永不等于文件名
+→ 重放 `0000_baseline.sql`，而它**一个 `IF NOT EXISTS` 都没有** →
+`table artists already exists`；桌面端备份在移动端恢复 → drizzle 查
+`created_at` → `no such column: created_at`。处理：导出时规范成移动端形状，
+导入时规范成桌面形状。详见 [`docs/DESKTOP_PLAN.md`](../../docs/DESKTOP_PLAN.md)
+的 Phase 4 一节。
+
+**🔴 五个 JS 数据迁移此前只在移动端跑过**，桌面生成的库里 `sort_key` 等字段
+可能没被规范化。恢复时调用它们（幂等），并把 core 端口**临时重指**到正在处理
+的那个库 —— 否则它们取到的是已关闭的活跃库连接。
+
+**恢复后必须重启应用**：Windows 上打开着的文件不能被 rename（实测 `EBUSY`），
+恢复前必须关掉数据库连接。桌面端为此加了断路器：关闭后任何访问都抛
+「需要重启应用」，而不是让调用方拿到一个「读到旧内存页」的连接。
 
 ---
 
@@ -189,4 +269,8 @@ apps/desktop/
 - **打包**：Windows 上只有 `--linux dir` 与 `--linux tar.gz` 能出；
   `deb`/`rpm` 报 `spawn fpm ENOENT`，AppImage 报 `mksquashfs ENOENT`。
   正式 Linux 包需要 Docker 或 Linux runner（计划用 VPS）。
+- Phase 4 未做：4.1 独立歌词窗口、4.4 主题换肤、4.6 定时关闭 / 响度均衡。
+- 下载与备份的 IPC 已接好并通过验证，但**渲染进程还没有对应的界面**
+  （目前可用 `window.bbplayer.download.*` / `window.bbplayer.backup.*` 调用，
+  或由验证脚本驱动）。设置页是 Phase 4 的收尾项。
 - Phase 3 的 3.3（外部歌单导入）/ 3.4（共享歌单）/ 3.5（播放历史）本轮**不做**。

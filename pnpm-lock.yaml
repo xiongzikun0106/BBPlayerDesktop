@@ -104,6 +104,9 @@ importers:
       qrcode:
         specifier: ^1.5.4
         version: 1.5.4
+      webdav:
+        specifier: ^5.10.0
+        version: 5.10.0
     devDependencies:
       electron:
         specifier: 42.11.3

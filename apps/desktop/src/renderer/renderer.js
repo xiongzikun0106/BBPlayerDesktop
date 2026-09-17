@@ -271,6 +271,68 @@
 	})
 
 	// ---------------------------------------------------------------
+	// MediaSession（Phase 4）：系统媒体键 / 任务栏缩略图 / 系统面板
+	// ---------------------------------------------------------------
+
+	/**
+	 * 系统媒体集成。
+	 *
+	 * 任务栏缩略图按钮与硬件媒体键兜底由**主进程**触发，通过
+	 * `media:action` 事件回到这里 —— 主进程不知道队列状态，只能转发动作名。
+	 */
+	const MEDIA_ACTIONS = {
+		toggle: () => void player.toggle(),
+		next: () => void player.playNext(false),
+		prev: () => void player.playPrev(),
+		stop: () => {
+			player.pause()
+			player.seekTo(0)
+		},
+		seekbackward: () => player.seekBy(-10),
+		seekforward: () => player.seekBy(10),
+	}
+
+	let mediaSession = null
+
+	function initMediaSession() {
+		if (typeof window.createMediaSessionBridge !== 'function') {
+			log('MediaSession 模块不可用，跳过初始化')
+			return null
+		}
+		mediaSession = window.createMediaSessionBridge({
+			player,
+			log: (message) => log(`[media] ${message}`),
+		})
+
+		if (mediaSession.supported) {
+			log('已接入系统 MediaSession（媒体键 / 系统媒体面板）')
+		} else {
+			log('当前环境不支持 navigator.mediaSession')
+		}
+
+		// 任务栏缩略图按钮的播放状态跟随播放器
+		player.getAudio().addEventListener('play', () => {
+			void window.bbplayer?.setThumbnailPlaying?.(true)
+		})
+		player.getAudio().addEventListener('pause', () => {
+			void window.bbplayer?.setThumbnailPlaying?.(false)
+		})
+
+		// 主进程转发的动作（任务栏按钮 / 硬件媒体键兜底）
+		window.bbplayer?.onMediaAction?.((action) => {
+			const handler = MEDIA_ACTIONS[action]
+			if (!handler) {
+				log(`收到未知媒体动作：${action}`)
+				return
+			}
+			log(`媒体动作：${action}`)
+			handler()
+		})
+
+		return mediaSession
+	}
+
+	// ---------------------------------------------------------------
 	// 自动化接口
 	// ---------------------------------------------------------------
 
@@ -287,6 +349,17 @@
 		auth: () => window.bbAuth,
 		/** 收藏夹视图（Phase 3） */
 		favorites: () => window.bbFavorites,
+		/** 系统媒体集成（Phase 4）；未初始化时为 null */
+		mediaSession: () => mediaSession,
+		/** 直接派发一个媒体动作（供自动化，避免真的依赖系统媒体键） */
+		dispatchMediaAction(action) {
+			const handler = MEDIA_ACTIONS[action]
+			if (!handler) return false
+			handler()
+			return true
+		},
+		/** 可用的媒体动作名 */
+		mediaActions: () => Object.keys(MEDIA_ACTIONS),
 		/** 模拟按键（供脚本驱动，避免依赖真实键盘事件） */
 		press(combo) {
 			const parts = combo.split('+')
@@ -319,6 +392,7 @@
 		log('渲染进程就绪')
 
 		initLyricsPanel()
+		initMediaSession()
 
 		// 登录徽标由 auth.js 自己初始化（走正式的 loginStatus IPC，
 		// 不再依赖只有探针模式才有的 bbProbe）；这里只把数据目录记进日志。

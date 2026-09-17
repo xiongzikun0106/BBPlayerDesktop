@@ -127,13 +127,63 @@ const db = new DatabaseSync(DB_FILE)
 // 外键约束默认关闭，必须每次连接时手动开启（与移动端 db.ts 的做法一致）
 db.exec('PRAGMA foreign_keys = ON;')
 
+/**
+ * 数据库是否已被显式关闭。
+ *
+ * 恢复备份时必须先把连接关掉：Windows 上**打开着的文件不能被 rename**
+ * （实测 `EBUSY: resource busy or locked`），而恢复的语义是整体替换数据库
+ * 文件。移动端也一样 —— 它 `expoDb.closeSync()` 之后替换文件，并要求
+ * **重启应用**才算恢复完成。
+ *
+ * 所以这里用一个断路器：关闭之后所有访问都抛明确的错误，而不是让调用方
+ * 拿到一个「看起来能用、其实读到的是旧内存页」的连接（那会静默毁数据）。
+ */
+let dbClosed = false
+
+/** 断路器：库已关闭时拒绝任何访问，并给出可执行的提示 */
+function assertOpen(operation) {
+	if (dbClosed) {
+		throw new Error(
+			`数据库已关闭（${operation}）：恢复备份后需要重启应用才能继续使用`,
+		)
+	}
+}
+
+/** 显式关闭数据库连接。恢复备份前必须调用；关闭后本进程内不可再访问。 */
+function closeDatabase() {
+	if (dbClosed) return false
+	dbClosed = true
+	try {
+		db.close()
+	} catch {
+		// 已关闭或从未打开都无所谓，目标是「连接确实不在了」
+	}
+	return true
+}
+
+function isDatabaseClosed() {
+	return dbClosed
+}
+
 const sqlite = {
-	execSync: (source) => db.exec(source),
-	runSync: (source, params) => db.prepare(source).run(...(params ?? [])),
-	getFirstSync: (source, params) =>
-		db.prepare(source).get(...(params ?? [])) ?? null,
-	getAllSync: (source, params) => db.prepare(source).all(...(params ?? [])),
+	execSync: (source) => {
+		assertOpen('execSync')
+		return db.exec(source)
+	},
+	runSync: (source, params) => {
+		assertOpen('runSync')
+		return db.prepare(source).run(...(params ?? []))
+	},
+	getFirstSync: (source, params) => {
+		assertOpen('getFirstSync')
+		return db.prepare(source).get(...(params ?? [])) ?? null
+	},
+	getAllSync: (source, params) => {
+		assertOpen('getAllSync')
+		return db.prepare(source).all(...(params ?? []))
+	},
 	withTransactionSync: (task) => {
+		assertOpen('withTransactionSync')
 		db.exec('BEGIN')
 		try {
 			task()
@@ -262,6 +312,9 @@ module.exports = {
 	db,
 	storage,
 	DATA_DIR,
+	/** 恢复备份前必须调用：关闭连接才能替换数据库文件（Windows 会 EBUSY） */
+	closeDatabase,
+	isDatabaseClosed,
 	/** 做 scope 为 `desktop` 的 logger；主进程各处用它统一写日志文件 */
 	logger: desktopPorts.logger,
 	/** 已注册的 core 模块（避免各文件重复 loadCore） */
