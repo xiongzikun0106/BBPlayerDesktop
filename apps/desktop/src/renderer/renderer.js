@@ -67,6 +67,8 @@
 					input.focus()
 					input.select()
 				}
+			} else if (view === 'history') {
+				void window.bbHistory.show()
 			} else if (view === 'favorites') {
 				void window.bbFavorites.show()
 			} else if (view === 'collection') {
@@ -357,6 +359,8 @@
 					row.dataset.bvid === event.track.bvid,
 				)
 			}
+			// 播放历史：结束上一会话（切歌视为「没听完」）、开始新会话
+			void closePlaySession(false).then(() => openPlaySession(event.track))
 			void loadLyricsFor(event.track)
 		} else if (event.type === 'mode-changed') {
 			log(`播放模式：${event.mode}`)
@@ -522,6 +526,85 @@
 	}
 
 	// ---------------------------------------------------------------
+	// 播放历史（Phase 3.5）
+	// ---------------------------------------------------------------
+
+	/**
+	 * 当前播放会话。
+	 *
+	 * 一次会话一行记录（`date` = 见 db.cjs 的说明）。这里只维护「当前会话」，
+	 * 不做队列管理 —— 会话的生命周期完全由播放器事件驱动：
+	 *   * `track-changed` -> 结束上一会话（若有）、开始新会话
+	 *   * 每 10 秒 -> 上报累计已播秒数
+	 *   * `ended` -> 标记 completed
+	 */
+	let playSession = { historyId: null, trackId: null, startedAt: 0 }
+	/** 上次上报时间，用于节流（每 10 秒一次，不是每次 timeupdate） */
+	let lastSessionReport = 0
+	const SESSION_REPORT_INTERVAL_MS = 10_000
+
+	/** 收尾当前会话：上报最终时长，可选标记为「已播完」 */
+	async function closePlaySession(completed) {
+		if (!playSession.historyId) return
+		const audio = player.getAudio()
+		const played = Number.isFinite(audio.currentTime) ? audio.currentTime : 0
+		try {
+			await window.bbplayer?.history?.updateSession?.({
+				historyId: playSession.historyId,
+				durationPlayed: played,
+				completed: Boolean(completed),
+			})
+		} catch (error) {
+			log(`播放历史收尾失败：${error.message}`)
+		}
+		playSession = { historyId: null, trackId: null, startedAt: 0 }
+	}
+
+	/** 开始新会话。**只对已落库的曲目记录** —— `play_history.track_id` 是外键 */
+	async function openPlaySession(track) {
+		if (!track?.bvid) return
+		try {
+			// 搜索结果的曲目还没落库（没有 tracks 行），此时 findTrackByBvid 返回 null。
+			// 这是**预期**的：历史只记录库里的曲目，否则外键会拒绝插入。
+			const found = await window.bbplayer?.findTrackByBvid?.(track.bvid)
+			const trackId = found?.data ?? null
+			if (!trackId) {
+				log(`曲目未落库，跳过播放历史：${track.bvid}`)
+				return
+			}
+			const started = await window.bbplayer?.history?.startSession?.(trackId)
+			if (started?.ok) {
+				playSession = {
+					historyId: started.data.historyId,
+					trackId,
+					startedAt: Date.now(),
+				}
+				lastSessionReport = Date.now()
+			}
+		} catch (error) {
+			log(`播放历史记录失败：${error.message}`)
+		}
+	}
+
+	// 每 10 秒上报一次累计时长（timeupdate 约 4Hz，不能每次都写库）
+	player.getAudio().addEventListener('timeupdate', () => {
+		if (!playSession.historyId) return
+		const now = Date.now()
+		if (now - lastSessionReport < SESSION_REPORT_INTERVAL_MS) return
+		lastSessionReport = now
+		void window.bbplayer?.history?.updateSession?.({
+			historyId: playSession.historyId,
+			durationPlayed: player.getAudio().currentTime,
+			completed: false,
+		})
+	})
+
+	// 播完标记（`ended` 只在自然播完时触发，切歌不会）
+	player.getAudio().addEventListener('ended', () => {
+		void closePlaySession(true)
+	})
+
+	// ---------------------------------------------------------------
 	// 自动化接口
 	// ---------------------------------------------------------------
 
@@ -544,6 +627,10 @@
 		desktop: () => desktopFeatures,
 		/** 设置面板（Phase 4 收尾） */
 		settingsPanel: () => window.bbSettings,
+		/** 当前播放会话（供自动化断言播放历史） */
+		playSession: () => ({ ...playSession }),
+		/** 手动收尾当前会话（供自动化，避免等 10 秒节流） */
+		flushPlaySession: (completed) => closePlaySession(Boolean(completed)),
 		/** 直接派发一个媒体动作（供自动化，避免真的依赖系统媒体键） */
 		dispatchMediaAction(action) {
 			const handler = MEDIA_ACTIONS[action]

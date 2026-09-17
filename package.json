@@ -21,6 +21,7 @@
 		"verify:backup:webdav": "pnpm exec tsx scripts/verify-backup-webdav.mts",
 		"verify:desktop": "node scripts/verify-desktop.mjs",
 		"verify:desktop:download": "node scripts/verify-download.mjs",
+		"verify:desktop:history": "node scripts/verify-desktop-history.mjs",
 		"verify:desktop:icons": "node scripts/verify-thumbar-icons.mjs",
 		"verify:desktop:login": "node scripts/verify-desktop-login.mjs",
 		"verify:desktop:lyrics-win": "node scripts/verify-desktop-lyrics-window.mjs",
@@ -28,7 +29,8 @@
 		"verify:desktop:settings": "node scripts/verify-desktop-settings.mjs",
 		"verify:desktop:ui": "node scripts/verify-desktop-ui.mjs",
 		"verify:login": "pnpm exec tsx scripts/verify-bilibili-login.mts",
-		"verify:packaged": "node scripts/verify-packaged.mjs"
+		"verify:packaged": "node scripts/verify-packaged.mjs",
+		"verify:play-history": "pnpm exec tsx scripts/verify-play-history.mts"
 	},
 	"devDependencies": {
 		"@bbplayer/eslint-plugin": "workspace:*",

@@ -76,6 +76,8 @@ const HEADLESS = process.argv.includes('--headless')
 const VERIFY_GATING_MODE = process.argv.includes('--verify-gating')
 /** 独立歌词窗口验收模式（Phase 4.1，见 lyrics-window-probe-driver.cjs） */
 const LYRICS_PROBE_MODE = process.argv.includes('--lyrics-probe')
+/** 播放历史验收模式（Phase 3.5，见 history-probe-driver.cjs） */
+const HISTORY_PROBE_MODE = process.argv.includes('--history-probe')
 
 /** 对比模式的「不安全」变体：关掉 webSecurity，用于量化其代价 */
 const INSECURE_MODE = process.argv.includes('--insecure')
@@ -104,6 +106,7 @@ const PROBE_ENABLED = [
 	'--diagnose',
 	'--selfcheck',
 	'--lyrics-probe',
+	'--history-probe',
 ].some((flag) => process.argv.includes(flag))
 
 const SHOT_DIR = path.join(__dirname, '..', 'probe-output')
@@ -480,6 +483,16 @@ void app.whenReady().then(() => {
 			void run(mainWindow)
 				.catch((error) =>
 					console.error('[desktop] 歌词窗口探针执行失败:', error),
+				)
+				.finally(() => setTimeout(() => app.exit(0), 500))
+		})
+	} else if (HISTORY_PROBE_MODE) {
+		// 播放历史验收（Phase 3.5）
+		mainWindow.webContents.once('did-finish-load', () => {
+			const { run } = require('./history-probe-driver.cjs')
+			void run(mainWindow)
+				.catch((error) =>
+					console.error('[desktop] 播放历史探针执行失败:', error),
 				)
 				.finally(() => setTimeout(() => app.exit(0), 500))
 		})

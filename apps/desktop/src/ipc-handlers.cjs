@@ -801,6 +801,92 @@ function registerIpcHandlers() {
 		}
 	})
 
+	// ---------- 播放历史（Phase 3.5）----------
+	//
+	// `play_history` 是共用 schema 里的表，此前桌面端只建表、从不写入。
+	// 这里把它接上：一次「播放会话」一行，播放中定期更新已播时长。
+
+	ipcMain.handle('history:startSession', (_event, trackId) => {
+		try {
+			return { ok: true, data: { historyId: db.startPlaySession(trackId) } }
+		} catch (error) {
+			return { ok: false, error: error.message }
+		}
+	})
+
+	ipcMain.handle('history:updateSession', (_event, payload) => {
+		try {
+			const { historyId, durationPlayed, completed } = payload ?? {}
+			return {
+				ok: true,
+				data: db.updatePlaySession(
+					historyId,
+					durationPlayed ?? 0,
+					Boolean(completed),
+				),
+			}
+		} catch (error) {
+			return { ok: false, error: error.message }
+		}
+	})
+
+	ipcMain.handle('history:recent', (_event, limit) => {
+		try {
+			return { ok: true, data: db.listRecentlyPlayed({ limit: limit ?? 50 }) }
+		} catch (error) {
+			return { ok: false, error: error.message }
+		}
+	})
+
+	ipcMain.handle('history:mostPlayed', (_event, limit) => {
+		try {
+			return { ok: true, data: db.listMostPlayed({ limit: limit ?? 50 }) }
+		} catch (error) {
+			return { ok: false, error: error.message }
+		}
+	})
+
+	ipcMain.handle('history:resume', (_event, limit) => {
+		try {
+			return { ok: true, data: db.listResumeCandidates({ limit: limit ?? 20 }) }
+		} catch (error) {
+			return { ok: false, error: error.message }
+		}
+	})
+
+	ipcMain.handle('history:summary', () => {
+		try {
+			return { ok: true, data: db.getPlayHistorySummary() }
+		} catch (error) {
+			return { ok: false, error: error.message }
+		}
+	})
+
+	ipcMain.handle('history:stats', (_event, trackId) => {
+		try {
+			return { ok: true, data: db.getTrackPlayStats(trackId) }
+		} catch (error) {
+			return { ok: false, error: error.message }
+		}
+	})
+
+	ipcMain.handle('history:clear', () => {
+		try {
+			return { ok: true, data: { removed: db.clearPlayHistory() } }
+		} catch (error) {
+			return { ok: false, error: error.message }
+		}
+	})
+
+	/** 按 bvid 找本地曲目 id（播放历史要用它，而播放器只有 bvid） */
+	ipcMain.handle('db:findTrackByBvid', (_event, bvid) => {
+		try {
+			return { ok: true, data: db.findTrackIdByBvid(bvid) }
+		} catch (error) {
+			return { ok: false, error: error.message }
+		}
+	})
+
 	// ---------- 诊断 ----------
 	ipcMain.handle('probe:request-log', () => requestLog)
 	ipcMain.handle('probe:ports', () => describePorts())

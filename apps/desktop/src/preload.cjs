@@ -114,6 +114,25 @@ contextBridge.exposeInMainWorld('bbplayer', {
 			ipcRenderer.invoke('backup:downloadRemote', remotePath),
 	},
 
+	// ---------- 播放历史（Phase 3.5）----------
+	history: {
+		/** 开始一次播放会话，返回 historyId */
+		startSession: (trackId) =>
+			ipcRenderer.invoke('history:startSession', trackId),
+		/** 更新已播时长（播放中定期调用）+ 是否播完 */
+		updateSession: (payload) =>
+			ipcRenderer.invoke('history:updateSession', payload),
+		recent: (limit) => ipcRenderer.invoke('history:recent', limit),
+		mostPlayed: (limit) => ipcRenderer.invoke('history:mostPlayed', limit),
+		/** 「继续收听」：没听完的曲目 */
+		resume: (limit) => ipcRenderer.invoke('history:resume', limit),
+		summary: () => ipcRenderer.invoke('history:summary'),
+		stats: (trackId) => ipcRenderer.invoke('history:stats', trackId),
+		clear: () => ipcRenderer.invoke('history:clear'),
+	},
+	/** 按 bvid 找本地曲目 id（播放历史要用） */
+	findTrackByBvid: (bvid) => ipcRenderer.invoke('db:findTrackByBvid', bvid),
+
 	// ---------- 独立歌词窗口（Phase 4.1）----------
 	//
 	// 数据流：主窗口 -> 主进程 -> 歌词窗口。渲染进程之间不能直接通信，

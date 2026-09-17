@@ -502,6 +502,218 @@ function markPlaylistSynced(playlistId) {
 	return count
 }
 
+// ---------------------------------------------------------------
+// 播放历史（Phase 3.5）
+// ---------------------------------------------------------------
+//
+// `play_history` 是共用 schema 里的表，但桌面端此前**只建表、从不写入**
+// （移动端的 playHistory.ts 也查不到调用点）。这里把它接上。
+//
+// ## 一条记录 = 一次「播放会话」
+//
+// 语义与移动端一致（`start_time` 是**毫秒**时间戳 —— 移动端有
+// `migratePlayHistoryToMs` 把早期的秒值迁成毫秒，桌面端从一开始就用毫秒）：
+//
+//   * 开始播放一首 -> 插入一行（`duration_played = 0`，`completed = 0`）
+//   * 播放中定期更新 `duration_played`
+//   * 播完（或切歌）时定稿：`completed` 表示「听到了结尾」
+//
+// ## 为什么不每首歌只留一行
+//
+// 「同一首歌听了 10 次」是有用信息（用于「最常播放」），而只留一行就丢失了。
+// 因此按「会话」记录，需要聚合时按 `track_id` group。
+
+/**
+ * 开始一次播放会话，返回该行的 id。
+ *
+ * @param {number} trackId
+ * @param {number} [startTime] 毫秒时间戳；默认现在
+ * @returns {number} play_history.id
+ */
+function startPlaySession(trackId, startTime = Date.now()) {
+	const result = sqlite.runSync(
+		'INSERT INTO play_history (track_id, start_time, duration_played, completed) VALUES (?, ?, 0, 0)',
+		[trackId, startTime],
+	)
+	// node:sqlite 的 run() 返回 { changes, lastInsertRowid }
+	return Number(result?.lastInsertRowid ?? 0)
+}
+
+/**
+ * 更新一次会话的已播时长。
+ *
+ * 播放中会高频调用（每几秒一次），所以只做一条 UPDATE —— 不要在这里做
+ * 「先查再写」那种两次往返。`duration_played` 取**最大值**而不是累加：
+ * 调用方传的是「本次会话累计已播秒数」，取 max 可以容忍乱序/重复调用
+ * （例如暂停后又恢复、或者同一位置被上报两次）。
+ */
+function updatePlaySession(
+	historyId,
+	durationPlayedSeconds,
+	completed = false,
+) {
+	if (!historyId) return false
+	sqlite.runSync(
+		`UPDATE play_history
+		 SET duration_played = MAX(duration_played, ?),
+		     completed = CASE WHEN ? = 1 THEN 1 ELSE completed END
+		 WHERE id = ?`,
+		[
+			Math.max(0, Math.round(durationPlayedSeconds)),
+			completed ? 1 : 0,
+			historyId,
+		],
+	)
+	return true
+}
+
+/**
+ * 最近播放的曲目（按会话去重，同一首歌只出现一次）。
+ *
+ * 用 `GROUP BY track_id` + `MAX(start_time)` 而不是 `DISTINCT`：
+ * 我们要的是「每首歌最后一次播的时间」用于排序，同时带上历史次数。
+ */
+function listRecentlyPlayed({ limit = 50 } = {}) {
+	return sqlite.getAllSync(
+		`SELECT
+		   t.*,
+		   bm.bvid,
+		   bm.cid,
+		   MAX(ph.start_time) AS last_played_at,
+		   COUNT(*) AS play_count,
+		   MAX(ph.completed) AS ever_completed
+		 FROM play_history ph
+		 JOIN tracks t ON t.id = ph.track_id
+		 LEFT JOIN bilibili_metadata bm ON bm.track_id = t.id
+		 GROUP BY ph.track_id
+		 ORDER BY last_played_at DESC
+		 LIMIT ?`,
+		[limit],
+	)
+}
+
+/**
+ * 最常播放的曲目。
+ *
+ * 只统计「有效播放」（`duration_played >= 30` 秒）—— 否则「点了就切」的
+ * 误触会把排行冲乱。这个阈值与流媒体平台的惯例一致。
+ */
+function listMostPlayed({ limit = 50, minSeconds = 30 } = {}) {
+	return sqlite.getAllSync(
+		`SELECT
+		   t.*,
+		   bm.bvid,
+		   bm.cid,
+		   COUNT(*) AS play_count,
+		   MAX(ph.start_time) AS last_played_at,
+		   SUM(ph.duration_played) AS total_played_seconds
+		 FROM play_history ph
+		 JOIN tracks t ON t.id = ph.track_id
+		 LEFT JOIN bilibili_metadata bm ON bm.track_id = t.id
+		 WHERE ph.duration_played >= ?
+		 GROUP BY ph.track_id
+		 ORDER BY play_count DESC, last_played_at DESC
+		 LIMIT ?`,
+		[minSeconds, limit],
+	)
+}
+
+/** 某首歌的播放统计；未播放过返回零值 */
+function getTrackPlayStats(trackId) {
+	const row = sqlite.getFirstSync(
+		`SELECT COUNT(*) AS play_count,
+		        MAX(start_time) AS last_played_at,
+		        SUM(duration_played) AS total_played_seconds,
+		        MAX(completed) AS ever_completed
+		 FROM play_history WHERE track_id = ?`,
+		[trackId],
+	)
+	return {
+		playCount: Number(row?.play_count ?? 0),
+		lastPlayedAt: row?.last_played_at ?? null,
+		totalPlayedSeconds: Number(row?.total_played_seconds ?? 0),
+		everCompleted: Boolean(row?.ever_completed),
+	}
+}
+
+/**
+ * 「继续收听」：最近播放过、但**没听完**的曲目。
+ *
+ * 这是播放历史最有用的一个派生视图 —— 移动端的 `play_history` 也主要用于
+ * 恢复上次的进度。返回带 `last_position_seconds`（该会话已播到的位置），
+ * 调用方据此 seek。
+ */
+function listResumeCandidates({ limit = 20, minSeconds = 10 } = {}) {
+	return sqlite.getAllSync(
+		`SELECT
+		   t.*,
+		   bm.bvid,
+		   bm.cid,
+		   ph.duration_played AS last_position_seconds,
+		   ph.start_time AS last_played_at
+		 FROM play_history ph
+		 JOIN tracks t ON t.id = ph.track_id
+		 LEFT JOIN bilibili_metadata bm ON bm.track_id = t.id
+		 WHERE ph.completed = 0
+		   AND ph.duration_played >= ?
+		   AND t.duration > 0
+		   -- 只保留「确实没听完」的：已播时长明显小于总时长
+		   AND ph.duration_played < t.duration - 15
+		   -- 只取每首歌最后一次会话
+		   AND ph.start_time = (
+		     SELECT MAX(inner_ph.start_time) FROM play_history inner_ph
+		     WHERE inner_ph.track_id = ph.track_id
+		   )
+		 ORDER BY ph.start_time DESC
+		 LIMIT ?`,
+		[minSeconds, limit],
+	)
+}
+
+/** 汇总统计（用于界面上的概览） */
+function getPlayHistorySummary() {
+	const row = sqlite.getFirstSync(
+		`SELECT COUNT(*) AS session_count,
+		        COUNT(DISTINCT track_id) AS track_count,
+		        SUM(duration_played) AS total_seconds,
+		        MIN(start_time) AS first_played_at,
+		        MAX(start_time) AS last_played_at
+		 FROM play_history`,
+	)
+	return {
+		sessionCount: Number(row?.session_count ?? 0),
+		trackCount: Number(row?.track_count ?? 0),
+		totalSeconds: Number(row?.total_seconds ?? 0),
+		firstPlayedAt: row?.first_played_at ?? null,
+		lastPlayedAt: row?.last_played_at ?? null,
+	}
+}
+
+/**
+ * 按 bvid 找本地曲目 id。
+ *
+ * 播放历史要用它：播放器只有 `bvid`（它操作的是队列项），而
+ * `play_history.track_id` 要的是 `tracks.id`。没有这个映射，
+ * 「记录播放」就得在渲染进程里多带一个 id，而那会让队列项的形状
+ * 依赖「这首歌是否已落库」—— 搜索结果的曲目还没落库。
+ *
+ * @returns {number|null}
+ */
+function findTrackIdByBvid(bvid) {
+	if (!bvid) return null
+	const row = sqlite.getFirstSync(
+		'SELECT track_id FROM bilibili_metadata WHERE bvid = ? LIMIT 1',
+		[bvid],
+	)
+	return row?.track_id ?? null
+}
+
+/** 清空播放历史（只删历史，不动曲目与歌单） */
+function clearPlayHistory() {
+	const result = sqlite.runSync('DELETE FROM play_history')
+	return Number(result?.changes ?? 0)
+}
+
 module.exports = {
 	runMigrations,
 	listTables,
@@ -521,6 +733,15 @@ module.exports = {
 	buildRemoteTag,
 	parseRemoteTag,
 	resolveRemoteSource,
+	startPlaySession,
+	updatePlaySession,
+	listRecentlyPlayed,
+	listMostPlayed,
+	listResumeCandidates,
+	getTrackPlayStats,
+	getPlayHistorySummary,
+	findTrackIdByBvid,
+	clearPlayHistory,
 	REMOTE_SOURCE,
 	REMOTE_TAG_PREFIX,
 	BASELINE_MIGRATION,

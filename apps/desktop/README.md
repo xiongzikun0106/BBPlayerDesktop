@@ -40,11 +40,16 @@ pnpm verify:desktop            # 18 项：真实播放 / seek / Range 透传
 pnpm verify:desktop:ui         # 33 项：三栏 shell / 导入 / 播放 / 快捷键 / 搜索 / 歌词
 pnpm verify:desktop:login      # 38 项：登录三条路 / 收藏夹 / 增量同步
 pnpm verify:desktop:media      # 27 项：MediaSession / 任务栏按钮 / 媒体动作链路
+pnpm verify:desktop:lyrics-win # 38 项：独立歌词窗口
+pnpm verify:desktop:history    # 31 项：播放历史视图（记录 + 三个页签）
+pnpm verify:desktop:settings   # 50 项：设置页 / 主题 / 定时关闭 / 响度均衡
 pnpm verify:desktop:icons      # 25 项：任务栏图标生成器
 pnpm verify:desktop:download   # 34 项：下载 / 续传 / 完整性 / 并发
+pnpm verify:packaged           # 24 项：打包产物自检（Windows / Linux）
 pnpm verify:backup             # 48 项：备份格式与移动端互通
 pnpm verify:backup:webdav      # 28 项：真实回环 WebDAV 服务器
 pnpm verify:login              # 52 项：登录接口与 RSA 加密链路
+pnpm verify:play-history       # 35 项：播放历史 SQL 层
 
 # 需要 tsx 的其它验证
 pnpm exec tsx scripts/verify-core-on-node.mjs
@@ -106,7 +111,7 @@ apps/desktop/
       keyboard.js  lyrics-panel.js  media-session.js
       lyrics-window.html  lyrics-window.css  lyrics-window.js
       desktop-features.js  settings-panel.js
-      auth.js  favorites.js  renderer.js
+      auth.js  favorites.js  history.js  renderer.js
 ```
 
 ### 为什么数据库 schema 与移动端同源

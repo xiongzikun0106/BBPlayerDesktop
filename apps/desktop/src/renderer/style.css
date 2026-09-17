@@ -1111,3 +1111,35 @@ input[type='range'] {
 .settings-status--busy {
 	color: var(--primary);
 }
+
+/* ── 子页签（播放历史用）与表格补充列 ─────────────────── */
+.tabs--sub {
+	margin-bottom: var(--sp-sm);
+	border-bottom: 1px solid var(--outline);
+}
+
+.tabs--sub .tab {
+	flex: 0 0 auto;
+	padding: var(--sp-xs) var(--sp-md);
+}
+
+.track-table th.col-count,
+.track-table td.col-count,
+.track-table th.col-position,
+.track-table td.col-position,
+.track-table th.col-when,
+.track-table td.col-when {
+	width: 90px;
+	white-space: nowrap;
+}
+
+/* 危险操作靠右放，避免误点 */
+.row-actions--end {
+	justify-content: flex-end;
+	margin-top: var(--sp-md);
+}
+
+.row-actions--end button {
+	border-color: var(--bad);
+	color: var(--bad);
+}
