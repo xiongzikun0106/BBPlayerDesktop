@@ -35,7 +35,8 @@
 		"verify:packaged": "node scripts/verify-packaged.mjs",
 		"verify:play-history": "pnpm exec tsx scripts/verify-play-history.mts",
 		"verify:shared": "pnpm exec tsx scripts/verify-shared-playlist.mts",
-		"verify:sortkey": "pnpm exec tsx scripts/verify-sortkey-interop.mts"
+		"verify:sortkey": "pnpm exec tsx scripts/verify-sortkey-interop.mts",
+		"verify:win-installer": "node scripts/verify-win-installer.mjs"
 	},
 	"devDependencies": {
 		"@bbplayer/eslint-plugin": "workspace:*",

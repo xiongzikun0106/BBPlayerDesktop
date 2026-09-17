@@ -47,6 +47,7 @@ pnpm verify:desktop:settings   # 50 项：设置页 / 主题 / 定时关闭 / �
 pnpm verify:desktop:icons      # 25 项：任务栏图标生成器
 pnpm verify:desktop:download   # 34 项：下载 / 续传 / 完整性 / 并发
 pnpm verify:packaged           # 24 项：打包产物自检（Windows / Linux）
+pnpm verify:win-installer      # 12 项：Windows 安装包装/卸全程 + portable 启动（仅 Windows）
 pnpm verify:backup             # 48 项：备份格式与移动端互通
 pnpm verify:backup:webdav      # 28 项：真实回环 WebDAV 服务器
 pnpm verify:login              # 52 项：登录接口与 RSA 加密链路

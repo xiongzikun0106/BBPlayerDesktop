@@ -813,14 +813,31 @@ backup-<ISO 时间戳，冒号与点都换成 ->.bbplayer
 
 **构建产物（已在真机验证）**
 
-| 平台    | 产物                                            | 大小     | 验证                                                               |
-| ------- | ----------------------------------------------- | -------- | ------------------------------------------------------------------ |
-| Windows | `BBPlayer-0.1.0-win-x64-nsis-setup.exe`         | 99.2 MB  | 静默安装 → 运行自检 24/24 → 静默卸载（目录清空）                   |
-| Windows | `BBPlayer-0.1.0-win-x64-portable.exe`           | 99.0 MB  | 构建成功                                                           |
-| Linux   | `BBPlayer-0.1.0-linux-amd64.deb`                | 100.3 MB | `apt-get install` 自动解依赖 → 运行自检 24/24（xvfb 下含渲染进程） |
-| Linux   | `BBPlayer-0.1.0-linux-x86_64.rpm`               | 88.2 MB  | `rpm -ivh` 安装成功，元数据完整                                    |
-| Linux   | `BBPlayer-0.1.0-linux-x86_64.AppImage`          | 129.3 MB | `--appimage-extract-and-run` 自检通过                              |
-| 两者    | `latest.yml` / `latest-linux.yml` + `.blockmap` | —        | electron-updater 的 feed 与增量更新块                              |
+Phase 3.4 之后全部重验过一遍。Windows 由
+`scripts/verify-win-installer.mjs`（12 项，`pnpm verify:win-installer`）
+自动跑完装/卸全程；Linux 由 `severs/vps-verify-linux.sh` 在 VPS 上一键跑完。
+
+| 平台    | 产物                                            | 大小     | 验证                                                                             |
+| ------- | ----------------------------------------------- | -------- | -------------------------------------------------------------------------------- |
+| Windows | `BBPlayer-0.1.0-win-x64-nsis-setup.exe`         | 99.3 MB  | `/S` 静默安装 → 对**装出来的那个 exe** 跑自检 24/24 → `/S` 静默卸载（目录清空）  |
+| Windows | `BBPlayer-0.1.0-win-x64-portable.exe`           | 99.1 MB  | 启动并在临时 userData 里建出 12 张表 + 三条 sort_key 记账（见下：拿不到 stdout） |
+| Linux   | `BBPlayer-0.1.0-linux-amd64.deb`                | 100.4 MB | `apt-get install` 自动解依赖（**依赖清单含 `libasound2`**）→ 自检 → purge 干净   |
+| Linux   | `BBPlayer-0.1.0-linux-x86_64.rpm`               | 88.2 MB  | `rpm -ivh` → 依赖含 `alsa-lib` → `rpm -e`（0 个文件残留）                        |
+| Linux   | `BBPlayer-0.1.0-linux-x86_64.AppImage`          | 129.3 MB | `--appimage-extract-and-run` 自检通过                                            |
+| 两者    | `latest.yml` / `latest-linux.yml` + `.blockmap` | —        | electron-updater 的 feed 与增量更新块                                            |
+
+**⚠️ portable 拿不到子进程 stdout。** electron-builder 的 portable 是 NSIS
+自解压启动器：它**解包后 detach 子进程**，于是 `spawnSync` 立刻以 0 退出，
+而应用还在跑。第一版验收脚本因此误判成「portable 没输出自检结果」——
+错的是**取证方式**，不是产物。改成把 userData 指到一个空目录、等它把数据库
+建出来后**直接打开那个库**检查表与迁移记账，这样既证明产物真能启动，
+也证明包内的 core、基线迁移与 `sort_key` 数据迁移都生效。
+
+**⚠️ rpm 的包名是 `BBPlayer`（来自 productName），不是 `bbplayer`。**
+第一版 Linux 验收脚本写成 `rpm -e bbplayer`，卸载**静默失败**，于是上一次装的
+rpm 还在，下一次 `rpm -ivh` 直接报 file conflicts。同样是脚本的错，不是产物的错。
+`rpm -e` 之后会留下两个**空目录**（`/opt/BBPlayer/{locales,resources}`），
+文件数为 0 —— 这是 electron-builder 的 rpm spec 行为，如实记下。
 
 **只有真机才能发现的问题（都在 Linux 上暴露）**
 
