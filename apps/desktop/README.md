@@ -52,6 +52,7 @@ pnpm verify:backup:webdav      # 28 项：真实回环 WebDAV 服务器
 pnpm verify:login              # 52 项：登录接口与 RSA 加密链路
 pnpm verify:play-history       # 35 项：播放历史 SQL 层
 pnpm verify:external-import    # 65 项：外部歌单导入后端（含真实网易云歌单）
+pnpm verify:sortkey            # 16 项：跨端歌单顺序互通（sort_key 方向）
 
 # 需要 tsx 的其它验证
 pnpm exec tsx scripts/verify-core-on-node.mjs
@@ -206,6 +207,20 @@ WebDAV 复用 `packages/core` 的平台无关客户端（移动端注入 RN fetc
 **🔴 五个 JS 数据迁移此前只在移动端跑过**，桌面生成的库里 `sort_key` 等字段
 可能没被规范化。恢复时调用它们（幂等），并把 core 端口**临时重指**到正在处理
 的那个库 —— 否则它们取到的是已关闭的活跃库连接。
+
+**🔴 `sort_key` 的方向两端一度相反**，会让备份恢复后的歌单**整单倒序**：
+
+|                | 生成                                  | 读取                     |
+| -------------- | ------------------------------------- | ------------------------ |
+| 移动端         | fractional-indexing，**越靠前键越大** | `ORDER BY sort_key DESC` |
+| 桌面端（修前） | `` `a${index 补零}` ``，越小越靠前    | `ORDER BY sort_key ASC`  |
+
+两端各自自洽，单端看不出问题；但备份是整库搬家。已修：顺序约定抽到
+`packages/core/src/utils/sortKey.ts` 两端共用，桌面端改成 fractional + `DESC`，
+并做了一次性迁移（按**键的形状**逐个歌单判断，而不是只看记账表 —— 恢复移动端
+备份会把记账表一起换掉）。详见
+[`docs/DESKTOP_PLAN.md`](../../docs/DESKTOP_PLAN.md) 的「备份与移动端互通」一节，
+验证见 `pnpm verify:sortkey`。
 
 **恢复后必须重启应用**：Windows 上打开着的文件不能被 rename（实测 `EBUSY`），
 恢复前必须关掉数据库连接。桌面端为此加了断路器：关闭后任何访问都抛

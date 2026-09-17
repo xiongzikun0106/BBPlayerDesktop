@@ -231,7 +231,7 @@ function registerIpcHandlers() {
 
 			let added = 0
 			const failures = []
-			for (const [index, archive] of archives.entries()) {
+			for (const archive of archives) {
 				try {
 					const info = await bilibiliApi.getVideoInfo(archive.bvid)
 					const track = db.upsertTrack({
@@ -245,7 +245,7 @@ function registerIpcHandlers() {
 						cid: info.cid,
 						isMultiPage: info.pages > 1,
 					})
-					if (db.addTrackToPlaylist(playlist.id, track.id, index)) added += 1
+					if (db.addTrackToPlaylist(playlist.id, track.id)) added += 1
 				} catch (error) {
 					failures.push({ bvid: archive.bvid, error: error.message })
 				}
@@ -525,7 +525,6 @@ function registerIpcHandlers() {
 			const failures = []
 			let added = 0
 			let skipped = 0
-			let index = db.countPlaylistTracks(playlist.id)
 
 			for (const resource of resources) {
 				if (known.has(resource.bvid)) {
@@ -546,9 +545,8 @@ function registerIpcHandlers() {
 						cid: info.cid,
 						isMultiPage: info.pages > 1,
 					})
-					if (db.addTrackToPlaylist(playlist.id, track.id, index)) {
+					if (db.addTrackToPlaylist(playlist.id, track.id)) {
 						added += 1
-						index += 1
 					}
 				} catch (error) {
 					failures.push({ bvid: resource.bvid, error: error.message })

@@ -83,6 +83,7 @@ export * from './theme/types'
 
 // ---------- utils ----------
 export * from './utils/playlistUrlParser'
+export * from './utils/sortKey'
 
 // ---------- types（领域契约）----------
 export * from './types/apis/baidu'

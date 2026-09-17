@@ -12,7 +12,7 @@
 const fs = require('node:fs')
 const path = require('node:path')
 
-const { sqlite } = require('./ports.cjs')
+const { sqlite, core } = require('./ports.cjs')
 
 const MIGRATIONS_DIR = path.resolve(__dirname, '..', 'drizzle')
 
@@ -104,7 +104,108 @@ function runMigrations() {
 		executed.push(file)
 	}
 
-	return { executed }
+	const sortKeys = migrateLegacySortKeys()
+
+	return { executed, sortKeys }
+}
+
+// ---------------------------------------------------------------
+// 一次性数据迁移：旧版桌面 sort_key 约定 → 跨端统一约定
+// ---------------------------------------------------------------
+//
+// 旧版桌面端生成 `a000001`、`a000002`…（越小越靠前）并按 `ASC` 读取；
+// 统一约定是 fractional-indexing 键 + **越大越靠前** + `DESC` 读取。
+// 两者的**显示顺序各自都是对的**，所以升级后必须把旧键重写成新键，
+// 否则老用户的歌单会整体倒过来。
+//
+// ## 为什么靠「键的形状」判断，而不是只靠记账表
+//
+// 恢复备份会**整体替换数据库文件**，记账表跟着备份一起被换掉。如果只信
+// 记账表，那么把**移动端**的备份恢复到桌面端之后，这个迁移会以为「没跑过」
+// 而把已经正确的 fractional 键按 `ASC` 顺序重新分配一遍 ——
+// 恰好把移动端的歌单**全部倒序**。
+//
+// 因此按歌单逐个体检：只要某个歌单的键**全部**是旧的 `a000000` 形状才重写，
+// 出现任何一个新形状（或混合）就整体跳过并留日志。这样「跑没跑过」这件事
+// 由数据本身回答，不依赖任何外部标记。
+
+/** 旧版桌面端的 sort_key 形状：`a` + 6 位十进制 */
+const LEGACY_SORT_KEY_PATTERN = /^a\d{6}$/
+
+/** 与 core 的 `DataMigration` 共用同一张记账表（表结构一致，只是名字不同） */
+const DATA_MIGRATIONS_TABLE = '__bbplayer_data_migrations'
+const SORT_KEY_DESKTOP_MIGRATION = 'sort_key_desktop_v1'
+
+function migrateLegacySortKeys() {
+	sqlite.execSync(
+		`CREATE TABLE IF NOT EXISTS ${DATA_MIGRATIONS_TABLE} (name TEXT PRIMARY KEY NOT NULL)`,
+	)
+
+	if (
+		sqlite.getFirstSync(
+			`SELECT name FROM ${DATA_MIGRATIONS_TABLE} WHERE name = ?`,
+			[SORT_KEY_DESKTOP_MIGRATION],
+		)
+	) {
+		return { converted: 0, skipped: 0, alreadyApplied: true }
+	}
+
+	let converted = 0
+	let skipped = 0
+	let rewrittenPlaylists = 0
+
+	sqlite.withTransactionSync(() => {
+		const playlists = sqlite.getAllSync('SELECT id FROM playlists')
+		for (const playlist of playlists) {
+			const rows = sqlite.getAllSync(
+				'SELECT track_id, sort_key FROM playlist_tracks WHERE playlist_id = ? ORDER BY sort_key ASC',
+				[playlist.id],
+			)
+			if (rows.length === 0) continue
+
+			if (!rows.every((row) => LEGACY_SORT_KEY_PATTERN.test(row.sort_key))) {
+				// 已经是新约定（或混了两种）：不动它 —— 乱动会真的把顺序搞坏
+				skipped += 1
+				continue
+			}
+
+			// 旧约定下 `ASC` 就是显示顺序；新约定要求 index 0 拿最大的键
+			const ordered = rows.map((row) => row.track_id)
+			const keys = core.generateSortKeySequence(ordered.length)
+			for (let i = 0; i < ordered.length; i++) {
+				sqlite.runSync(
+					'UPDATE playlist_tracks SET sort_key = ? WHERE playlist_id = ? AND track_id = ?',
+					[keys[i], playlist.id, ordered[i]],
+				)
+				converted += 1
+			}
+			rewrittenPlaylists += 1
+		}
+
+		sqlite.runSync(
+			`INSERT OR IGNORE INTO ${DATA_MIGRATIONS_TABLE} (name) VALUES (?)`,
+			[SORT_KEY_DESKTOP_MIGRATION],
+		)
+
+		// **同时**把 core 的 `sort_key_v3` 记成已完成。
+		//
+		// `sortKeysV3` 的语义是「把非 local 歌单的 sort_key 从旧方向翻转成
+		// fractional + DESC」。桌面端这一次迁移是**对全部歌单**达成同一个
+		// 不变式，因此 v3 的目标已经满足 —— 而且**不能再让它跑**：
+		// 导出备份时 `backup.cjs` 会在副本上调用 v3，如果不记账，
+		// 它会把这些**已经正确**的非 local 歌单再翻一次，直接翻坏。
+		//
+		// 记账表的含义是「该不变式已成立」，不是「这段代码逐行执行过」，
+		// 所以这样写是准确的。
+		for (const name of ['sort_key_v2', 'sort_key_v3']) {
+			sqlite.runSync(
+				`INSERT OR IGNORE INTO ${DATA_MIGRATIONS_TABLE} (name) VALUES (?)`,
+				[name],
+			)
+		}
+	})
+
+	return { converted, skipped, rewrittenPlaylists, alreadyApplied: false }
 }
 
 /** 列出所有表（验证用） */
@@ -120,10 +221,23 @@ function listTables() {
 // 播放列表
 // ---------------------------------------------------------------
 
-function generateSortKey(index) {
-	// 与移动端一致的思路：用可排序的定长前缀
-	// （完整实现应使用 fractional-indexing，这里 Phase 1 用递增前缀即可）
-	return `a${String(index).padStart(6, '0')}`
+/**
+ * 追加到歌单**末尾**所需的 sort_key。
+ *
+ * 约定由 `packages/core/src/utils/sortKey.ts` 唯一定义（**越大越靠前**，
+ * 读取用 `DESC`）。桌面端此前是自写的 `a${index}` + `ASC`，方向与移动端
+ * **完全相反** —— 单端看不出问题，但备份是整库搬家，移动端按 `DESC` 读
+ * 就会把整单倒过来。详见 `scripts/verify-sortkey-interop.mts`。
+ *
+ * 这里保留「新加的落在末尾」这个**用户可见行为**（旧实现即如此），
+ * 用 `generateKeyForBottom` 取一个比现有最小键更小的键。
+ */
+function generateSortKey(playlistId) {
+	const bottom = sqlite.getFirstSync(
+		'SELECT MIN(sort_key) AS key FROM playlist_tracks WHERE playlist_id = ?',
+		[playlistId],
+	)
+	return core.generateKeyForBottom(bottom?.key ?? null)
 }
 
 /**
@@ -231,10 +345,10 @@ function upsertTrack({
  * 「同步一个 200 条的收藏夹」是 400 次全表扫描。现在直接用驱动返回的
  * `changes`（node:sqlite 的 `StatementSync.run()` 会给出），一次写就够。
  */
-function addTrackToPlaylist(playlistId, trackId, index) {
+function addTrackToPlaylist(playlistId, trackId) {
 	const result = sqlite.runSync(
 		'INSERT OR IGNORE INTO playlist_tracks (playlist_id, track_id, sort_key) VALUES (?, ?, ?)',
-		[playlistId, trackId, generateSortKey(index)],
+		[playlistId, trackId, generateSortKey(playlistId)],
 	)
 	// `changes` 在 node:sqlite 下可能是 number 或 bigint，统一成 number
 	const inserted = Number(result?.changes ?? 0) > 0
@@ -256,7 +370,7 @@ function getPlaylistTracks(playlistId) {
 		 JOIN tracks t ON t.id = pt.track_id
 		 LEFT JOIN bilibili_metadata bm ON bm.track_id = t.id
 		 WHERE pt.playlist_id = ?
-		 ORDER BY pt.sort_key ASC`,
+		 ORDER BY pt.sort_key DESC`,
 		[playlistId],
 	)
 }

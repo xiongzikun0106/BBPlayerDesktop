@@ -367,7 +367,6 @@ async function importMatched({
 	const failures = []
 	let added = 0
 	let skipped = 0
-	let index = db.countPlaylistTracks(playlist.id)
 
 	for (const item of items) {
 		if (known.has(item.bvid)) {
@@ -388,9 +387,8 @@ async function importMatched({
 				cid: info.cid,
 				isMultiPage: (info.pages ?? 1) > 1,
 			})
-			if (db.addTrackToPlaylist(playlist.id, track.id, index)) {
+			if (db.addTrackToPlaylist(playlist.id, track.id)) {
 				added += 1
-				index += 1
 			}
 		} catch (error) {
 			failures.push({

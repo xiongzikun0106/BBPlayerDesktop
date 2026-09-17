@@ -32,7 +32,8 @@
 		"verify:external-import": "pnpm exec tsx scripts/verify-external-import.mts",
 		"verify:login": "pnpm exec tsx scripts/verify-bilibili-login.mts",
 		"verify:packaged": "node scripts/verify-packaged.mjs",
-		"verify:play-history": "pnpm exec tsx scripts/verify-play-history.mts"
+		"verify:play-history": "pnpm exec tsx scripts/verify-play-history.mts",
+		"verify:sortkey": "pnpm exec tsx scripts/verify-sortkey-interop.mts"
 	},
 	"devDependencies": {
 		"@bbplayer/eslint-plugin": "workspace:*",
