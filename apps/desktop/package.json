@@ -1,0 +1,14 @@
+{
+	"name": "@bbplayer/desktop",
+	"version": "0.1.0",
+	"private": true,
+	"description": "BBPlayer 桌面端（Electron）—— Phase 1 骨架 + B 站音频播放可行性验证",
+	"main": "src/main.cjs",
+	"scripts": {
+		"start": "electron .",
+		"start:headless": "electron . --headless-probe"
+	},
+	"devDependencies": {
+		"electron": "42.11.3"
+	}
+}

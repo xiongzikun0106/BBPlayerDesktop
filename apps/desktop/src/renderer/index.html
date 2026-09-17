@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="zh-CN">
+	<head>
+		<meta charset="utf-8" />
+		<meta
+			http-equiv="Content-Security-Policy"
+			content="default-src 'self'; media-src bbplayer-audio: https:; style-src 'self' 'unsafe-inline'"
+		/>
+		<title>BBPlayer Desktop — Phase 1 验证</title>
+		<link rel="stylesheet" href="style.css" />
+	</head>
+	<body>
+		<div class="app">
+			<header>
+				<h1>BBPlayer Desktop</h1>
+				<p class="subtitle">Phase 1 · B 站音频播放可行性验证</p>
+			</header>
+
+			<section class="card">
+				<div class="field">
+					<label for="bvid">视频 BV 号</label>
+					<input id="bvid" value="BV1GJ411x7h7" spellcheck="false" />
+					<button id="load">解析并加载</button>
+				</div>
+
+				<div id="status" class="status status--idle">等待操作</div>
+
+				<dl class="meta">
+					<div><dt>标题</dt><dd id="m-title">—</dd></div>
+					<div><dt>cid</dt><dd id="m-cid">—</dd></div>
+					<div><dt>时长</dt><dd id="m-duration">—</dd></div>
+					<div><dt>音质 id</dt><dd id="m-quality">—</dd></div>
+					<div><dt>上游 CDN</dt><dd id="m-host">—</dd></div>
+					<div><dt>代理地址</dt><dd id="m-proxy" class="mono">—</dd></div>
+				</dl>
+			</section>
+
+			<section class="card player">
+				<audio id="audio" preload="metadata" crossorigin="anonymous"></audio>
+
+				<div class="row">
+					<button id="play">▶ 播放</button>
+					<button id="pause">⏸ 暂停</button>
+					<button id="seek" data-seek="10">⏩ 跳到 10s</button>
+					<button id="seek-back" data-seek="0">⏮ 回到 0s</button>
+				</div>
+
+				<div class="timeline">
+					<input id="progress" type="range" min="0" max="1000" value="0" />
+					<span id="time" class="mono">0.00 / 0.00</span>
+				</div>
+			</section>
+
+			<section class="card log-card">
+				<h2>事件日志</h2>
+				<pre id="log"></pre>
+			</section>
+		</div>
+
+		<script src="renderer.js"></script>
+	</body>
+</html>

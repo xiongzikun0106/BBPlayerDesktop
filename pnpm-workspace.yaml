@@ -6,6 +6,7 @@ packages:
 allowBuilds:
   '@firebase/util': true
   '@sentry/cli': true
+  electron: true
   esbuild: true
   lefthook: true
   protobufjs: true

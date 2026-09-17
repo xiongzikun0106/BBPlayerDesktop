@@ -96,6 +96,12 @@ importers:
         specifier: ^4.4.0
         version: 4.68.1(@cloudflare/workers-types@4.20260304.0)
 
+  apps/desktop:
+    devDependencies:
+      electron:
+        specifier: 42.11.3
+        version: 42.11.3(supports-color@10.2.2)
+
   apps/docs:
     devDependencies:
       lucide-vue-next:
@@ -15124,8 +15130,7 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
-  '@electron-internal/extract-zip@1.0.5':
-    optional: true
+  '@electron-internal/extract-zip@1.0.5': {}
 
   '@electron/get@5.1.0(supports-color@10.2.2)':
     dependencies:
@@ -15139,7 +15144,6 @@ snapshots:
       undici: 7.29.0
     transitivePeerDependencies:
       - supports-color
-    optional: true
 
   '@emnapi/core@1.5.0':
     dependencies:
@@ -19972,7 +19976,6 @@ snapshots:
   '@types/node@24.13.4':
     dependencies:
       undici-types: 7.18.2
-    optional: true
 
   '@types/node@25.2.3':
     dependencies:
@@ -22038,7 +22041,6 @@ snapshots:
       '@types/node': 24.13.4
     transitivePeerDependencies:
       - supports-color
-    optional: true
 
   emittery@0.13.1: {}
 
@@ -22086,8 +22088,7 @@ snapshots:
 
   env-paths@2.2.1: {}
 
-  env-paths@3.0.0:
-    optional: true
+  env-paths@3.0.0: {}
 
   envinfo@7.14.0: {}
 
@@ -28904,7 +28905,6 @@ snapshots:
       debug: 4.4.3(supports-color@10.2.2)
     transitivePeerDependencies:
       - supports-color
-    optional: true
 
   super-regex@1.1.0:
     dependencies:
@@ -29374,8 +29374,7 @@ snapshots:
 
   undici-types@7.16.0: {}
 
-  undici-types@7.18.2:
-    optional: true
+  undici-types@7.18.2: {}
 
   undici-types@7.24.6: {}
 

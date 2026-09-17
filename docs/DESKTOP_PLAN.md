@@ -137,23 +137,42 @@ setSleepTimer / getSleepTimerEndTime / cancelSleepTimer
 
 剩下 **40 个方法是移动端专属**（桌面歌词悬浮窗、状态栏歌词、车机、下载、APK 更新、目录选择器、导出、headless），**不进 `AudioPort`**，由各端自行处理。这也顺带解决了 iOS 上 `setLyrics` 必抛的问题。
 
-### 2.3 ⚠️ 关键发现：B 站音频有防盗链，桌面端必须处理
+### 2.3 ⚠️ 关键发现：B 站音频有防盗链 + 主线 CDN 无 CORS（已实测确认）
 
-**证据**：
+**代码证据**：
 
 - `packages/orpheus/android/.../NetworkModule.kt:42-45` — OkHttp 拦截器注入 `User-Agent` + `Referer: https://www.bilibili.com/`
 - `packages/orpheus/android/.../DownloadUtil.kt:142,154` — 下载同样注入 cookie + Referer
 
-**影响**：浏览器里 `<audio src="https://.../audio.m4s">` 会被 403（缺 Referer），且 CDN 不返回 CORS 头。**这是 Electron 方案里唯一可能导致"播放不了"的技术风险。**
+**实测证据**（`scripts/probe-bilibili-audio.mjs`，3 个视频 × 3 个地址 = 9 个样本）：
+
+| 节点类型         | 样本 | 裸请求 200 | 带头 200 | Range 206 | 带 ACAO |
+| ---------------- | ---: | ---------: | -------: | --------: | ------: |
+| **upos**（主线） |    5 |    **0/5** |      5/5 |       5/5 | **0/5** |
+| other            |    2 |        0/2 |      2/2 |       2/2 |     2/2 |
+| PCDN（`mcdn.*`） |    2 |        2/2 |      2/2 |       2/2 |     2/2 |
+
+结论：
+
+1. **防盗链是真的**：7/9 地址裸请求返回 **403**，带上 `Referer` + 桌面 UA 后 200。
+2. **主线 CDN 不返回 `Access-Control-Allow-Origin`**（upos 5/5 都无）→ 渲染进程直接
+   `<audio src="https://…bilivideo.com/…">` 会被 **CORS 拦掉**。
+3. **Range 全支持 206** → seek 可以正常工作（前提是代理把 `Range` 透传）。
+4. **PCDN 节点（`mcdn.bilivideo.cn`）会放行裸请求**，但节点分配不可控，**不能作为依赖**。
+   （第一版探测只测到一个 PCDN 地址，因此得出「不需要代理」的错误结论 —— 样本偏差。）
+
+**影响**：**必须由主进程代发音频请求**。这既是防盗链的需要，也是绕开 CORS 的需要。
 
 **推荐方案（二选一，按稳健度排序）**：
 
-| 方案                          | 做法                                                                                                                    | 评价                                                                           |
-| ----------------------------- | ----------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------ |
-| **A. 自定义协议代理**（推荐） | 主进程注册 `bbplayer-audio://`，用 Node 侧带 header 发请求、流式回传；渲染进程 `<audio src="bbplayer-audio://trackId">` | 不牺牲渲染进程安全（不开 `webSecurity: false`），支持 Range 请求，可顺带做缓存 |
-| B. session 注入 header        | `session.webRequest.onBeforeSendHeaders` 注入 Referer                                                                   | 简单，但仍需处理 CORS，通常要配 `webSecurity: false`                           |
+| 方案                          | 做法                                                                                                                    | 评价                                                                          |
+| ----------------------------- | ----------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------- |
+| **A. 自定义协议代理**（推荐） | 主进程注册 `bbplayer-audio://`，用 Node 侧带 header 发请求、流式回传；渲染进程 `<audio src="bbplayer-audio://trackId">` | 不牺牲渲染进程安全（不开 `webSecurity: false`）；Range 直通；可顺带做缓存     |
+| B. session 注入 header        | `session.webRequest.onBeforeSendHeaders` 注入 Referer                                                                   | 能解 403，但**解决不了 CORS**（CDN 不发 ACAO），通常要配 `webSecurity: false` |
 
-**必须在 Phase 1 就验证这一点**，它决定整个播放路径的形态。
+→ 因为方案 B 无法解决 CORS，**方案 A 是唯一不牺牲安全性的选择**。
+
+复验方式：`node scripts/probe-bilibili-audio.mjs`（只读探测，不下载音频内容）。
 
 ### 2.4 打包策略（避开 pnpm + monorepo 的坑）
 
@@ -398,9 +417,9 @@ setSleepTimer / getSleepTimerEndTime / cancelSleepTimer
 | 8   | ~~`pnpm install` 未执行，Phase 0 无法验证~~                                                                                                                       | ✅ 已解除 | 依赖已安装（两个 `packages` 已建链）                          |
 | 9   | **lefthook `pre-commit` 钩子在 Windows 上不可用**（实测复现，非推测）                                                                                             | 🟡 中     | 见下方「lefthook 缺陷详情」；在 Linux/macOS 上不受影响        |
 
-### lefthook 缺陷详情（执行 Phase 0 提交时实测）
+### lefthook 缺陷详情与最终方案（已解决）
 
-提交 Phase 0 时钩子失败，定位到 `lefthook.yml` 的两个真实缺陷：
+提交 Phase 0 时钩子失败，定位到 `lefthook.yml` 的三个真实缺陷：
 
 1. **lefthook 的 `{...}` 模板语法会破坏脚本正文里的 shell 变量展开**。
    实测 `files=({staged_files})` 之后的 `${#files[@]}` 被替换成 `0files[@]`，
@@ -408,15 +427,34 @@ setSleepTimer / getSleepTimerEndTime / cancelSleepTimer
 2. **`{staged_files}` 展开时不加引号**，因此文件名里的括号（本仓库有
    `app/(tabs)/index.tsx`、`app/comments/[bvid].tsx` 等）会让
    `files=(...)` 这类数组赋值直接语法错误。
+3. **`run` 脚本由 `sh` 执行（Windows 上是 `cmd`）**，两个平台行为不一致。
 
-已尝试的修法（用 `set -- {staged_files}` + `[ $# -eq 0 ]`）解决了上述两点，
-但在当前 Windows 环境下钩子仍报 `-c: line N: syntax error: unexpected end of file`，
-根因未确定（同一脚本在隔离测试中可通过）。**因此该修改未纳入 Phase 0 提交**，
-`lefthook.yml` 保持原样。
+**最终方案：把全部钩子逻辑搬到 Node，`lefthook.yml` 只保留一行调用。**
 
-待办：在 Linux/macOS 上复验钩子；或在 Windows 上改用不依赖 shell 的判断方式。
-当前 Windows 提交需 `git commit --no-verify`，且提交前**手动**执行
-`pnpm type-check` + `pnpm check:core` + `pnpm lint`。
+```yaml
+pre-commit:
+  commands:
+    checks:
+      run: node scripts/precommit.mjs
+```
+
+`scripts/precommit.mjs` 负责：gitleaks 密钥扫描（未安装则跳过）、`oxfmt --write`、
+`oxlint --type-aware`、以及**把格式化结果重新暂存**（等价于原 `stage_fixed: true`）。
+
+关键实现细节（都是踩坑换来的）：
+
+- 暂存文件用 `git diff --cached --name-only --diff-filter=ACMR -z` 读取，路径不经 shell。
+- **不能**用 `pnpm exec oxfmt`：Windows 上 `pnpm` 是 `pnpm.cmd`，必须经 `cmd.exe`，
+  而 `cmd.exe` 会把参数里的 `()` 当分组符号（实测报
+  `…/index.tsx was unexpected at this time`）。改为用 `node node_modules/oxfmt/bin/oxfmt`
+  直接执行，彻底不经 shell。
+- 移植到 Windows 时 `spawnSync('pnpm', …, { shell: false })` 会 ENOENT（`.cmd` 不可直接执行）。
+
+**验证方式**：真实执行 `git commit`（不加 `--no-verify`），钩子在暂存区含
+`app/(tabs)/index.tsx` 这类路径的情况下通过了 gitleaks/oxfmt/oxlint 三项，
+且格式化结果被正确纳入提交（提交后工作区干净）。
+
+相应提交：`883cbbb5`（搬进 Node 脚本）、`968011f6`（补上重新暂存）。
 
 ---
 
