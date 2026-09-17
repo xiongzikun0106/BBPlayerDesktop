@@ -2,9 +2,17 @@
 	"name": "@bbplayer/desktop",
 	"version": "0.1.0",
 	"private": true,
-	"description": "BBPlayer 桌面端（Electron）—— Phase 1 骨架 + B 站音频播放可行性验证",
+	"description": "BBPlayer 桌面端（Electron）—— 播放 B 站音频 / 歌单 / 登录同步 / 下载 / WebDAV 备份",
 	"main": "src/main.cjs",
 	"scripts": {
+		"build:all": "pnpm run build:prepare && electron-builder --win --linux --publish never",
+		"build:bundle": "node scripts/build-core.mjs",
+		"build:icons": "node scripts/build-icons.mjs",
+		"build:linux": "pnpm run build:prepare && electron-builder --linux --publish never",
+		"build:linux:dir": "pnpm run build:prepare && electron-builder --linux dir --publish never",
+		"build:prepare": "pnpm run build:bundle && pnpm run build:icons",
+		"build:win": "pnpm run build:prepare && electron-builder --win --publish never",
+		"pack:dir": "pnpm run build:prepare && electron-builder --dir --publish never",
 		"start": "electron .",
 		"start:headless": "electron . --headless-probe"
 	},
@@ -14,6 +22,8 @@
 		"webdav": "^5.10.0"
 	},
 	"devDependencies": {
-		"electron": "42.11.3"
+		"electron": "42.11.3",
+		"electron-builder": "^26.15.3",
+		"esbuild": "^0.28.2"
 	}
 }

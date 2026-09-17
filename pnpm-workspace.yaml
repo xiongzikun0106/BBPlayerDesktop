@@ -19,6 +19,8 @@ allowBuilds:
   tree-sitter: true
   tree-sitter-javascript: true
   tree-sitter-typescript: true
+  # 只用于 Squirrel.Windows target；我们用 NSIS + portable，不需要它的构建脚本
+  electron-winstaller: false
 
 minimumReleaseAgeExclude:
   - expo-eas-client@57.0.3

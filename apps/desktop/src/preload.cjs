@@ -117,14 +117,26 @@ contextBridge.exposeInMainWorld('bbplayer', {
 })
 
 /**
- * 自验证通道。
+ * 自验证通道（`window.bbProbe`）。
  *
- * ⚠️ 目前无条件暴露。生产化时应加开关（如仅在 `--probe` 模式下暴露），
- * 或在打包配置里剔除。
+ * ⚠️ **只在探针模式下暴露**。
+ *
+ * 早期版本是无条件暴露的，理由是「反正渲染进程加载的是本地页面」——
+ * 但这仍是没必要的能力面：`bbProbe.execute` 能在渲染进程里跑任意 JS，
+ * 而渲染进程是要渲染**远端封面图**的（`<img src="https://i0.hdslb.com/...">`）。
+ * 一个图片解码器的漏洞就足以把攻击面接到这些能力上，所以按最小权限关掉。
+ *
+ * 判断依据由主进程通过 `additionalArguments` 注入（见 `main.cjs`），
+ * 而不是在这里读 `process.argv` —— 打包后 `process.env.NODE_ENV`
+ * 之类的推断都不可靠，显式传入才是硬事实。
  */
-contextBridge.exposeInMainWorld('bbProbe', {
-	requestLog: () => ipcRenderer.invoke('probe:request-log'),
-	ports: () => ipcRenderer.invoke('probe:ports'),
-	screenshot: (name) => ipcRenderer.invoke('probe:screenshot', name),
-	execute: (code) => ipcRenderer.invoke('probe:execute', code),
-})
+const PROBE_ENABLED = process.argv.includes('--bb-probe-enabled')
+
+if (PROBE_ENABLED) {
+	contextBridge.exposeInMainWorld('bbProbe', {
+		requestLog: () => ipcRenderer.invoke('probe:request-log'),
+		ports: () => ipcRenderer.invoke('probe:ports'),
+		screenshot: (name) => ipcRenderer.invoke('probe:screenshot', name),
+		execute: (code) => ipcRenderer.invoke('probe:execute', code),
+	})
+}

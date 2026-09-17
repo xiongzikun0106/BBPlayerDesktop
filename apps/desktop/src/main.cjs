@@ -32,6 +32,35 @@ const LOGIN_PROBE_MODE = process.argv.includes('--login-probe')
 const MEDIA_PROBE_MODE = process.argv.includes('--media-probe')
 /** 设置验收模式：跑 Phase 4 收尾的桌面特性断言序列（见 settings-probe-driver.cjs） */
 const SETTINGS_PROBE_MODE = process.argv.includes('--settings-probe')
+/**
+ * 打包产物自检模式（见 selfcheck.cjs）。
+ *
+ * 用于在无 GUI 的 Linux VPS 上验证打包产物能跑，也是 Windows 上
+ * 「产物能不能用」的第一道关卡。输出 JSON 后退出。
+ */
+const SELFCHECK_MODE = process.argv.includes('--selfcheck')
+/**
+ * headless 模式：**不创建窗口**。
+ *
+ * VPS 上没有 X server，创建 BrowserWindow 会直接失败
+ * （`Missing X server or $DISPLAY`）。所以自检默认**建窗口** —— 这样能
+ * 多验证「渲染进程 + preload 契约」那几项；只有在显式传 `--headless`
+ * 时才跳过，由外层脚本按「有没有显示环境」决定。
+ */
+const HEADLESS = process.argv.includes('--headless')
+/**
+ * 自验证通道的**门控**验证模式。
+ *
+ * ⚠️ 这个模式**故意不**列进 `PROBE_ENABLED` —— 它要验证的正是
+ * 「正常启动时 `window.bbProbe` 不存在」。所以由**主进程**自己用
+ * `webContents.executeJavaScript` 去读渲染进程的全局对象
+ * （主进程不受 preload 暴露与否的影响），再把结果打出来。
+ *
+ * 这是唯一能真正验证门控的办法：如果它自己是探针模式，就永远只会看到
+ * 「已暴露」，测不出问题。
+ */
+const VERIFY_GATING_MODE = process.argv.includes('--verify-gating')
+
 /** 对比模式的「不安全」变体：关掉 webSecurity，用于量化其代价 */
 const INSECURE_MODE = process.argv.includes('--insecure')
 /**
@@ -42,6 +71,24 @@ const INSECURE_MODE = process.argv.includes('--insecure')
  * 时打开。
  */
 const MEDIA_KEYS_MODE = process.argv.includes('--media-keys')
+/**
+ * 是否启用自验证通道（`window.bbProbe`）。
+ *
+ * 任何一个探针/诊断模式开启时都必须启用 —— 否则探针自己就跑不起来
+ * （它们全依赖 `bbProbe.execute` / `screenshot`）。正常启动时**不启用**，
+ * 按最小权限把 `execute`（在渲染进程里跑任意 JS）这类能力关掉。
+ */
+const PROBE_ENABLED = [
+	'--probe',
+	'--ui-probe',
+	'--login-probe',
+	'--media-probe',
+	'--settings-probe',
+	'--compare',
+	'--diagnose',
+	'--selfcheck',
+].some((flag) => process.argv.includes(flag))
+
 const SHOT_DIR = path.join(__dirname, '..', 'probe-output')
 
 // 自定义协议必须在 app ready 之前声明特权：
@@ -77,6 +124,9 @@ function createWindow() {
 			// 生产路径**不需要** webSecurity:false —— 音频走自定义协议，CORS 由协议层解决。
 			// 仅在 `--compare --insecure` 下才关闭，用来量化「方案 B 到底要付什么代价」。
 			webSecurity: !INSECURE_MODE,
+			// 把「是否暴露 bbProbe」这个事实显式传给 preload。
+			// 不在 preload 里推断（打包后 NODE_ENV 之类的信号都不可靠）。
+			additionalArguments: PROBE_ENABLED ? ['--bb-probe-enabled'] : [],
 		},
 	})
 
@@ -219,6 +269,57 @@ void app.whenReady().then(() => {
 		}
 	})
 
+	// ---------- 自检模式：跑完输出 JSON 就退出 ----------
+	//
+	// 默认**建窗口**并等它加载完，这样能顺带验证「渲染进程 + preload 契约」；
+	// 传 `--headless` 才跳过（VPS 上没有 X server，建窗口会直接失败）。
+	if (SELFCHECK_MODE) {
+		const { run: runSelfcheck } = require('./selfcheck.cjs')
+
+		const emit = (result) => {
+			console.log(`__SELFCHECK__${JSON.stringify(result)}`)
+			// 给 stdout 一点刷新时间再退出
+			setTimeout(() => app.exit(0), 300)
+		}
+
+		if (HEADLESS) {
+			// 无窗口：selfcheck 会据此把渲染进程那几项记为「跳过」
+			void runSelfcheck(null, { app })
+				.catch((error) =>
+					emit({
+						ok: false,
+						failures: [`自检崩溃：${error.message}`],
+						stack: String(error.stack ?? '')
+							.split('\n')
+							.slice(0, 8),
+					}),
+				)
+				.then(emit)
+			return
+		}
+
+		// 有窗口：必须等 `did-finish-load`，否则渲染进程还没执行到
+		// `window.__bbReady`，会误报「渲染进程未就绪」。
+		createWindow()
+		mainWindow.webContents.once('did-finish-load', () => {
+			// 给渲染进程的 boot() 一点时间完成（它会读设置、建面板）
+			setTimeout(() => {
+				void runSelfcheck(mainWindow, { app })
+					.catch((error) =>
+						emit({
+							ok: false,
+							failures: [`自检崩溃：${error.message}`],
+							stack: String(error.stack ?? '')
+								.split('\n')
+								.slice(0, 8),
+						}),
+					)
+					.then(emit)
+			}, 3000)
+		})
+		return
+	}
+
 	createWindow()
 
 	if (process.argv.includes('--diagnose')) {
@@ -307,6 +408,30 @@ void app.whenReady().then(() => {
 				.finally(() => {
 					setTimeout(() => app.exit(0), 500)
 				})
+		})
+	} else if (VERIFY_GATING_MODE) {
+		// 门控验证：本模式**不在** PROBE_ENABLED 里，所以 bbProbe **不应**暴露。
+		// 主进程自己去渲染进程读全局对象（不受 preload 暴露与否影响）。
+		mainWindow.webContents.once('did-finish-load', () => {
+			setTimeout(async () => {
+				try {
+					const result = await mainWindow.webContents.executeJavaScript(
+						`(() => ({
+							hasBbProbe: typeof window.bbProbe,
+							hasBbplayer: typeof window.bbplayer,
+							hasSettings: typeof window.bbplayer?.settings,
+							ready: Boolean(window.__bbReady),
+						}))()`,
+						true,
+					)
+					console.log(`__GATING__${JSON.stringify(result)}`)
+				} catch (error) {
+					console.log(
+						`__GATING__${JSON.stringify({ error: String(error.message) })}`,
+					)
+				}
+				setTimeout(() => app.exit(0), 300)
+			}, 3000)
 		})
 	} else if (COMPARE_MODE) {
 		installWebRequestHeaderInjection()

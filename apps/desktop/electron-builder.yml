@@ -1,0 +1,115 @@
+# electron-builder 配置（Phase 5）
+#
+# ## 关于 pnpm + monorepo
+#
+# electron-builder 对 pnpm 的软链 `node_modules` 支持有限，这里用三条措施绕开：
+#
+# 1. **`npmRebuild: false`** —— 本项目**没有任何原生模块**：
+#    数据库用的是 Electron 内置的 `node:sqlite`，不是 `better-sqlite3`。
+#    所以完全不需要 rebuild，关掉它能省掉一大类「找不到编译器/ABI 不匹配」的故障。
+# 2. **core 已打成单文件**（`apps/desktop/build/core.cjs`，见
+#    `scripts/build-core.mjs`）—— core 的 6 个依赖（arktype / crypto-js /
+#    drizzle-orm / fractional-indexing / neverthrow / node-forge）都被内联，
+#    运行时不再需要跨 workspace 解析依赖。
+# 3. **`files` 显式列举**，不依赖 electron-builder 自动推断依赖树。
+#
+# ## 关于版本号
+#
+# 版本来自 `apps/desktop/package.json`，桌面端是**独立版本线**（从 `0.1.0` 起步），
+# 与移动端（`2.7.0-alpha.1`）无关 —— 见 docs/DESKTOP_PLAN.md Phase 5.4。
+
+appId: com.bbplayer.desktop
+productName: BBPlayer
+copyright: Copyright © BBPlayer
+
+directories:
+  output: dist
+  buildResources: build
+
+# 只打进真正需要的东西。**不**包含 packages/ 源码（已 bundle）、
+# 测试、探针截图等。
+files:
+  - src/**/*
+  - build/**/*
+  - drizzle/**/*
+  - package.json
+  # 产物里不需要的东西
+  - '!**/*.md'
+  - '!**/probe-output/**'
+  - '!**/scripts/**'
+  - '!**/dist/**'
+
+# 没有任何原生模块，明确关掉重建与源码编译
+npmRebuild: false
+nodeGypRebuild: false
+buildDependenciesFromSource: false
+
+asar: true
+# asar 内的文件不可写；下载目录/数据库都在 userData 下（Electron 的常规路径），
+# 所以不需要 unpack。这里显式声明保持默认，避免将来误加需要 unpack 的逻辑。
+asarUnpack: []
+
+# 更新走 electron-updater（读它生成的 latest*.yml），
+# **不用**后端那个 `update.json` —— 后者是移动端契约，`downloads` 只认 `android`，
+# 桌面产物发上去会被移动端客户端静默丢弃（见 docs/DESKTOP_PLAN.md Phase 5 的说明）。
+publish:
+  - provider: generic
+    # 占位地址：真实分发地址通过环境变量覆盖，
+    # 例如 BBPLAYER_DESKTOP_UPDATE_URL=https://example.com/desktop
+    url: https://example.com/bbplayer-desktop
+    channel: latest
+
+win:
+  icon: build/icon.png
+  target:
+    - target: nsis
+      arch: [x64]
+    - target: portable
+      arch: [x64]
+  # ⚠️ **不能**在这里用 `${target}` —— electron-builder 的可用宏只有
+  # `${productName}` `${version}` `${arch}` `${ext}` `${os}` `${channel}`，
+  # 没有 `${target}`（实测报 `macro target is not defined`）。
+  #
+  # 而 `.exe` 在 NSIS 与 portable 之间是**歧义**的，所以文件名里的
+  # `nsis` / `portable` 通过各 target 自己的 `artifactName` 声明
+  # （见下面的 `nsis:` 与 `portable:` 段）。这样外部工具只靠文件名就能区分。
+  artifactName: ${productName}-${version}-win-${arch}.${ext}
+  # 未签名：Windows SmartScreen 会提示，属预期（见 Phase 5.3 的签名策略说明）
+  signAndEditExecutable: true
+
+nsis:
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+  shortcutName: BBPlayer
+  artifactName: ${productName}-${version}-win-${arch}-nsis-setup.${ext}
+
+portable:
+  artifactName: ${productName}-${version}-win-${arch}-portable.${ext}
+
+linux:
+  icon: build/icon.png
+  category: AudioVideo
+  synopsis: B 站音乐播放器（桌面端）
+  description: |
+    BBPlayer 桌面端：播放 B 站音频、管理歌单、同步收藏夹、
+    与移动端互通的 WebDAV 备份。
+  target:
+    - target: deb
+      arch: [x64]
+    - target: rpm
+      arch: [x64]
+    - target: AppImage
+      arch: [x64]
+  # 这三个 target 的扩展名互不相同（.deb / .rpm / .AppImage），
+  # 所以 `${ext}` 已经足够区分，不需要额外的后缀。
+  artifactName: ${productName}-${version}-linux-${arch}.${ext}
+  # Debian 包必须声明 maintainer，否则 lintian 会报错
+  maintainer: BBPlayer <noreply@example.com>
+  desktop:
+    entry:
+      Name: BBPlayer
+      Comment: B 站音乐播放器
+      Categories: AudioVideo;Audio;Player;

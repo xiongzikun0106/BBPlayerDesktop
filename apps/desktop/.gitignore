@@ -1,2 +1,5 @@
 # 验证产物（截图 / 报告），不入库
 probe-output/
+
+# 构建产物（由 scripts/build-core.mjs 与 build-icons.mjs 生成）
+build/
