@@ -3,6 +3,8 @@
 	"version": "0.1.0",
 	"private": true,
 	"description": "BBPlayer 桌面端（Electron）—— 播放 B 站音频 / 歌单 / 登录同步 / 下载 / WebDAV 备份",
+	"homepage": "https://github.com/xiongzikun0106/BBPlayerDesktop",
+	"author": "BBPlayer",
 	"main": "src/main.cjs",
 	"scripts": {
 		"build:all": "pnpm run build:prepare && electron-builder --win --linux --publish never",
@@ -25,5 +27,6 @@
 		"electron": "42.11.3",
 		"electron-builder": "^26.15.3",
 		"esbuild": "^0.28.2"
-	}
+	},
+	"//": "author 与 homepage 是 electron-builder 的硬性要求：缺 author 会警告，缺 homepage 会让 fpm 直接失败 —— deb / rpm 都构建不出来，报 `Please specify project homepage`（实测在 Debian 12 上踩到）。"
 }
