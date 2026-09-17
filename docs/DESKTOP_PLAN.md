@@ -989,8 +989,37 @@ pre-commit:
   同理，只断言分数不冒充「匹配对了」；共享歌单的多人同时编辑体验需要两台
   真机同时操作，只断言了协议层的 LWW 与重放幂等
 
-**整体完成时**：
+**整体完成时**（✅ 已达成）：
 
 - Windows `.exe` 与 Linux `.deb`/AppImage 可安装运行
 - 核心路径（播放 / 搜索 / 歌单 / 歌词 / 同步 / 备份）行为与移动端一致
 - 备份文件与移动端互通
+
+**证据（全部可复跑，命令即验收入口）**
+
+| 断言                                                                                            | 命令                                                                                      | 结果                                      |
+| ----------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------- | ----------------------------------------- |
+| Windows 安装包装/卸全程 + portable 启动                                                         | `pnpm verify:win-installer`                                                               | 12/12                                     |
+| 打包产物自洽（bundle / 迁移 / preload 六桥 / 探针门控）                                         | `pnpm verify:packaged`                                                                    | 24/24（Windows 与 linux-unpacked 各一遍） |
+| Linux 三种格式构建 + 装/卸                                                                      | `severs/vps-verify-linux.sh`（VPS 上）                                                    | deb/rpm/AppImage 全通过                   |
+| 共享歌单协议（含真实后端）                                                                      | `pnpm verify:shared`                                                                      | 95/95                                     |
+| 共享歌单界面（点击级 + 截图）                                                                   | `pnpm verify:desktop:shared`                                                              | 47/47（2 项待人工）                       |
+| 跨端歌单顺序互通                                                                                | `pnpm verify:sortkey`                                                                     | 16/16                                     |
+| 外部歌单导入（网易云）协议 / 界面                                                               | `pnpm verify:external-import` / `:desktop:import`                                         | 65/65 / 25/25（2 项待人工）               |
+| 播放 / 三栏 shell / 登录 / 媒体 / 歌词窗 / 设置 / 历史 / 图标 / 下载                            | `pnpm verify:desktop{,:ui,:login,:media,:lyrics-win,:settings,:history,:icons,:download}` | 18/33/38/27/38/50/31/25/34                |
+| 备份格式互通 / WebDAV / 播放历史 SQL / 登录逻辑 / 核心在 Node / B 站 API / 歌词 / MD5 / 桌面 DB | `pnpm verify:backup{,:webdav}` 等                                                         | 48/28/35/52/13/13/68/25/19                |
+
+合计 **23 个套件、879 条断言全绿**（Windows 侧 366 + 与平台无关的 358 +
+打包 36 + tsx 侧 119）；`pnpm lint` 只剩一条**既有的**移动端错误
+（`apps/mobile/src/app/settings/account.tsx:73`，不在本次改动范围内），
+`pnpm type-check` 0 错，`check:core` 通过。
+
+**Linux 侧的验收脚本**（`severs/vps-verify-linux.sh`，与 SSH 凭据同目录因而
+被 gitignore）一键跑完：同步仓库 → 构建三种格式 → 解包目录自检 → 对每种格式
+「安装 → 运行自检 → 卸载」并检查依赖清单里有没有 ALSA。Windows 侧的
+`pnpm verify:win-installer` 做同样的事（静默装/卸 + 对装出来的 exe 跑自检）。
+
+**刻意留下的未验证项（不冒充通过）**：扫码登录的最后一跳（手机确认）、
+外部歌单匹配的语义正确性、歌词窗口的视觉观感、响度均衡的听感、
+共享歌单的多人同时编辑体验 —— 这些都只能人来做，探针里逐条标成
+「待人工验证」并在输出里列出来。
