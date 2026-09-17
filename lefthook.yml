@@ -1,34 +1,14 @@
+# pre-commit 的全部逻辑都在 scripts/precommit.mjs（Node 实现）。
+#
+# 为什么不把逻辑写在下面的 `run` 里（历史教训，已实测复现）：
+#  1. lefthook 会把自己的 `{...}` 模板语法套用到 `run` 脚本正文上，正文里的
+#     `${#files[@]}` 会被它当成占位符处理（实测被替换成 `0files[@]`），脚本随即坏掉；
+#  2. `{staged_files}` 展开时**不加引号**，本仓库存在 `app/(tabs)/index.tsx`、
+#     `app/comments/[bvid].tsx` 这类路径，括号会让 shell 数组赋值直接语法错误；
+#  3. `run` 脚本由 `sh` 执行（Windows 上是 `cmd`），两个平台行为不一致。
+#
+# Node 脚本没有上述任何问题：路径从 git 读取并以数组传给子进程，不经 shell 解析。
 pre-commit:
-  parallel: true
   commands:
-    gitleaks:
-      run: |
-        if command -v gitleaks > /dev/null 2>&1; then
-          gitleaks protect --staged --verbose $([ -f .gitleaks-baseline.json ] && echo "--baseline-path .gitleaks-baseline.json")
-        else
-          echo "⚠️ gitleaks is not installed, skipping secret scan. Install with: brew install gitleaks"
-        fi
-    format-codes:
-      glob: '*.{js,ts,cjs,mjs,d.cts,d.mts,jsx,tsx,json,jsonc,yml,yaml,toml}'
-      run: |
-        if [ -z "{staged_files}" ]; then
-          echo "No staged files to format."
-          exit 0
-        fi
-
-        pnpm oxfmt --write --no-error-on-unmatched-pattern "{staged_files}"
-      stage_fixed: true
-    lint-codes:
-      glob: '*.{js,ts,cjs,mjs,d.cts,d.mts,jsx,tsx}'
-      run: |
-        if [ -z "{staged_files}" ]; then
-          echo "No staged code files to lint."
-          exit 0
-        fi
-
-        pnpm oxlint --type-aware "{staged_files}"
-      stage_fixed: true
-    format-plain-text:
-      glob: '*.{md,mdx}'
-      run: pnpm oxfmt --write "{staged_files}"
-      stage_fixed: true
+    checks:
+      run: node scripts/precommit.mjs
