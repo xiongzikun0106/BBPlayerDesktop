@@ -67,7 +67,13 @@ function gitOutput(args) {
 
 /** 暂存区中新增/修改/重命名的文件（排除删除） */
 function stagedFiles() {
-	return gitOutput(['diff', '--cached', '--name-only', '--diff-filter=ACMR', '-z'])
+	return gitOutput([
+		'diff',
+		'--cached',
+		'--name-only',
+		'--diff-filter=ACMR',
+		'-z',
+	])
 		.split('\0')
 		.filter(Boolean)
 }
@@ -80,6 +86,24 @@ const hasExtension = (file, extensions) => {
 /** 只保留工作区中确实存在的文件（重命名后旧路径可能已不存在） */
 const existingOnly = (files) =>
 	files.filter((file) => existsSync(path.join(ROOT, file)))
+
+/**
+ * 把格式化后的文件重新加入暂存区。
+ *
+ * 用 `git add -- <files>`，路径以数组传入、不经 shell，因此含括号/方括号的
+ * 路径同样安全。
+ */
+function restage(files) {
+	try {
+		execFileSync('git', ['add', '--', ...files], {
+			cwd: ROOT,
+			stdio: ['ignore', 'ignore', 'pipe'],
+		})
+	} catch (error) {
+		const message = error instanceof Error ? error.message : String(error)
+		console.error(`⚠ 重新暂存格式化结果失败：${message}`)
+	}
+}
 
 /**
  * 解析 workspace 内某工具的 JS 入口。
@@ -108,7 +132,9 @@ function resolveWorkspaceTool(name) {
 function runTool(label, tool, args) {
 	const entry = resolveWorkspaceTool(tool)
 	if (!entry) {
-		console.error(`✗ ${label}: 在 node_modules 中找不到 ${tool}，请先执行 pnpm install`)
+		console.error(
+			`✗ ${label}: 在 node_modules 中找不到 ${tool}，请先执行 pnpm install`,
+		)
 		return false
 	}
 
@@ -188,12 +214,15 @@ function main() {
 			])
 		)
 			return 1
+
+		// oxfmt 是原地写回，改完的文件必须重新暂存，否则格式化只在工作区生效、
+		// 没有被提交（原 lefthook 配置里的 `stage_fixed: true` 就是干这个的）。
+		if (!CHECK_ONLY) restage(formatTargets)
 	}
 
 	if (lintTargets.length > 0) {
 		console.log(`\n▸ oxlint（${lintTargets.length} 个文件）`)
-		if (!runTool('oxlint', 'oxlint', ['--type-aware', ...lintTargets]))
-			return 1
+		if (!runTool('oxlint', 'oxlint', ['--type-aware', ...lintTargets])) return 1
 	}
 
 	console.log('\n✅ pre-commit 检查通过')
