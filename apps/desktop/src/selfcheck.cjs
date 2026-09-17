@@ -173,6 +173,9 @@ async function run(window, { app }) {
 					hasSettings: typeof window.bbplayer?.settings,
 					hasDownload: typeof window.bbplayer?.download,
 					hasBackup: typeof window.bbplayer?.backup,
+					hasShare: typeof window.bbplayer?.share,
+					hasPlaylist: typeof window.bbplayer?.playlist,
+					hasExternalImport: typeof window.bbplayer?.externalImport,
 					theme: document.documentElement.getAttribute('data-theme'),
 					title: document.title,
 					bodyLength: document.body.innerHTML.length,
@@ -181,15 +184,23 @@ async function run(window, { app }) {
 			)
 			out.renderer = renderer
 			record('渲染进程就绪', renderer.ready)
+			// 逐个列出来断言，不进「都行」的兜底判断里 ——
+			// 少一个桥就是打包后某个功能**整块消失**，必须指名道姓地失败。
 			record(
-				'preload 契约完整（settings/download/backup 都在）',
+				'preload 契约完整（settings/download/backup/share/playlist/externalImport 都在）',
 				renderer.hasSettings === 'object' &&
 					renderer.hasDownload === 'object' &&
-					renderer.hasBackup === 'object',
+					renderer.hasBackup === 'object' &&
+					renderer.hasShare === 'object' &&
+					renderer.hasPlaylist === 'object' &&
+					renderer.hasExternalImport === 'object',
 				JSON.stringify({
 					settings: renderer.hasSettings,
 					download: renderer.hasDownload,
 					backup: renderer.hasBackup,
+					share: renderer.hasShare,
+					playlist: renderer.hasPlaylist,
+					externalImport: renderer.hasExternalImport,
 				}),
 			)
 			record(
