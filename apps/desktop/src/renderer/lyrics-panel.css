@@ -1,0 +1,194 @@
+/*
+ * 歌词面板样式（可独立于 style.css 使用）。
+ *
+ * 语义色与 style.css / packages/design-tokens 对齐（深色 Material 3 基调），
+ * 但每个变量都带兜底值，因此歌词面板可以被嵌进任何页面而不要求先引入 style.css。
+ */
+
+.lyrics-panel {
+	--ly-bg: var(--surface, #211f26);
+	--ly-surface-2: var(--surface-2, #2b2930);
+	--ly-surface-3: var(--surface-3, #36343b);
+	--ly-primary: var(--primary, #d0bcff);
+	--ly-on-surface: var(--on-surface, #e6e1e5);
+	--ly-on-surface-variant: var(--on-surface-variant, #cac4d0);
+	--ly-outline: var(--outline, #49454f);
+
+	display: flex;
+	flex-direction: column;
+	height: 100%;
+	min-height: 0;
+	background: var(--ly-bg);
+	color: var(--ly-on-surface);
+}
+
+/* ── 头部：行号 / 偏移 ─────────────────────────────────── */
+.lyrics-panel__header {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 8px;
+	padding: 10px 12px;
+	border-bottom: 1px solid var(--ly-outline);
+	flex: 0 0 auto;
+}
+
+.lyrics-panel__meta {
+	font-size: 11px;
+	font-variant-numeric: tabular-nums;
+	font-family: 'Cascadia Code', Consolas, monospace;
+	color: var(--ly-on-surface-variant);
+	white-space: nowrap;
+}
+
+.lyrics-panel__offset {
+	display: flex;
+	align-items: center;
+	gap: 4px;
+}
+
+.lyrics-panel__offset-value {
+	min-width: 46px;
+	text-align: center;
+	font-size: 12px;
+	color: var(--ly-primary);
+}
+
+.lyrics-panel__offset-btn {
+	background: var(--ly-surface-3);
+	color: var(--ly-on-surface);
+	border: none;
+	border-radius: 9999px;
+	padding: 4px 9px;
+	font-size: 11px;
+	font-family: inherit;
+	cursor: pointer;
+	white-space: nowrap;
+}
+
+.lyrics-panel__offset-btn:hover {
+	filter: brightness(1.18);
+}
+
+.lyrics-panel__offset-btn.is-reset {
+	padding: 4px 7px;
+	opacity: 0.8;
+}
+
+/* ── 滚动区 ────────────────────────────────────────────── */
+.lyrics-panel__scroll {
+	position: relative;
+	flex: 1 1 auto;
+	min-height: 0;
+	overflow-y: auto;
+	overflow-x: hidden;
+	scrollbar-width: thin;
+	/* 滚动由 setActiveIndex 驱动，避免用户滚到一半被浏览器锚定抢走 */
+	overflow-anchor: none;
+}
+
+.lyrics-panel__list {
+	list-style: none;
+	margin: 0;
+	padding: 0 14px;
+}
+
+/*
+ * 上下留白 = 半个滚动区高度，这样第一行和最后一行也能被滚到正中央。
+ *
+ * 高度由 JS 按实际像素写进 style（见 lyrics-panel.js 的 applySpacerHeight）：
+ * 这里**不能**用 45% —— 百分比高度依赖父级有确定高度，而滚动区是 flex 项，
+ * 实测百分比不生效、退回 min-height:40px，导致高亮行永远贴不到中间。
+ */
+.lyrics-panel__spacer {
+	height: 40px;
+	min-height: 0;
+	pointer-events: none;
+}
+
+/* ── 单行 ──────────────────────────────────────────────── */
+.lyrics-panel__line {
+	display: flex;
+	flex-direction: column;
+	gap: 3px;
+	padding: 8px 10px;
+	margin: 2px 0;
+	border-radius: 10px;
+	border-left: 3px solid transparent;
+	cursor: pointer;
+	color: var(--ly-on-surface-variant);
+	transition:
+		color 0.18s ease,
+		background-color 0.18s ease,
+		transform 0.18s ease,
+		opacity 0.18s ease;
+	opacity: 0.62;
+}
+
+.lyrics-panel__line:hover {
+	background: var(--ly-surface-2);
+	color: var(--ly-on-surface);
+	opacity: 0.9;
+}
+
+.lyrics-panel__line.is-active {
+	opacity: 1;
+	color: var(--ly-primary);
+	background: color-mix(in srgb, var(--ly-primary) 14%, transparent);
+	border-left-color: var(--ly-primary);
+	transform: translateX(2px);
+}
+
+.lyrics-panel__text {
+	font-size: 14px;
+	line-height: 1.45;
+	word-break: break-word;
+}
+
+.lyrics-panel__line.is-active .lyrics-panel__text {
+	font-size: 16px;
+	font-weight: 600;
+}
+
+.lyrics-panel__text.is-blank {
+	letter-spacing: 0.35em;
+	opacity: 0.5;
+}
+
+.lyrics-panel__translation {
+	font-size: 12px;
+	line-height: 1.4;
+	color: var(--ly-on-surface-variant);
+	opacity: 0.9;
+	word-break: break-word;
+}
+
+.lyrics-panel__line.is-active .lyrics-panel__translation {
+	color: var(--ly-primary);
+	opacity: 0.85;
+}
+
+/* ── 空状态 ────────────────────────────────────────────── */
+.lyrics-panel__empty {
+	padding: 24px 12px;
+	text-align: center;
+	font-size: 13px;
+	color: var(--ly-on-surface-variant);
+}
+
+.lyrics-panel__empty[hidden] {
+	display: none;
+}
+
+/*
+ * 测试台（lyrics-lab.html）用：给面板一个可见的边界，
+ * 这样截图里能一眼看出面板有没有撑开、有没有错位。
+ */
+.lyrics-lab__stage {
+	width: 340px;
+	height: 560px;
+	border: 1px solid var(--ly-outline, #49454f);
+	border-radius: 12px;
+	overflow: hidden;
+	background: var(--ly-bg, #211f26);
+}

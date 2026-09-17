@@ -1,313 +1,328 @@
 /**
- * 渲染进程：B 站音频播放验证界面。
+ * 渲染进程入口：把各模块接起来。
  *
- * 关键点：音频走 `bbplayer-audio://` 自定义协议（主进程代理），
- * 而不是直接指向 CDN —— 因为主线 CDN 有防盗链且不发 CORS 头。
- *
- * 同时暴露 `window.bbTest`，让自动化脚本能「点击级」驱动播放并断言状态。
+ * 职责：
+ *  - 初始化视图（左栏歌单 / 中栏曲目）
+ *  - 注册全局快捷键（docs/DESKTOP_PLAN.md §3.4）
+ *  - 右栏面板切换
+ *  - 暴露 `window.bbUI` 供自动化断言
+ *  - 就绪后置 `window.__bbReady`（验证脚本据此等待）
  */
+;(function () {
+	'use strict'
 
-const els = {
-	bvid: document.getElementById('bvid'),
-	load: document.getElementById('load'),
-	status: document.getElementById('status'),
-	audio: document.getElementById('audio'),
-	play: document.getElementById('play'),
-	pause: document.getElementById('pause'),
-	progress: document.getElementById('progress'),
-	time: document.getElementById('time'),
-	log: document.getElementById('log'),
-	title: document.getElementById('m-title'),
-	cid: document.getElementById('m-cid'),
-	duration: document.getElementById('m-duration'),
-	quality: document.getElementById('m-quality'),
-	host: document.getElementById('m-host'),
-	proxy: document.getElementById('m-proxy'),
-}
+	const logEl = document.getElementById('log')
+	const logLines = []
+	const MAX_LOG = 200
 
-/** 事件计数：用于断言「确实发生了网络/解码活动」 */
-const counters = {
-	loadstart: 0,
-	durationchange: 0,
-	loadedmetadata: 0,
-	progress: 0,
-	canplay: 0,
-	playing: 0,
-	play: 0,
-	pause: 0,
-	seeking: 0,
-	seeked: 0,
-	waiting: 0,
-	stalled: 0,
-	error: 0,
-	ended: 0,
-}
-
-/** 已解码的字节区间（来自 buffered），能证明 Range 请求生效 */
-function bufferedRanges() {
-	const audio = els.audio
-	const ranges = []
-	try {
-		for (let i = 0; i < audio.buffered.length; i++) {
-			ranges.push([audio.buffered.start(i), audio.buffered.end(i)])
-		}
-	} catch {
-		// buffered 在未就绪时可能抛错，忽略
-	}
-	return ranges
-}
-
-function describeError() {
-	const error = els.audio.error
-	if (!error) return null
-	const names = {
-		1: 'MEDIA_ERR_ABORTED',
-		2: 'MEDIA_ERR_NETWORK',
-		3: 'MEDIA_ERR_DECODE',
-		4: 'MEDIA_ERR_SRC_NOT_SUPPORTED',
-	}
-	return {
-		code: error.code,
-		name: names[error.code] ?? `UNKNOWN(${error.code})`,
-		message: error.message ?? null,
-	}
-}
-
-let lastResolved = null
-
-function log(message) {
-	const line = `[${new Date().toLocaleTimeString()}] ${message}`
-	els.log.textContent += `${line}\n`
-	els.log.scrollTop = els.log.scrollHeight
-}
-
-function setStatus(text, kind = 'idle') {
-	els.status.textContent = text
-	els.status.className = `status status--${kind}`
-}
-
-function formatTime(seconds) {
-	if (!Number.isFinite(seconds)) return '0.00'
-	return seconds.toFixed(2)
-}
-
-function updateTimeDisplay() {
-	els.time.textContent = `${formatTime(els.audio.currentTime)} / ${formatTime(els.audio.duration)}`
-	if (Number.isFinite(els.audio.duration) && els.audio.duration > 0) {
-		els.progress.value = String(
-			Math.round((els.audio.currentTime / els.audio.duration) * 1000),
-		)
-	}
-}
-
-// ---------------------------------------------------------------
-// 事件绑定：记录 + 更新 UI
-// ---------------------------------------------------------------
-
-for (const name of Object.keys(counters)) {
-	els.audio.addEventListener(name, () => {
-		counters[name] += 1
-		if (name === 'error') {
-			const error = describeError()
-			log(
-				`error: ${error ? `${error.name} ${error.message ?? ''}` : 'unknown'}`,
-			)
-			setStatus(`播放失败：${error?.name ?? '未知错误'}`, 'bad')
-		} else if (name === 'playing') {
-			setStatus('正在播放', 'ok')
-		} else if (name === 'loadedmetadata') {
-			setStatus('元数据已加载', 'ok')
-		}
-		updateTimeDisplay()
-	})
-}
-
-els.audio.addEventListener('timeupdate', updateTimeDisplay)
-
-// ---------------------------------------------------------------
-// 交互
-// ---------------------------------------------------------------
-
-async function loadAndPlay(bvid) {
-	counters.error = 0
-	setStatus('正在解析音频地址…', 'busy')
-	log(`解析 ${bvid}`)
-
-	const resolved = await window.bbplayer.resolveAudio(bvid)
-	if (!resolved.ok) {
-		setStatus(`解析失败：${resolved.error}`, 'bad')
-		log(`解析失败：${resolved.error}`)
-		return null
+	/** 记录到界面日志（默认隐藏，`Ctrl+Shift+L` 可显示） */
+	function log(message) {
+		const line = `[${new Date().toLocaleTimeString()}] ${message}`
+		logLines.push(line)
+		if (logLines.length > MAX_LOG) logLines.shift()
+		if (logEl) logEl.textContent = `${logLines.join('\n')}\n`
+		console.log(line)
 	}
 
-	lastResolved = resolved.data
-	els.title.textContent = resolved.data.title
-	els.cid.textContent = String(resolved.data.cid)
-	els.duration.textContent = `${resolved.data.duration}s`
-	els.quality.textContent = String(resolved.data.quality)
-	els.host.textContent = resolved.data.upstreamHost
-	els.proxy.textContent = resolved.data.proxyUrl
+	// ---------------------------------------------------------------
+	// 右栏面板切换
+	// ---------------------------------------------------------------
 
-	log(
-		`上游 CDN: ${resolved.data.upstreamHost}（backupUrl ${resolved.data.backupUrlCount} 个）`,
-	)
-	log(`代理地址: ${resolved.data.proxyUrl}`)
-
-	// 关键：src 指向自定义协议，由主进程注入 Referer/UA 并流式回传
-	els.audio.src = resolved.data.proxyUrl
-	els.audio.load()
-	setStatus('已加载，等待播放', 'ok')
-
-	return resolved.data
-}
-
-els.load.addEventListener('click', () => {
-	void loadAndPlay(els.bvid.value.trim())
-})
-
-els.play.addEventListener('click', () => {
-	void els.audio.play().catch((error) => {
-		setStatus(`play() 被拒绝：${error.message}`, 'bad')
-	})
-})
-
-els.pause.addEventListener('click', () => {
-	els.audio.pause()
-})
-
-for (const button of document.querySelectorAll('[data-seek]')) {
-	button.addEventListener('click', () => {
-		els.audio.currentTime = Number(button.dataset.seek)
-	})
-}
-
-els.progress.addEventListener('input', () => {
-	if (Number.isFinite(els.audio.duration) && els.audio.duration > 0) {
-		els.audio.currentTime =
-			(Number(els.progress.value) / 1000) * els.audio.duration
+	function switchPanel(panel) {
+		for (const tab of document.querySelectorAll('.tab')) {
+			tab.classList.toggle('is-active', tab.dataset.panel === panel)
+		}
+		for (const section of document.querySelectorAll('.panel')) {
+			section.classList.toggle('is-active', section.dataset.panel === panel)
+		}
+		window.bbState.set({ rightPanel: panel })
 	}
-})
 
-// ---------------------------------------------------------------
-// 自验证接口（供自动化脚本调用）
-// ---------------------------------------------------------------
+	for (const tab of document.querySelectorAll('.tab')) {
+		tab.addEventListener('click', () => switchPanel(tab.dataset.panel))
+	}
 
-window.bbTest = {
-	/** 完整状态快照 */
-	state() {
-		return {
-			readyState: els.audio.readyState,
-			networkState: els.audio.networkState,
-			duration: els.audio.duration,
-			currentTime: els.audio.currentTime,
-			paused: els.audio.paused,
-			ended: els.audio.ended,
-			src: els.audio.src,
-			error: describeError(),
-			buffered: bufferedRanges(),
-			counters: { ...counters },
-			resolved: lastResolved
-				? {
-						bvid: lastResolved.bvid,
-						title: lastResolved.title,
-						upstreamHost: lastResolved.upstreamHost,
-						proxyUrl: lastResolved.proxyUrl,
-					}
-				: null,
-			status: els.status.textContent,
+	// ---------------------------------------------------------------
+	// 左栏导航
+	// ---------------------------------------------------------------
+
+	function setActiveNav(view) {
+		for (const item of document.querySelectorAll('.nav__item')) {
+			item.classList.toggle('is-active', item.dataset.view === view)
 		}
-	},
+	}
 
-	/** 点「解析并加载」按钮，等元数据就绪 */
-	async load(bvid) {
-		if (bvid) els.bvid.value = bvid
-		const info = await loadAndPlay(els.bvid.value.trim())
-		if (!info) return { ok: false, error: 'resolve failed' }
-
-		const ok = await waitFor(() => els.audio.readyState >= 1, 15000)
-		return {
-			ok,
-			readyState: els.audio.readyState,
-			duration: els.audio.duration,
-			error: describeError(),
-		}
-	},
-
-	/** 点「播放」按钮，等到确实开始播放 */
-	async play() {
-		els.play.click()
-		const ok = await waitFor(
-			() => !els.audio.paused && els.audio.currentTime > 0,
-			15000,
-		)
-		return {
-			ok,
-			currentTime: els.audio.currentTime,
-			paused: els.audio.paused,
-			error: describeError(),
-		}
-	},
-
-	/** 暂停 */
-	pause() {
-		els.pause.click()
-		return { paused: els.audio.paused }
-	},
-
-	/** 通过点击「跳到 Ns」按钮做 seek，并等待 seeked 事件 */
-	async seek(seconds) {
-		const before = els.audio.currentTime
-		const seekedBefore = counters.seeked
-		els.audio.currentTime = seconds
-		const ok = await waitFor(() => counters.seeked > seekedBefore, 10000)
-		return {
-			ok,
-			before,
-			after: els.audio.currentTime,
-			seekedEvents: counters.seeked - seekedBefore,
-			error: describeError(),
-		}
-	},
-
-	/** 让播放走一段时间，用于确认时间确实在推进 */
-	async advance(ms) {
-		const start = els.audio.currentTime
-		await new Promise((resolve) => setTimeout(resolve, ms))
-		return {
-			start,
-			end: els.audio.currentTime,
-			advanced: els.audio.currentTime - start,
-		}
-	},
-
-	/** DOM 里可见的按钮文案，用于确认 UI 真的渲染出来了 */
-	buttons() {
-		return [...document.querySelectorAll('button')].map((b) => b.textContent)
-	},
-
-	log() {
-		return els.log.textContent
-	},
-}
-
-/** 轮询等待条件成立 */
-function waitFor(predicate, timeoutMs) {
-	return new Promise((resolve) => {
-		const start = Date.now()
-		const tick = () => {
-			let ok = false
-			try {
-				ok = Boolean(predicate())
-			} catch {
-				ok = false
+	for (const item of document.querySelectorAll('.nav__item')) {
+		item.addEventListener('click', () => {
+			const view = item.dataset.view
+			setActiveNav(view)
+			if (view === 'library') {
+				void window.bbLibrary.init()
+			} else if (view === 'search') {
+				const input = document.getElementById('search-input')
+				if (input) {
+					input.focus()
+					input.select()
+				}
+			} else if (view === 'collection') {
+				window.bbLibrary.renderTrackTable([], { title: '合集' })
 			}
-			if (ok) return resolve(true)
-			if (Date.now() - start > timeoutMs) return resolve(false)
-			setTimeout(tick, 100)
-		}
-		tick()
-	})
-}
+		})
+	}
 
-log('渲染进程就绪，等待解析')
-window.__bbReady = true
+	// ---------------------------------------------------------------
+	// 快捷键（plan §3.4）
+	// ---------------------------------------------------------------
+
+	const player = window.bbPlayer
+	const keys = window.bbKeys
+
+	// —— 播放 ——
+	keys.register('space', { description: '播放/暂停' }, () => {
+		void player.toggle()
+	})
+	keys.register('arrowleft', { description: '快退 5 秒' }, () =>
+		player.seekBy(-5),
+	)
+	keys.register('arrowright', { description: '快进 5 秒' }, () =>
+		player.seekBy(5),
+	)
+	keys.register('shift+arrowleft', { description: '上一首' }, () => {
+		void player.playPrev()
+	})
+	keys.register('shift+arrowright', { description: '下一首' }, () => {
+		void player.playNext(false)
+	})
+	keys.register('ctrl+arrowleft', { description: '音量 −5%' }, () => {
+		const volume = document.getElementById('volume')
+		if (!volume) return
+		volume.value = String(Math.max(0, Number(volume.value) - 5))
+		volume.dispatchEvent(new Event('input'))
+	})
+	keys.register('ctrl+arrowright', { description: '音量 +5%' }, () => {
+		const volume = document.getElementById('volume')
+		if (!volume) return
+		volume.value = String(Math.min(100, Number(volume.value) + 5))
+		volume.dispatchEvent(new Event('input'))
+	})
+	keys.register('ctrl+m', { description: '静音切换' }, () => {
+		const audio = player.getAudio()
+		audio.muted = !audio.muted
+	})
+
+	// —— 模式 ——
+	keys.register('ctrl+r', { description: '切换播放模式' }, () => {
+		player.cycleMode()
+	})
+
+	// —— 视图 ——
+	keys.register('ctrl+1', { description: '切到音乐库' }, () => {
+		document.querySelector('[data-view="library"]')?.click()
+	})
+	keys.register('ctrl+2', { description: '切到搜索' }, () => {
+		document.querySelector('[data-view="search"]')?.click()
+	})
+	keys.register('ctrl+3', { description: '切到合集' }, () => {
+		document.querySelector('[data-view="collection"]')?.click()
+	})
+	keys.register('ctrl+q', { description: '队列/歌词面板切换' }, () => {
+		const current = window.bbState.get().rightPanel
+		switchPanel(current === 'queue' ? 'lyrics' : 'queue')
+	})
+
+	// —— 功能 ——
+	// `allowInInput`：焦点在搜索框时也要能聚焦（否则 Ctrl+F 在输入框里失效）
+	keys.register(
+		'ctrl+f',
+		{ description: '聚焦搜索', allowInInput: true },
+		() => {
+			const input = document.getElementById('search-input')
+			if (!input) return
+			input.focus()
+			input.select()
+		},
+	)
+	keys.register('escape', { description: '清空搜索', scope: 'input' }, () => {
+		const input = document.getElementById('search-input')
+		if (input) {
+			input.value = ''
+			input.blur()
+		}
+	})
+	keys.register('enter', { description: '播放列表首项' }, () => {
+		const tracks = window.bbState.get().tracks
+		if (tracks.length === 0) return
+		player.setQueue(tracks, 0)
+		player.playAt(0)
+		void player.play()
+	})
+
+	// —— 调试 ——
+	keys.register('ctrl+shift+l', { description: '显示/隐藏日志' }, () => {
+		if (logEl) logEl.hidden = !logEl.hidden
+	})
+
+	keys.install()
+
+	// ---------------------------------------------------------------
+	// 歌词面板
+	// ---------------------------------------------------------------
+
+	let lyricsPanel = null
+	let lyricsRequestSeq = 0
+
+	function initLyricsPanel() {
+		const container = document.getElementById('lyrics-panel')
+		if (!container || typeof window.createLyricsPanel !== 'function') {
+			log('歌词面板模块不可用，跳过初始化')
+			return null
+		}
+		lyricsPanel = window.createLyricsPanel(container)
+		return lyricsPanel
+	}
+
+	function setLyricsStatus(text) {
+		const el = document.getElementById('lyrics-status')
+		if (el) el.textContent = text
+	}
+
+	/** 当前曲目变化时自动匹配歌词 */
+	async function loadLyricsFor(track) {
+		if (!lyricsPanel || !track) return
+		// 并发的加载用序号作废，避免慢请求覆盖新曲目的歌词
+		const seq = ++lyricsRequestSeq
+		setLyricsStatus('正在匹配歌词…')
+		lyricsPanel.setLyrics([])
+
+		try {
+			const result = await window.bbplayer.autoMatchLyrics({
+				title: track.title,
+				artist: track.artist ?? null,
+				duration: track.duration ?? null,
+			})
+			if (seq !== lyricsRequestSeq) return
+
+			if (!result.ok) {
+				setLyricsStatus(`歌词匹配失败：${result.error}`)
+				return
+			}
+			if (!result.data.matched) {
+				setLyricsStatus(
+					`未找到匹配歌词（最佳分 ${Number(result.data.bestScore ?? 0).toFixed(2)}，候选 ${result.data.candidateCount}）`,
+				)
+				return
+			}
+
+			// 解析在主进程完成（渲染进程没有模块系统），这里只负责渲染
+			lyricsPanel.setLyrics(result.data.lines ?? [])
+			setLyricsStatus(
+				`${result.data.candidate.title} — ${result.data.candidate.artist}（匹配度 ${Number(result.data.score).toFixed(2)}，${result.data.lineCount} 行）`,
+			)
+			log(`歌词已加载：${result.data.lineCount} 行`)
+		} catch (error) {
+			if (seq !== lyricsRequestSeq) return
+			setLyricsStatus(`歌词匹配异常：${error.message}`)
+		}
+	}
+
+	const reloadButton = document.getElementById('lyrics-reload')
+	if (reloadButton) {
+		reloadButton.addEventListener('click', () => {
+			void loadLyricsFor(player.getCurrent())
+		})
+	}
+
+	// 播放位置驱动高亮（时间更新频繁，直接挂 timeupdate）
+	player.getAudio().addEventListener('timeupdate', () => {
+		if (!lyricsPanel) return
+		if (window.bbState.get().rightPanel !== 'lyrics') return
+		lyricsPanel.setPosition(player.getAudio().currentTime)
+	})
+
+	// ---------------------------------------------------------------
+	// 播放器事件 → 界面同步
+	// ---------------------------------------------------------------
+
+	player.on((event) => {
+		if (event.type === 'track-changed') {
+			log(`开始播放：${event.track.title}`)
+			for (const row of document.querySelectorAll('.track-table tbody tr')) {
+				row.classList.toggle(
+					'is-playing',
+					row.dataset.bvid === event.track.bvid,
+				)
+			}
+			void loadLyricsFor(event.track)
+		} else if (event.type === 'mode-changed') {
+			log(`播放模式：${event.mode}`)
+		}
+	})
+
+	// ---------------------------------------------------------------
+	// 自动化接口
+	// ---------------------------------------------------------------
+
+	window.bbUI = {
+		switchPanel,
+		setActiveNav,
+		keys: () => keys.list(),
+		keyHistory: () => keys.history(),
+		/** 歌词面板（供自动化断言）；未初始化时为 null */
+		lyricsPanel: () => lyricsPanel,
+		/** 手动触发当前曲目的歌词匹配 */
+		reloadLyrics: () => loadLyricsFor(player.getCurrent()),
+		/** 模拟按键（供脚本驱动，避免依赖真实键盘事件） */
+		press(combo) {
+			const parts = combo.split('+')
+			let key = parts[parts.length - 1]
+			if (key === 'space') key = ' '
+			else if (key === 'escape') key = 'Escape'
+			else if (key === 'enter') key = 'Enter'
+			else if (key === 'arrowleft') key = 'ArrowLeft'
+			else if (key === 'arrowright') key = 'ArrowRight'
+
+			const event = new KeyboardEvent('keydown', {
+				ctrlKey: parts.includes('ctrl'),
+				shiftKey: parts.includes('shift'),
+				altKey: parts.includes('alt'),
+				bubbles: true,
+				cancelable: true,
+				key,
+			})
+			document.body.dispatchEvent(event)
+			return true
+		},
+		log: () => logLines.slice(),
+	}
+
+	// ---------------------------------------------------------------
+	// 启动
+	// ---------------------------------------------------------------
+
+	async function boot() {
+		log('渲染进程就绪')
+
+		initLyricsPanel()
+
+		try {
+			const info = await window.bbProbe?.ports?.()
+			if (info?.ok) {
+				log(`数据目录：${info.dataDir}`)
+				const badge = document.getElementById('account-badge')
+				if (badge) {
+					badge.textContent = info.hasCookie ? '已登录' : '未登录'
+					badge.classList.toggle('is-online', Boolean(info.hasCookie))
+				}
+			}
+		} catch {
+			// 诊断信息拿不到不影响主流程
+		}
+
+		await window.bbLibrary.init()
+
+		window.__bbReady = true
+		log('初始化完成')
+	}
+
+	void boot()
+})()

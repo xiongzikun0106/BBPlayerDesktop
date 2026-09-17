@@ -49,4 +49,18 @@ function loadCore() {
 	return cached
 }
 
-module.exports = { loadCore, CORE_ENTRY }
+/**
+ * 用同一个 jiti 实例加载任意 TS/ESM 文件。
+ *
+ * 用途：`packages/splash` 这类 core 未依赖的纯 TS 包（core 的依赖面刻意保持小），
+ * 以及将来需要从 CJS 主进程引用的其他 TS 模块。
+ * 复用同一实例可保证模块缓存一致（core 的端口注册依赖这一点）。
+ */
+function loadTsFile(absolutePath) {
+	if (!fs.existsSync(absolutePath)) {
+		throw new Error(`[desktop] 找不到模块：${absolutePath}`)
+	}
+	return jiti(absolutePath)
+}
+
+module.exports = { loadCore, loadTsFile, CORE_ENTRY }

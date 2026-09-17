@@ -56,6 +56,7 @@ export * from './api/bilibili/convert'
 export * from './api/bilibili/garb'
 export * from './api/bilibili/wbi'
 export * from './api/netease/crypto'
+export * from './api/netease/lyrics'
 export * from './api/netease/utils'
 
 // ---------- utils ----------
@@ -74,6 +75,7 @@ export * from './ports/index'
 
 // ---------- services ----------
 export * from './services/genKey'
+export * from './services/lyricMatcher'
 
 // ---------- theme ----------
 export * from './theme/schema'

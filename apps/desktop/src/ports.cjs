@@ -22,6 +22,32 @@ function resolveDataDir() {
 	return path.join(process.env.TEMP ?? '/tmp', 'bbplayer-desktop')
 }
 
+/**
+ * 在 Electron 里把 `userData` / `sessionData` 指到我们自己的数据目录。
+ *
+ * ⚠️ 必须在 `app.whenReady()` **之前**调用。若在 ready 之后再改路径：
+ * Chromium 的磁盘缓存已按旧路径初始化，改路径后缓存目录不存在，会持续报
+ * `Gpu Cache Creation failed: -2` / `Unable to create cache`，最终
+ * **network service 崩溃并重启** —— 表现为媒体请求挂住、一直不播。
+ * 这是实测踩到的坑：`--ui-probe` 里点「播放全部」后 `paused=false` 但
+ * `currentTime` 永远停在 0，而日志里就是上面那两行缓存错误。
+ *
+ * `sessionData` 一并指过去，确保 Chromium 的缓存有可写目录。
+ */
+function configureElectronPaths() {
+	if (!process.env.BBPLAYER_DATA_DIR) return false
+	try {
+		const { app } = require('electron')
+		if (!app?.setPath) return false
+		fs.mkdirSync(process.env.BBPLAYER_DATA_DIR, { recursive: true })
+		app.setPath('userData', process.env.BBPLAYER_DATA_DIR)
+		app.setPath('sessionData', process.env.BBPLAYER_DATA_DIR)
+		return true
+	} catch {
+		return false
+	}
+}
+
 const DATA_DIR = resolveDataDir()
 fs.mkdirSync(DATA_DIR, { recursive: true })
 
@@ -216,6 +242,7 @@ core.registerCorePorts(desktopPorts)
 
 module.exports = {
 	desktopPorts,
+	configureElectronPaths,
 	describePorts,
 	sqlite,
 	db,

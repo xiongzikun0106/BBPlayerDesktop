@@ -4,59 +4,155 @@
 		<meta charset="utf-8" />
 		<meta
 			http-equiv="Content-Security-Policy"
-			content="default-src 'self'; media-src bbplayer-audio: https:; connect-src bbplayer-audio: https:; style-src 'self' 'unsafe-inline'"
+			content="default-src 'self'; media-src bbplayer-audio: https:; connect-src bbplayer-audio: https:; img-src 'self' data: https:; style-src 'self' 'unsafe-inline'"
 		/>
-		<title>BBPlayer Desktop — Phase 1 验证</title>
+		<title>BBPlayer Desktop</title>
 		<link rel="stylesheet" href="style.css" />
+		<link rel="stylesheet" href="lyrics-panel.css" />
 	</head>
 	<body>
 		<div class="app">
-			<header>
-				<h1>BBPlayer Desktop</h1>
-				<p class="subtitle">Phase 1 · B 站音频播放可行性验证</p>
-			</header>
-
-			<section class="card">
-				<div class="field">
-					<label for="bvid">视频 BV 号</label>
-					<input id="bvid" value="BV1GJ411x7h7" spellcheck="false" />
-					<button id="load">解析并加载</button>
+			<!-- ── 左栏：导航 + 歌单 ───────────────────────────── -->
+			<aside class="sidebar" data-testid="sidebar">
+				<div class="sidebar__brand">
+					<span class="sidebar__title">BBPlayer</span>
+					<span class="sidebar__badge" id="account-badge" data-testid="account-badge"
+						>未登录</span
+					>
 				</div>
 
-				<div id="status" class="status status--idle">等待操作</div>
+				<nav class="nav" data-testid="nav">
+					<button class="nav__item is-active" data-view="library" data-testid="nav-library">
+						<span class="nav__icon">♪</span> 音乐库
+					</button>
+					<button class="nav__item" data-view="search" data-testid="nav-search">
+						<span class="nav__icon">⌕</span> 搜索
+					</button>
+					<button class="nav__item" data-view="collection" data-testid="nav-collection">
+						<span class="nav__icon">▤</span> 合集
+					</button>
+				</nav>
 
-				<dl class="meta">
-					<div><dt>标题</dt><dd id="m-title">—</dd></div>
-					<div><dt>cid</dt><dd id="m-cid">—</dd></div>
-					<div><dt>时长</dt><dd id="m-duration">—</dd></div>
-					<div><dt>音质 id</dt><dd id="m-quality">—</dd></div>
-					<div><dt>上游 CDN</dt><dd id="m-host">—</dd></div>
-					<div><dt>代理地址</dt><dd id="m-proxy" class="mono">—</dd></div>
-				</dl>
-			</section>
+				<div class="sidebar__section">
+					<div class="sidebar__section-head">
+						<span>我的歌单</span>
+						<span class="muted" id="playlist-count" data-testid="playlist-count">0</span>
+					</div>
+					<ul class="playlist-list" id="playlist-list" data-testid="playlist-list"></ul>
+				</div>
+			</aside>
 
-			<section class="card player">
-				<audio id="audio" preload="metadata" crossorigin="anonymous"></audio>
+			<!-- ── 中栏：主内容 ─────────────────────────────────── -->
+			<main class="main" data-testid="main">
+				<header class="topbar">
+					<div class="search-box">
+						<input
+							id="search-input"
+							data-testid="search-input"
+							type="text"
+							placeholder="搜索视频 / 粘贴 BV 号或链接…"
+							spellcheck="false"
+						/>
+						<button id="search-button" data-testid="search-button">搜索</button>
+					</div>
+					<div class="topbar__hint muted" id="hint" data-testid="hint">
+						快捷键：Space 播放/暂停 · ←→ 快退/快进 · Ctrl+F 搜索
+					</div>
+				</header>
 
-				<div class="row">
-					<button id="play">▶ 播放</button>
-					<button id="pause">⏸ 暂停</button>
-					<button id="seek" data-seek="10">⏩ 跳到 10s</button>
-					<button id="seek-back" data-seek="0">⏮ 回到 0s</button>
+				<section class="content" id="content" data-testid="content">
+					<!-- 由 renderer.js 按视图渲染 -->
+				</section>
+			</main>
+
+			<!-- ── 右栏：播放队列 / 歌词 ─────────────────────────── -->
+			<aside class="rightbar" data-testid="rightbar">
+				<div class="tabs" data-testid="rightbar-tabs">
+					<button class="tab is-active" data-panel="queue" data-testid="tab-queue">
+						播放队列
+					</button>
+					<button class="tab" data-panel="lyrics" data-testid="tab-lyrics">歌词</button>
 				</div>
 
-				<div class="timeline">
-					<input id="progress" type="range" min="0" max="1000" value="0" />
-					<span id="time" class="mono">0.00 / 0.00</span>
+				<div class="panel is-active" data-panel="queue" data-testid="panel-queue">
+					<ol class="queue-list" id="queue-list" data-testid="queue-list"></ol>
+					<p class="empty muted" id="queue-empty" data-testid="queue-empty">
+						队列为空
+					</p>
 				</div>
-			</section>
 
-			<section class="card log-card">
-				<h2>事件日志</h2>
-				<pre id="log"></pre>
-			</section>
+				<div class="panel" data-panel="lyrics" data-testid="panel-lyrics">
+					<div class="lyrics" id="lyrics-panel" data-testid="lyrics-panel"></div>
+					<div class="lyrics-toolbar" data-testid="lyrics-toolbar">
+						<button id="lyrics-reload" data-testid="lyrics-reload" title="重新匹配歌词">
+							重新匹配
+						</button>
+						<span class="muted" id="lyrics-status" data-testid="lyrics-status"
+							>未加载歌词</span
+						>
+					</div>
+				</div>
+			</aside>
+
+			<!-- ── 底部：常驻播放条 ─────────────────────────────── -->
+			<footer class="playbar" data-testid="playbar">
+				<!-- 音频元素：自定义协议代理，由主进程注入 Referer 并透传 Range -->
+				<audio id="audio" preload="metadata"></audio>
+
+				<div class="playbar__meta">
+					<div class="playbar__title" id="now-title" data-testid="now-title">未在播放</div>
+					<div class="playbar__artist muted" id="now-artist" data-testid="now-artist">—</div>
+				</div>
+
+				<div class="playbar__controls">
+					<button id="prev" data-testid="btn-prev" title="上一首">⏮</button>
+					<button id="play" data-testid="btn-play" class="playbar__play" title="播放/暂停">
+						▶
+					</button>
+					<button id="next" data-testid="btn-next" title="下一首">⏭</button>
+				</div>
+
+				<div class="playbar__progress">
+					<span class="mono" id="time-current" data-testid="time-current">0:00</span>
+					<input
+						id="progress"
+						data-testid="progress"
+						type="range"
+						min="0"
+						max="1000"
+						value="0"
+					/>
+					<span class="mono" id="time-total" data-testid="time-total">0:00</span>
+				</div>
+
+				<div class="playbar__extra">
+					<button id="mode" data-testid="btn-mode" title="循环/随机">顺序</button>
+					<input
+						id="volume"
+						data-testid="volume"
+						type="range"
+						min="0"
+						max="100"
+						value="100"
+						title="音量"
+					/>
+				</div>
+			</footer>
 		</div>
 
+		<div class="status-bar">
+			<span id="status" data-testid="status" class="status status--idle">就绪</span>
+			<span class="muted mono" id="build-info" data-testid="build-info"></span>
+		</div>
+
+		<pre id="log" data-testid="log" class="log" hidden></pre>
+
+		<script src="state.js"></script>
+		<script src="player.js"></script>
+		<script src="library.js"></script>
+		<script src="keyboard.js"></script>
+		<script src="lyrics-panel.js"></script>
 		<script src="renderer.js"></script>
 	</body>
 </html>
+
