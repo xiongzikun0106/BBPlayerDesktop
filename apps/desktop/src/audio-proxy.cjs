@@ -1,15 +1,22 @@
 /**
- * B 站音频代理（Phase 1 可行��性验证用）。
+ * B 站音频代理。
  *
- * 背景（见 docs/DESKTOP_PLAN.md §2.3，已实测）：
- *  - 主线 CDN（upos-*）裸请求返回 403，必须带 `Referer` + 桌面 UA；
- *  - 主线 CDN **不返回** `Access-Control-Allow-Origin`，渲染进程直接
- *    `<audio src="https://...bilivideo.com/...">` 会被 CORS 拦；
- *  - CDN 支持 `Range`（206），因此代理必须透传该请求头。
+ * 背景（见 docs/DESKTOP_PLAN.md §2.3，均为实测结论）：
+ *  - 主线 CDN（`upos-*` / `cn-sccd-*` / `*.edge.mountaintoys.cn`）**强制校验 `Referer`**：
+ *    无 Referer 即 403，**仅带 UA 仍然 403**。`Referer` 充分且必要，UA 对结果无影响；
+ *  - `*.mcdn.bilivideo.cn`（PCDN）不校验 Referer，但不稳定，不能作为依赖；
+ *  - **CDN 的 CORS 其实是通的**（upos 系回显 Origin）。真正必须由主进程介入的原因是
+ *    `Referer` 属于 Fetch 规范的 forbidden request header，渲染进程 JS 设不上去；
+ *  - CDN 原生支持 `Range`（206），代理**只需透传**，不需要自己算 206。
  *
- * 因此音频必须由主进程代发请求。这里用自定义协议 `bbplayer-audio://`：
- * 渲染进程拿到的是本协议地址，主进程负责注入请求头并流式回传。
+ * 因此音频经自定义协议 `bbplayer-audio://` 由主进程代发：渲染进程只拿到本协议地址，
+ * 主进程负责注入请求头并流式回传。**不需要 `webSecurity: false`。**
+ *
+ * ⚠️ 实现约束：`protocol.handle` 必须在 `createWindow()` **之前**注册，
+ * 否则会静默失效（`<audio>` 报 `MediaError 4 Format error`）。见 main.cjs。
  */
+const { getAudioStream, getVideoInfo } = require('./bilibili-api.cjs')
+
 const DESKTOP_UA =
 	'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36'
 const REFERER = 'https://www.bilibili.com/'
@@ -20,71 +27,34 @@ const resolved = new Map()
 /** 记录代理请求，供验证脚本断言 */
 const requestLog = []
 
-async function fetchJson(url) {
-	const response = await fetch(url, {
-		headers: { 'User-Agent': DESKTOP_UA, Referer: REFERER },
-	})
-	if (!response.ok) {
-		throw new Error(`HTTP ${response.status} for ${url}`)
-	}
-	return await response.json()
-}
-
 /**
  * 把一个 bvid 解析为可播放的音频地址。
- * 走 B 站公开的 view + playurl 接口（与移动端 lib/api/bilibili/api.ts 同源思路）。
+ *
+ * 委托给 `bilibili-api.cjs` —— 也就是 **core 的端口注入客户端 + WBI 签名**。
+ * 未签名接口只能拿到 64K 档；签名后实测可达 192K（音质 id 30280）。
  */
-/** 是否为主线 CDN（模块级，避免 lint 的 consistent-function-scoping） */
-const isMainlineHost = (url) => !new URL(url).host.includes('mcdn.bilivideo')
-
 async function resolveAudio(bvid) {
 	const cached = resolved.get(bvid)
 	if (cached) return cached
 
-	const view = await fetchJson(
-		`https://api.bilibili.com/x/web-interface/view?bvid=${bvid}`,
-	)
-	if (view.code !== 0) {
-		throw new Error(`view 接口失败: ${view.code} ${view.message}`)
-	}
+	const info = await getVideoInfo(bvid)
+	const stream = await getAudioStream(bvid, info.cid)
 
-	const { cid, title, duration } = view.data
-	const play = await fetchJson(
-		`https://api.bilibili.com/x/player/playurl?bvid=${bvid}&cid=${cid}&fnval=16&fnver=0&fourk=1`,
-	)
-	if (play.code !== 0) {
-		throw new Error(`playurl 接口失败: ${play.code} ${play.message}`)
-	}
-
-	const tracks = play.data?.dash?.audio ?? []
-	if (tracks.length === 0) {
-		throw new Error('响应中没有 dash.audio')
-	}
-
-	// 选带宽最高的音轨
-	const best = [...tracks].sort(
-		(a, b) => (b.bandwidth ?? 0) - (a.bandwidth ?? 0),
-	)[0]
-
-	// 优先选「主线 CDN」的地址（upos-*）。PCDN 节点（mcdn.*）行为宽松、
-	// 会放行裸请求，用它验证会得到过于乐观的结论（见 §2.3 的样本偏差教训）。
-	const candidates = [best.baseUrl, ...(best.backupUrl ?? [])]
-	const chosen = candidates.find(isMainlineHost) ?? candidates[0]
-
-	const info = {
+	const result = {
 		bvid,
-		cid,
-		title,
-		duration,
-		audioUrl: chosen,
-		preferredMainline: chosen !== best.baseUrl,
-		allHosts: candidates.map((url) => new URL(url).host),
-		backupUrls: best.backupUrl ?? [],
-		quality: best.id,
-		bandwidth: best.bandwidth,
+		cid: info.cid,
+		title: info.title,
+		duration: info.duration,
+		audioUrl: stream.url,
+		backupUrls: stream.backupUrls,
+		quality: stream.qualityId,
+		bandwidth: stream.bandwidth,
+		/** 音质阶梯：dolby / hires / requested / fallback / durl */
+		tier: stream.tier,
+		upstreamHost: new URL(stream.url).host,
 	}
-	resolved.set(bvid, info)
-	return info
+	resolved.set(bvid, result)
+	return result
 }
 
 /**
@@ -129,6 +99,8 @@ async function handleAudioRequest(request) {
 	if (entry.range) upstreamHeaders.Range = entry.range
 
 	entry.host = new URL(info.audioUrl).host
+	entry.quality = info.quality
+	entry.tier = info.tier
 
 	let upstream
 	try {

@@ -51,10 +51,15 @@ export {
 } from './errors/service'
 
 // ---------- api ----------
+export * from './api/bilibili/client'
 export * from './api/bilibili/convert'
 export * from './api/bilibili/garb'
+export * from './api/bilibili/wbi'
 export * from './api/netease/crypto'
 export * from './api/netease/utils'
+
+// ---------- utils ----------
+export * from './utils/md5'
 
 // ---------- backup ----------
 export * from './backup/types'

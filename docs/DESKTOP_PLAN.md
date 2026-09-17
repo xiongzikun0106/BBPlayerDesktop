@@ -163,37 +163,49 @@ setSleepTimer / getSleepTimerEndTime / cancelSleepTimer
 
 **影响**：必须由主进程代发音频请求（防盗链的需要）。
 
-**两种方案的实测对比（不是推断）**：
+**两种方案的实测对比**：
 
-| 方案                                | 做法                                                       | 实测结论                                                                                                       |
-| ----------------------------------- | ---------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------- |
-| **A. 自定义协议代理**（已采用）     | 主进程注册 `bbplayer-audio://`，带 header 发请求、流式回传 | ✅ **可用**：`verify-desktop.mjs` 18/18 通过，含播放推进、seek、Range 精确 1024 字节                           |
-| B. `session.webRequest` 注入 header | 注入 Referer，渲染进程直接播 CDN 地址                      | ❌ **不可用**：7/7 次全部 `MEDIA_ELEMENT_ERROR: Format error`，含关掉 `webSecurity` + `--disable-web-security` |
+| 方案                                | 做法                                                       | 实测结论                                                                             |
+| ----------------------------------- | ---------------------------------------------------------- | ------------------------------------------------------------------------------------ |
+| **A. 自定义协议代理**（已采用）     | 主进程注册 `bbplayer-audio://`，带 header 发请求、流式回传 | ✅ **可用**：`verify-desktop.mjs` 18/18 通过，含播放推进、seek、Range 精确 1024 字节 |
+| B. `session.webRequest` 注入 header | 注入 `Referer`，渲染进程直接播 CDN 地址                    | ✅ **也可用**（见下方修正）；定位为兜底 / 快速验证路径                               |
 
-#### 方案 B 的失败原因**不是 CORS**（修正本文档早先的推断）
+**选 A 的理由不是「B 不行」，而是 A 更可控**：
 
-早先推断「方案 B 会被 CORS 挡住」。实测否定：
+1. 请求头完全由主进程构造，不受 Fetch 规范 forbidden header 限制，也不受 `webRequest`
+   的「同名监听器只有最后一个生效」约束；
+2. 入口收敛：签名 URL 获取、头注入、缓存 / 重试 / 限流都在一处；
+3. 渲染进程拿不到真实 CDN 地址，安全面更小（应当用 `request.initiatorOrigin` 做白名单）。
 
-| 观测项                                  | 结果                                                                                                                          |
-| --------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
-| 渲染进程 `fetch()` 同一地址（带 Range） | ✅ 7/7 成功：**206**、`video/mp4`、`Content-Range: bytes 0-1023/5408198`，首字节 `00 00 00 24 66 74 79 70`（合法 MP4 "ftyp"） |
-| 渲染进程 `<audio>` 播同一地址           | ❌ 7/7 失败，`readyState` 停在 0                                                                                              |
-| 关掉安全开关（两处都关）                | 仍 ❌ 失败 → 与安全策略无关                                                                                                   |
+#### ⚠️ 三处早期结论被实测推翻（记录以免重犯）
 
-即：**渲染进程拿得到数据，但媒体加载器不接受这些 CDN 地址**。
+1. **「CDN 不返回 CORS 头」——错误。**
+   实测：`upos-sz-*` 系主机在请求带 `Origin` 时**回显该 Origin**，且 `OPTIONS` 预检返回 200
+   并允许 `Range`；`cn-sccd-*` / `*.edge.mountaintoys.cn` / `mcdn` 直接给 `ACAO: *`。
+   → **CORS 本身是通的**。方案 B 需要主进程介入的真正原因是
+   **`Referer` 属于 Fetch 规范的 forbidden request header，渲染进程 JS 设不上去**
+   （实测 `fetch(url, { headers: { Referer } })` 仍 403，该头被静默丢弃）。
+   因此**不需要 `webSecurity: false`**（两方案实测都不需要；官方安全指南也禁止生产使用）。
 
-混淆来自我自己写的 CSP：`renderer/index.html` 最初只声明 `media-src` 没声明
-`connect-src`，`fetch` 被 CSP 拦下后被误读成 CORS。补上 `connect-src` 后 `fetch`
-立刻正常，但 `<audio>` 依然失败 —— 这才看清是两个独立问题。
+2. **「必须带桌面 UA」——不成立。**
+   20 个 host 的矩阵实测：15/20 强制校验 `Referer`（无 Referer 即 403，**仅带 UA 仍然 403**），
+   5/20（`*.mcdn.bilivideo.cn:8082`）完全不校验。**`Referer` 充分且必要，UA 对结果无影响**
+   （保留它只是为贴近真实浏览器指纹，无害）。
 
-**结论：方案 A（代理）是唯一可用路径。** 理由不是「绕 CORS」，而是
-「媒体加载器无法直接消费这些 CDN 地址」；代理顺带解决了 Referer 与缓存。
+3. **`protocol.handle` 必须在创建窗口之前注册**（实测，文档未载）。
+   对照实验：窗口 `loadURL` 完成之后再 `protocol.handle`，`<audio>` 报
+   `MEDIA_ELEMENT_ERROR: Format error`、`fetch` 报 `TypeError: Failed to fetch`；
+   先注册再建窗口则正常。本仓库实现满足该顺序（`main.cjs` 第 94 行注册、第 141 行建窗口）。
+
+4. **CDN 原生支持 Range，代理只需透传，不必自己算 206。**
+   实测 `seekable.end(0) === duration`（全长可拖），seek 到 106.2s 成功。
 
 复验方式：
 
 - `node scripts/probe-bilibili-audio.mjs` —— CDN 防盗链与 CORS 的逐节点统计
 - `node scripts/compare-audio-strategies.mjs` —— 两方案多轮对比（`COMPARE_ROUNDS` 可调）
 - `node scripts/verify-desktop.mjs` —— 生产路径（方案 A）的 18 项断言
+- **别用 `HEAD` 探活**：`mcdn` 节点对 HEAD 返回 404（实测）
 
 ### 2.4 打包策略（避开 pnpm + monorepo 的坑）
 
@@ -214,8 +226,38 @@ setSleepTimer / getSleepTimerEndTime / cancelSleepTimer
 
 1. pnpm symlink → build 阶段 bundle 掉，dist 阶段只发产物
 2. 原生模块 ABI → `better-sqlite3` 必须 `electron-rebuild`
+   （本仓库已改用 **`node:sqlite`**，Node 22.5+ 内置，**绕开了这个问题**）
 3. workspace 解析 → electron-builder 不接触 `workspace:*`（已被 bundle）
 4. `packages/*/android/**` 被误打包 → `files` 白名单强制约束
+
+#### 打包的实测约束（重要，决定 P5 怎么做）
+
+**Windows 上不能产出 Linux 安装包格式**（实测 electron-builder 26.15.3）：
+
+| 目标                  | 结果 | 实测错误 / 产物                                                 |
+| --------------------- | ---- | --------------------------------------------------------------- |
+| `--linux deb` / `rpm` | ❌   | `spawn fpm ENOENT`（fpm 未随 Windows 版捆绑）                   |
+| `--linux AppImage`    | ❌   | `...\appimage-...\darwin\mksquashfs ENOENT`                     |
+| `--linux dir`         | ✅   | `out/linux-unpacked/…`，文件头 `7F 45 4C 46` = **真 Linux ELF** |
+| `--linux tar.gz`      | ✅   | 可直接分发、目标机解压即用                                      |
+
+→ **要 `.deb` / AppImage 必须用 Docker（`electronuserland/builder`）或 Linux runner。**
+本机**没有 Docker、也没装 WSL**，因此 Linux 侧的正式打包在 **VPS** 上做。
+
+#### Electron 二进制安装（实测）
+
+**Electron ≥ 42 已删除 `postinstall`**，二进制改为**首次 `require('electron')` 时懒下载**。
+所以 `pnpm install` 之后 `dist/` 为空是**预期行为**，不是安装失败
+（`pnpm-workspace.yaml` 的 `allowBuilds` 未列 electron 也不是原因）。
+
+直连 GitHub 实测仅 **0.05 MB/s**（142 MB 要约 50 分钟，看起来像卡死）；
+用镜像 **24.5s** 完成（约 34×）：
+
+```bash
+ELECTRON_MIRROR=https://registry.npmmirror.com/-/binary/electron/ node install.js
+```
+
+→ 建议写进 `.npmrc`：`electron_mirror=https://registry.npmmirror.com/-/binary/electron/`
 
 ---
 

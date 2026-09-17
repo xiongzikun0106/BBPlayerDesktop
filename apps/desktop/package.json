@@ -8,6 +8,9 @@
 		"start": "electron .",
 		"start:headless": "electron . --headless-probe"
 	},
+	"dependencies": {
+		"jiti": "^2.7.0"
+	},
 	"devDependencies": {
 		"electron": "42.11.3"
 	}

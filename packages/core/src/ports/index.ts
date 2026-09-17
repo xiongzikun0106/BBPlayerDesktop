@@ -57,6 +57,23 @@ export interface SecureStoragePort {
 }
 
 // ============================================================
+// B 站登录凭据
+// ============================================================
+
+/**
+ * B 站登录态。
+ *
+ * core 里的 B 站 API 客户端通过这个端口拿 cookie，从而不需要知道
+ * 「凭据存在哪里」（移动端是 MMKV 里的 store，桌面端可以是加密文件）。
+ */
+export interface BilibiliCredentialPort {
+	/** 返回 cookie 键值对；未登录返回 null */
+	getCookie(): Promise<Record<string, string> | null>
+	/** 写入 cookie（扫码 / 手机号 / 手动粘贴登录后调用） */
+	setCookie(cookie: Record<string, string> | null): Promise<void>
+}
+
+// ============================================================
 // Database
 // ============================================================
 
@@ -114,6 +131,7 @@ export interface HttpResponseLike {
 	statusText: string
 	headers: { get(name: string): string | null }
 	text(): Promise<string>
+	json(): Promise<unknown>
 	arrayBuffer(): Promise<ArrayBuffer>
 }
 
@@ -204,6 +222,8 @@ export interface CorePorts {
 	secureStorage: SecureStoragePort
 	db: DbPort
 	http: HttpPort
+	/** B 站登录凭据（可选：未登录也能用公开接口） */
+	bilibili?: BilibiliCredentialPort
 }
 
 // ============================================================

@@ -97,6 +97,10 @@ importers:
         version: 4.68.1(@cloudflare/workers-types@4.20260304.0)
 
   apps/desktop:
+    dependencies:
+      jiti:
+        specifier: ^2.7.0
+        version: 2.7.0
     devDependencies:
       electron:
         specifier: 42.11.3
