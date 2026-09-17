@@ -6,7 +6,7 @@ import { Dialog, Text, TextInput } from 'react-native-paper'
 
 import Button from '@/components/common/Button'
 import { useModalStore } from '@/hooks/stores/useModalStore'
-import { parseExternalPlaylistInfo } from '@/lib/utils/playlistUrlParser'
+import { parseExternalPlaylistInfo } from '@bbplayer/core'
 
 const InputExternalPlaylistInfoModal = () => {
 	const [input, setInput] = useState('')

@@ -1,7 +1,7 @@
 import { useCallback } from 'react'
 
 import { syncFacade } from '@/lib/facades/syncBilibiliPlaylist'
-import type { BilibiliTrack } from '@/types/core/media'
+import type { BilibiliTrack } from '@bbplayer/core'
 import { toastAndLogError } from '@/utils/error-handling'
 import { reportErrorToSentry } from '@/utils/log'
 import { addToQueue } from '@/utils/player'

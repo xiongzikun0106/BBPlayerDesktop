@@ -8,7 +8,7 @@ import { Text, useTheme } from 'react-native-paper'
 
 import ActivityIndicator from '@/components/common/ActivityIndicator'
 import { useUserSearchResults } from '@/hooks/queries/bilibili/search'
-import type { BilibiliSearchUser } from '@/types/apis/bilibili'
+import type { BilibiliSearchUser } from '@bbplayer/core'
 
 interface SearchUserHeaderProps {
 	query: string

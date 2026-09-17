@@ -3,7 +3,7 @@ import { and, asc, eq, inArray } from 'drizzle-orm'
 import useAppStore from '@/hooks/stores/useAppStore'
 import { api as bbplayerApi } from '@/lib/api/bbplayer/client'
 import db from '@/lib/db/db'
-import * as schema from '@/lib/db/schema'
+import * as schema from '@bbplayer/core/db/schema'
 import { playlistService } from '@/lib/services/playlistService'
 import log from '@/utils/log'
 

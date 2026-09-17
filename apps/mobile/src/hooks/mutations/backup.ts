@@ -12,7 +12,7 @@ import {
 	joinWebDavPath,
 	saveWebDavConfig,
 } from '@/lib/backup/webdav'
-import type { WebDavEntry } from '@/lib/backup/webdav-client'
+import type { WebDavEntry } from '@bbplayer/core'
 import { queryClient } from '@/lib/config/queryClient'
 import { toastAndLogError } from '@/utils/error-handling'
 import toast from '@/utils/toast'

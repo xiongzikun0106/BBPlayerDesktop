@@ -3,9 +3,9 @@ import { QueryCache, QueryClient } from '@tanstack/react-query'
 import { router } from 'expo-router'
 
 import { type WebDavBackupConfig } from '@/hooks/queries/backup'
-import { WebDavError } from '@/lib/backup/webdav-client'
-import { ThirdPartyError } from '@/lib/errors'
-import { BilibiliApiError } from '@/lib/errors/thirdparty/bilibili'
+import { WebDavError } from '@bbplayer/core'
+import { ThirdPartyError } from '@bbplayer/core'
+import { BilibiliApiError } from '@bbplayer/core'
 import { toastAndLogError } from '@/utils/error-handling'
 import toast from '@/utils/toast'
 

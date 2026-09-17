@@ -9,7 +9,7 @@ import ActivityIndicator from '@/components/common/ActivityIndicator'
 import { HistoryListItem } from '@/features/history/HistoryListItem'
 import useCurrentTrack from '@/hooks/player/useCurrentTrack'
 import { usePlayHistoryByDate } from '@/hooks/queries/playHistory'
-import type { Track } from '@/types/core/media'
+import type { Track } from '@bbplayer/core'
 
 interface HistoryItemData {
 	track: Track

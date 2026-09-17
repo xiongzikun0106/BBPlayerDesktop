@@ -10,7 +10,7 @@ import { useFetchLyrics } from '@/hooks/mutations/lyrics'
 import { useManualSearchLyrics } from '@/hooks/queries/lyrics'
 import { useModalStore } from '@/hooks/stores/useModalStore'
 import type { ListRenderItemInfoWithExtraData } from '@/types/legendlist'
-import type { LyricSearchResult } from '@/types/player/lyrics'
+import type { LyricSearchResult } from '@bbplayer/core'
 import { formatDurationToHHMMSS } from '@/utils/time'
 
 const SOURCE_MAP = {

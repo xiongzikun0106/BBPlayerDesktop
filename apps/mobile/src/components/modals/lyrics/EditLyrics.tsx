@@ -11,7 +11,7 @@ import { lyricsQueryKeys } from '@/hooks/queries/lyrics'
 import { useModalStore } from '@/hooks/stores/useModalStore'
 import { queryClient } from '@/lib/config/queryClient'
 import lyricService from '@/lib/services/lyricService'
-import type { LyricFileData } from '@/types/player/lyrics'
+import type { LyricFileData } from '@bbplayer/core'
 import { toastAndLogError } from '@/utils/error-handling'
 import toast from '@/utils/toast'
 

@@ -24,7 +24,7 @@ import { scheduleOnUI } from 'react-native-worklets'
 
 import { useSearchSuggestions } from '@/hooks/queries/bilibili/search'
 import { useBottomTabBarHeight } from '@/hooks/router/useBottomTabBarHeight'
-import type { BilibiliSearchSuggestionItem } from '@/types/apis/bilibili'
+import type { BilibiliSearchSuggestionItem } from '@bbplayer/core'
 
 export interface SearchSuggestionsProps {
 	query: string

@@ -2,7 +2,7 @@ import { useQuery } from '@tanstack/react-query'
 import { desc, ne } from 'drizzle-orm'
 
 import db from '@/lib/db/db'
-import * as schema from '@/lib/db/schema'
+import * as schema from '@bbplayer/core/db/schema'
 
 export function useRecentPlaylists() {
 	return useQuery({

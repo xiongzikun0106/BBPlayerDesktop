@@ -15,7 +15,7 @@ import { favoriteListQueryKeys } from '@/hooks/queries/bilibili/favorite'
 import { userQueryKeys } from '@/hooks/queries/bilibili/user'
 import useAppStore from '@/hooks/stores/useAppStore'
 import { bilibiliApi } from '@/lib/api/bilibili/api'
-import { BilibiliQrCodeLoginStatus } from '@/types/apis/bilibili'
+import { BilibiliQrCodeLoginStatus } from '@bbplayer/core'
 import toast from '@/utils/toast'
 
 type Status = 'generating' | 'polling' | 'expired' | 'success' | 'error'

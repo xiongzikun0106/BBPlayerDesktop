@@ -7,7 +7,7 @@ import { Appbar, Divider, Text, useTheme } from 'react-native-paper'
 import ActivityIndicator from '@/components/common/ActivityIndicator'
 import { CommentItem } from '@/features/comments/components/CommentItem'
 import { useReplyComments } from '@/hooks/queries/bilibili/comments'
-import type { BilibiliCommentItem } from '@/types/apis/bilibili'
+import type { BilibiliCommentItem } from '@bbplayer/core'
 import type { ListRenderItemInfoWithExtraData } from '@/types/legendlist'
 
 const renderItem = ({

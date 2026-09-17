@@ -1,8 +1,8 @@
 import { create } from 'zustand'
 import { createJSONStorage, persist } from 'zustand/middleware'
 
-import type { InstalledSkin, InstalledSkinMeta } from '@/lib/theme/types'
-import { installedSkinToMeta } from '@/lib/theme/types'
+import type { InstalledSkin, InstalledSkinMeta } from '@bbplayer/core'
+import { installedSkinToMeta } from '@bbplayer/core'
 import { zustandStorage } from '@/utils/mmkv'
 
 export type SkinBootSplashMode = 'poster' | 'video'

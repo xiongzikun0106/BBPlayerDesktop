@@ -1,5 +1,4 @@
-import { expoDb } from '@/lib/db/db'
-import { storage } from '@/utils/mmkv'
+import { getCorePorts } from '../../ports/index'
 
 const DATA_MIGRATIONS_TABLE = '__bbplayer_data_migrations'
 
@@ -18,7 +17,13 @@ type LegacyDataMigrationKey = Exclude<
 	'db_schema_version' | 'sort_key_migrated_v1'
 >
 
-/** A JS data migration and its one-time legacy MMKV marker. */
+/**
+ * A JS data migration and its one-time legacy MMKV marker.
+ *
+ * 平台能力通过 `getCorePorts()` 在**调用时**获取，而不是在模块加载时 ——
+ * 这样各端只要在启动时 `registerCorePorts()` 即可，且 core 不需要 import
+ * 任何平台库。
+ */
 export class DataMigration {
 	public constructor(
 		private readonly name: string,
@@ -26,16 +31,17 @@ export class DataMigration {
 	) {}
 
 	public isApplied(): boolean {
-		expoDb.execSync(
+		const { db, storage } = getCorePorts()
+		db.sqlite.execSync(
 			`CREATE TABLE IF NOT EXISTS ${DATA_MIGRATIONS_TABLE} (name TEXT PRIMARY KEY NOT NULL)`,
 		)
 
-		const applied = expoDb.getFirstSync<{ name: string }>(
+		const applied = db.sqlite.getFirstSync<{ name: string }>(
 			`SELECT name FROM ${DATA_MIGRATIONS_TABLE} WHERE name = ?`,
 			[this.name],
 		)
 		if (applied) {
-			storage.remove(this.legacyStorageKey)
+			storage.delete(this.legacyStorageKey)
 			return true
 		}
 
@@ -44,13 +50,14 @@ export class DataMigration {
 		if (appliedInLegacyStorage) {
 			this.markAsApplied()
 		}
-		storage.remove(this.legacyStorageKey)
+		storage.delete(this.legacyStorageKey)
 
 		return appliedInLegacyStorage
 	}
 
 	public markAsApplied(): void {
-		expoDb.runSync(
+		const { db } = getCorePorts()
+		db.sqlite.runSync(
 			`INSERT OR IGNORE INTO ${DATA_MIGRATIONS_TABLE} (name) VALUES (?)`,
 			[this.name],
 		)
@@ -59,13 +66,15 @@ export class DataMigration {
 
 /** The SQL migration journal replaces these two obsolete MMKV-only markers. */
 export function clearObsoleteLegacyMigrationKeys(): void {
-	storage.remove('db_schema_version')
-	storage.remove('sort_key_migrated_v1')
+	const { storage } = getCorePorts()
+	storage.delete('db_schema_version')
+	storage.delete('sort_key_migrated_v1')
 }
 
 /** Never let a destination device's legacy flags affect a restored database. */
 export function clearLegacyMigrationKeys(): void {
+	const { storage } = getCorePorts()
 	for (const key of legacyMigrationKeys) {
-		storage.remove(key)
+		storage.delete(key)
 	}
 }

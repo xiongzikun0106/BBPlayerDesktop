@@ -19,16 +19,16 @@ import {
 	qqMusicApi as qqMusicApiInstance,
 	type QQMusicApi,
 } from '@/lib/api/qqmusic/api'
-import type { CustomError } from '@/lib/errors'
-import { FileSystemError, LyricNotFoundError } from '@/lib/errors'
+import type { CustomError } from '@bbplayer/core'
+import { FileSystemError, LyricNotFoundError } from '@bbplayer/core'
 import { trackService } from '@/lib/services/trackService'
-import type { BilibiliTrack, Track } from '@/types/core/media'
+import type { BilibiliTrack, Track } from '@bbplayer/core'
 import type {
 	LyricFileData,
 	LyricProviderResponseData,
 	LyricSearchResult,
 	ParsedLrc,
-} from '@/types/player/lyrics'
+} from '@bbplayer/core'
 import { toastAndLogError } from '@/utils/error-handling'
 import log from '@/utils/log'
 import { isActuallyOffline } from '@/utils/network'

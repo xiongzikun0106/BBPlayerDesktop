@@ -4,18 +4,18 @@ import { type ExpoSQLiteDatabase } from 'drizzle-orm/expo-sqlite'
 import { ResultAsync, errAsync, okAsync } from 'neverthrow'
 
 import defaultDb from '@/lib/db/db'
-import * as schema from '@/lib/db/schema'
-import { ServiceError } from '@/lib/errors'
+import * as schema from '@bbplayer/core/db/schema'
+import { ServiceError } from '@bbplayer/core'
 import {
 	DatabaseError,
 	createArtistNotFound,
 	createValidationError,
-} from '@/lib/errors/service'
-import type { Track } from '@/types/core/media'
+} from '@bbplayer/core'
+import type { Track } from '@bbplayer/core'
 import type {
 	CreateArtistPayload,
 	UpdateArtistPayload,
-} from '@/types/services/artist'
+} from '@bbplayer/core'
 
 import type { TrackService } from './trackService'
 import { trackService as trackServiceInstance } from './trackService'

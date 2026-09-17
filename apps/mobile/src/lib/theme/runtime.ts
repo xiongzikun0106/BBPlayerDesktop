@@ -1,12 +1,12 @@
 import { File } from 'expo-file-system'
 import { okAsync, ResultAsync } from 'neverthrow'
 
-import { ServiceError } from '@/lib/errors'
-import { createSkinNotFound } from '@/lib/errors/service'
+import { ServiceError } from '@bbplayer/core'
+import { createSkinNotFound } from '@bbplayer/core'
 import log from '@/utils/log'
 
-import type { SkinAssetDeclaration } from './schema'
-import type { AppSkin, InstalledSkin, InstalledSkinMeta } from './types'
+import type { SkinAssetDeclaration } from '@bbplayer/core'
+import type { AppSkin, InstalledSkin, InstalledSkinMeta } from '@bbplayer/core'
 
 const appSkinCache = new Map<string, AppSkin | null>()
 

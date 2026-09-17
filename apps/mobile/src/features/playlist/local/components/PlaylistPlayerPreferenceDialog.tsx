@@ -6,7 +6,7 @@ import { playlistKeys } from '@/hooks/queries/db/playlist'
 import useAppStore from '@/hooks/stores/useAppStore'
 import { queryClient } from '@/lib/config/queryClient'
 import { playlistService } from '@/lib/services/playlistService'
-import type { Playlist } from '@/types/core/media'
+import type { Playlist } from '@bbplayer/core'
 import { toastAndLogError } from '@/utils/error-handling'
 
 export function PlaylistPlayerPreferenceDialog({

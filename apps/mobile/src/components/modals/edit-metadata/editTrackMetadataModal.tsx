@@ -8,7 +8,7 @@ import Button from '@/components/common/Button'
 import IconButton from '@/components/common/IconButton'
 import { useEditTrackMetadata } from '@/hooks/mutations/db/track'
 import { useModalStore } from '@/hooks/stores/useModalStore'
-import type { Track } from '@/types/core/media'
+import type { Track } from '@bbplayer/core'
 import toast from '@/utils/toast'
 
 const sanitizeFileName = (name: string) =>

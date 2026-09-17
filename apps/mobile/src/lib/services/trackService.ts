@@ -5,20 +5,20 @@ import { type ExpoSQLiteDatabase } from 'drizzle-orm/expo-sqlite'
 import { Result, ResultAsync, err, errAsync, okAsync } from 'neverthrow'
 
 import defaultDb from '@/lib/db/db'
-import * as schema from '@/lib/db/schema'
-import { ServiceError } from '@/lib/errors'
+import * as schema from '@bbplayer/core/db/schema'
+import { ServiceError } from '@bbplayer/core'
 import {
 	DatabaseError,
 	createNotImplementedError,
 	createTrackNotFound,
 	createValidationError,
-} from '@/lib/errors/service'
+} from '@bbplayer/core'
 import type {
 	BilibiliTrack,
 	LocalTrack,
 	PlayRecord,
 	Track,
-} from '@/types/core/media'
+} from '@bbplayer/core'
 import type {
 	BilibiliMetadataPayload,
 	CreateBilibiliTrackPayload,
@@ -26,10 +26,10 @@ import type {
 	CreateTrackPayloadBase,
 	UpdateTrackPayload,
 	UpdateTrackPayloadBase,
-} from '@/types/services/track'
+} from '@bbplayer/core'
 import log from '@/utils/log'
 
-import generateUniqueTrackKey from './genKey'
+import { generateUniqueTrackKey } from '@bbplayer/core'
 
 const logger = log.extend('Service.Track')
 type Tx = Parameters<Parameters<typeof defaultDb.transaction>[0]>[0]

@@ -47,7 +47,7 @@ import useActiveSkin from '@/hooks/theme/useActiveSkin'
 import useSkinForegroundColor from '@/hooks/theme/useSkinForegroundColor'
 import { useNowPlayingBar } from '@/hooks/ui/useNowPlayingBar'
 import db from '@/lib/db/db'
-import * as schema from '@/lib/db/schema'
+import * as schema from '@bbplayer/core/db/schema'
 import { markPerfInteractive } from '@/lib/performance'
 import { toastAndLogError } from '@/utils/error-handling'
 import {

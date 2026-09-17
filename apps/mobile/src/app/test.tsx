@@ -18,7 +18,7 @@ import { SyncFailuresSheet } from '@/features/playlist/local/components/SyncFail
 import useCurrentTrack from '@/hooks/player/useCurrentTrack'
 import { useModalStore } from '@/hooks/stores/useModalStore'
 import db, { expoDb } from '@/lib/db/db'
-import * as schema from '@/lib/db/schema'
+import * as schema from '@bbplayer/core/db/schema'
 import { sharedPlaylistFacade } from '@/lib/facades/sharedPlaylist'
 import lyricService from '@/lib/services/lyricService'
 import { setUpdateChannelOverride } from '@/lib/services/updateTelemetry'

@@ -1,7 +1,7 @@
 import { drizzle } from 'drizzle-orm/expo-sqlite/driver'
 import * as SQLite from 'expo-sqlite'
 
-import * as schema from './schema'
+import * as schema from '@bbplayer/core/db/schema'
 
 export const expoDb = SQLite.openDatabaseSync('db.db', {
 	enableChangeListener: true,

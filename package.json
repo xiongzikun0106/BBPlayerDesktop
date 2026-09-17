@@ -9,6 +9,7 @@
 	],
 	"scripts": {
 		"check:deps": "syncpack list-mismatches",
+		"check:core": "node scripts/check-core-purity.mjs",
 		"fix:deps": "syncpack fix-mismatches",
 		"format": "oxfmt --write .",
 		"lint": "oxlint --type-aware",

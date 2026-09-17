@@ -6,7 +6,7 @@ import { Divider, Icon, Text } from 'react-native-paper'
 
 import CoverWithPlaceHolder from '@/components/common/CoverWithPlaceHolder'
 import { LIST_ITEM_COVER_SIZE } from '@/theme/dimensions'
-import type { BilibiliPlaylist } from '@/types/apis/bilibili'
+import type { BilibiliPlaylist } from '@bbplayer/core'
 
 const FavoriteFolderListItem = memo(({ item }: { item: BilibiliPlaylist }) => {
 	const router = useRouter()

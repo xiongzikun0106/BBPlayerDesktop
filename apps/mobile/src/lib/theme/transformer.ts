@@ -1,11 +1,11 @@
 import { err, ok, type Result } from 'neverthrow'
 
-import { ServiceError } from '@/lib/errors'
-import { createSkinTransformFailed } from '@/lib/errors/service'
+import { ServiceError } from '@bbplayer/core'
+import { createSkinTransformFailed } from '@bbplayer/core'
 import log from '@/utils/log'
 
-import type { SkinAssetDeclaration } from './schema'
-import type { AppSkin, InstalledSkin, SkinBootSplashAsset } from './types'
+import type { SkinAssetDeclaration } from '@bbplayer/core'
+import type { AppSkin, InstalledSkin, SkinBootSplashAsset } from '@bbplayer/core'
 
 const resource = (
 	url: string | null,

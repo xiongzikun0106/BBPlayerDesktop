@@ -2,9 +2,9 @@ import { useQuery } from '@tanstack/react-query'
 import { count, desc, sql } from 'drizzle-orm'
 
 import drizzleDb from '@/lib/db/db'
-import * as schema from '@/lib/db/schema'
+import * as schema from '@bbplayer/core/db/schema'
 import { trackService } from '@/lib/services/trackService'
-import type { Track } from '@/types/core/media'
+import type { Track } from '@bbplayer/core'
 
 export const playHistoryKeys = {
 	all: ['playHistory'] as const,

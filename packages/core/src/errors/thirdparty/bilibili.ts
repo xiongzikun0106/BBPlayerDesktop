@@ -1,4 +1,4 @@
-import { ThirdPartyError } from '@/lib/errors'
+import { ThirdPartyError } from '..'
 
 export type BilibiliApiErrorType =
 	| 'RequestFailed'

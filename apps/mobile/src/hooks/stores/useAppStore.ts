@@ -10,7 +10,7 @@ import { alert } from '@/components/modals/AlertModal'
 import { expoDb } from '@/lib/db/db'
 import { analyticsService } from '@/lib/services/analyticsService'
 import type { AppState, Settings } from '@/types/core/appStore'
-import type { StorageKey } from '@/types/storage'
+import type { StorageKey } from '@bbplayer/core'
 import log from '@/utils/log'
 import { storage, zustandStorage } from '@/utils/mmkv'
 

@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 
 import useSkinStore from '@/hooks/stores/useSkinStore'
 import { loadActiveSkin, invalidateSkinCache } from '@/lib/theme/runtime'
-import type { AppSkin } from '@/lib/theme/types'
+import type { AppSkin } from '@bbplayer/core'
 
 export default function useActiveSkin(): AppSkin | null {
 	const activeSkinId = useSkinStore((state) => state.activeSkinId)

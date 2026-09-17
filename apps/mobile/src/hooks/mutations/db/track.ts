@@ -5,7 +5,7 @@ import { trackKeys } from '@/hooks/queries/db/track'
 import { usePlayerStore } from '@/hooks/stores/usePlayerStore'
 import { queryClient } from '@/lib/config/queryClient'
 import { trackService } from '@/lib/services/trackService'
-import type { Track } from '@/types/core/media'
+import type { Track } from '@bbplayer/core'
 
 queryClient.setMutationDefaults(['db', 'track'], {
 	retry: false,

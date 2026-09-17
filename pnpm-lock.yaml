@@ -135,6 +135,9 @@ importers:
 
   apps/mobile:
     dependencies:
+      '@bbplayer/core':
+        specifier: workspace:*
+        version: link:../../packages/core
       '@bbplayer/heatmap':
         specifier: workspace:*
         version: link:../../packages/heatmap
@@ -691,6 +694,39 @@ importers:
       typescript:
         specifier: ~6.0.3
         version: 6.0.3
+
+  packages/core:
+    dependencies:
+      arktype:
+        specifier: ^2.2.3
+        version: 2.2.3
+      crypto-js:
+        specifier: ^4.2.0
+        version: 4.2.0
+      drizzle-orm:
+        specifier: ^0.45.2
+        version: 0.45.2(@cloudflare/workers-types@4.20260304.0)(@neondatabase/serverless@0.10.4)(@types/pg@8.16.0)(expo-sqlite@57.0.2(expo@57.0.20)(react-native@0.86.3(@babel/core@7.29.7(supports-color@10.2.2))(@react-native-community/cli@20.2.0(supports-color@10.2.2)(typescript@6.0.3))(@react-native/jest-preset@0.86.3(@babel/core@7.29.7(supports-color@10.2.2))(react@19.2.3)(supports-color@10.2.2))(@react-native/metro-config@0.86.3(@babel/core@7.29.7(supports-color@10.2.2))(supports-color@10.2.2))(@types/react@19.2.15)(react@19.2.3)(supports-color@10.2.2))(react@19.2.3))(pg@8.19.0)(postgres@3.4.8)
+      fractional-indexing:
+        specifier: ^4.0.0
+        version: 4.0.0
+      neverthrow:
+        specifier: ^8.2.0
+        version: 8.2.0
+      node-forge:
+        specifier: 1.4.0
+        version: 1.4.0
+    devDependencies:
+      '@types/crypto-js':
+        specifier: ^4.2.2
+        version: 4.2.2
+      '@types/node-forge':
+        specifier: ^1.3.14
+        version: 1.3.14
+      webdav:
+        specifier: ^5.10.0
+        version: 5.10.0
+
+  packages/design-tokens: {}
 
   packages/eslint-plugin: {}
 

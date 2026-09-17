@@ -19,8 +19,8 @@ import { useScreenTransitionReady } from '@/hooks/router/useScreenTransitionRead
 import { useModalStore } from '@/hooks/stores/useModalStore'
 import { useDoubleTapScrollToTop } from '@/hooks/ui/useDoubleTapScrollToTop'
 import { analyticsService } from '@/lib/services/analyticsService'
-import type { BilibiliSearchVideo } from '@/types/apis/bilibili'
-import type { BilibiliTrack, Track } from '@/types/core/media'
+import type { BilibiliSearchVideo } from '@bbplayer/core'
+import type { BilibiliTrack, Track } from '@bbplayer/core'
 import { formatMMSSToSeconds } from '@/utils/time'
 
 const mapApiItemToTrack = (apiItem: BilibiliSearchVideo): BilibiliTrack => {

@@ -11,7 +11,7 @@ import useCurrentTrack from '@/hooks/player/useCurrentTrack'
 import { useInfiniteCollectionsList } from '@/hooks/queries/bilibili/favorite'
 import { usePersonalInformation } from '@/hooks/queries/bilibili/user'
 import useAppStore from '@/hooks/stores/useAppStore'
-import type { BilibiliCollection } from '@/types/apis/bilibili'
+import type { BilibiliCollection } from '@bbplayer/core'
 
 import CollectionListItem from './CollectionListItem'
 

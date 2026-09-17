@@ -6,11 +6,11 @@ import type {
 	QQMusicLyricResponse,
 	QQMusicPlaylistResponse,
 	QQMusicSearchResponse,
-} from '@/types/apis/qqmusic'
+} from '@bbplayer/core'
 import type {
 	LyricProviderResponseData,
 	LyricSearchResult,
-} from '@/types/player/lyrics'
+} from '@bbplayer/core'
 import log from '@/utils/log'
 
 const logger = log.extend('API.QQMusic')

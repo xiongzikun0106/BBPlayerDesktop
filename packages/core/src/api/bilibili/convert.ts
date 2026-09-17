@@ -1,8 +1,8 @@
-import type { Result } from 'neverthrow'
-import { err, ok } from 'neverthrow'
-
-import useAppStore from '@/hooks/stores/useAppStore'
-import { BilibiliApiError } from '@/lib/errors/thirdparty/bilibili'
+/**
+ * B 站 BV 号 / AV 号互转。
+ *
+ * 纯计算，无任何平台依赖，因此放在 core 中供移动端与桌面端共用。
+ */
 
 /**
  * 转换B站bvid为avid
@@ -49,25 +49,4 @@ export function av2bv(avid: number | bigint): string {
 	;[resultArray[4], resultArray[7]] = [resultArray[7], resultArray[4]]
 
 	return resultArray.join('')
-}
-
-export function getCsrfToken(): Result<string, BilibiliApiError> {
-	const cookieList = useAppStore.getState().bilibiliCookie
-	if (!cookieList)
-		return err(
-			new BilibiliApiError({
-				message: '未找到 Cookie',
-				type: 'NoCookie',
-			}),
-		)
-	const csrfToken = cookieList.bili_jct as string | undefined
-	if (!csrfToken) {
-		return err(
-			new BilibiliApiError({
-				message: '未找到 CSRF Token',
-				type: 'CsrfError',
-			}),
-		)
-	}
-	return ok(csrfToken)
 }

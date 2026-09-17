@@ -15,7 +15,7 @@ import {
 import { usePersonalInformation } from '@/hooks/queries/bilibili/user'
 import useAppStore from '@/hooks/stores/useAppStore'
 import { useModalStore } from '@/hooks/stores/useModalStore'
-import type { BilibiliPlaylist } from '@/types/apis/bilibili'
+import type { BilibiliPlaylist } from '@bbplayer/core'
 
 const FavoriteListItem = memo(function FavoriteListItem({
 	name,

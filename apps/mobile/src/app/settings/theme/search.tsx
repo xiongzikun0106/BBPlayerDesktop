@@ -12,8 +12,8 @@ import Button from '@/components/common/Button'
 import { alert } from '@/components/modals/AlertModal'
 import { useThemeSearch } from '@/hooks/queries/bilibili/theme'
 import { useModalStore } from '@/hooks/stores/useModalStore'
-import type { GarbSkinSearchResult } from '@/lib/api/bilibili/garb'
-import { BilibiliGarbSearchItem } from '@/types/apis/bilibili'
+import type { GarbSkinSearchResult } from '@bbplayer/core'
+import { BilibiliGarbSearchItem } from '@bbplayer/core'
 import { ListRenderItemInfoWithExtraData } from '@/types/legendlist'
 
 const resultKey = (item: GarbSkinSearchResult) =>

@@ -9,14 +9,14 @@
 import { errAsync, okAsync, ResultAsync } from 'neverthrow'
 
 import { bilibiliApi } from '@/lib/api/bilibili/api'
-import type { GarbSkinSearchResult } from '@/lib/api/bilibili/garb'
-import { ServiceError } from '@/lib/errors'
-import { createSkinFetchFailed } from '@/lib/errors/service'
+import type { GarbSkinSearchResult } from '@bbplayer/core'
+import { ServiceError } from '@bbplayer/core'
+import { createSkinFetchFailed } from '@bbplayer/core'
 import type {
 	BilibiliGarbAssetBagItem,
 	BilibiliGarbCollectEntry,
 	BilibiliGarbThemeSkinProperties,
-} from '@/types/apis/bilibili'
+} from '@bbplayer/core'
 import type {
 	BilibiliGarbAvatarFrameProperties,
 	BilibiliGarbBenefitResponse,
@@ -26,10 +26,10 @@ import type {
 	BilibiliGarbSuitCardProperties,
 	BilibiliGarbSuitSpaceBgProperties,
 	BilibiliGarbThumbUpProperties,
-} from '@/types/apis/garb'
+} from '@bbplayer/core'
 import log from '@/utils/log'
 
-import { parseSkinAssetDeclaration, type SkinAssetDeclaration } from './schema'
+import { parseSkinAssetDeclaration, type SkinAssetDeclaration } from '@bbplayer/core'
 
 // ============================================================
 // 卡牌解析：API raw → SkinCardAsset

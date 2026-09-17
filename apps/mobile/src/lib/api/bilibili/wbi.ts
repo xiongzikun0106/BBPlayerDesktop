@@ -1,7 +1,7 @@
 import md5 from 'md5'
 import { okAsync, type ResultAsync } from 'neverthrow'
 
-import type { BilibiliApiError } from '@/lib/errors/thirdparty/bilibili'
+import type { BilibiliApiError } from '@bbplayer/core'
 import log from '@/utils/log'
 import { storage } from '@/utils/mmkv'
 

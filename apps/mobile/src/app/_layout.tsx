@@ -30,6 +30,7 @@ import { serializeCookieObject } from '@/hooks/stores/useAppStore'
 import useAppStoreObj from '@/hooks/stores/useAppStore'
 import { initPlayerQueueStore } from '@/hooks/stores/usePlayerQueueStore'
 import { usePlayerStore } from '@/hooks/stores/usePlayerStore'
+import { registerMobileCorePorts } from '@/ports'
 import { initializeSentry } from '@/lib/config/sentry'
 import drizzleDb from '@/lib/db/db'
 import { startStartupProfiling } from '@/lib/performance'
@@ -42,7 +43,7 @@ import {
 	reportUpdateLaunch,
 } from '@/lib/services/updateTelemetry'
 import { playlistSyncWorker } from '@/lib/workers/PlaylistSyncWorker'
-import { ProjectScope } from '@/types/core/scope'
+import { ProjectScope } from '@bbplayer/core'
 import log, { cleanOldLogFiles, reportErrorToSentry } from '@/utils/log'
 import { storage } from '@/utils/mmkv'
 import { isActuallyOffline } from '@/utils/network'
@@ -50,6 +51,10 @@ import { isActuallyOffline } from '@/utils/network'
 import migrations from '../../drizzle/migrations'
 
 const logger = log.extend('UI.RootLayout')
+
+// 把平台能力注册给 packages/core：core 内部的数据迁移 / WBI 缓存等模块
+// 通过端口取用 SQLite、KV 存储与日志，从而保持平台无关。
+registerMobileCorePorts()
 
 Observe.configure({
 	integrations: { 'expo-router': true },

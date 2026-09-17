@@ -1,4 +1,4 @@
-import {
+import type {
 	BilibiliGarbBenefitResponse,
 	BilibiliGarbSuitDetailResponse,
 } from './garb'

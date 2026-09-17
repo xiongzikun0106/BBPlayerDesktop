@@ -6,8 +6,8 @@ import { expoDb } from '@/lib/db/db'
 import log from '@/utils/log'
 import { storage } from '@/utils/mmkv'
 
-import { BACKUP_VERSION } from './types'
-import type { BackupManifest } from './types'
+import { BACKUP_VERSION } from '@bbplayer/core'
+import type { BackupManifest } from '@bbplayer/core'
 
 const logger = log.extend('backup.export')
 

@@ -7,10 +7,10 @@ import { ResultAsync, err, ok } from 'neverthrow'
 import { fetch } from 'react-native-nitro-fetch'
 import * as setCookie from 'set-cookie-parser'
 
-import { NeteaseApiError } from '@/lib/errors/thirdparty/netease'
+import { NeteaseApiError } from '@bbplayer/core'
 
-import * as Encrypt from './crypto'
-import { cookieObjToString, cookieToJson, toBoolean } from './utils'
+import * as Encrypt from '@bbplayer/core'
+import { cookieObjToString, cookieToJson, toBoolean } from '@bbplayer/core'
 
 interface AppConfig {
 	domain: string

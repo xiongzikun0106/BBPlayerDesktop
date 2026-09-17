@@ -2,7 +2,7 @@ import { errAsync, okAsync, ResultAsync } from 'neverthrow'
 import { fetch } from 'react-native-nitro-fetch'
 
 import { useAppStore } from '@/hooks/stores/useAppStore'
-import { BilibiliApiError } from '@/lib/errors/thirdparty/bilibili'
+import { BilibiliApiError } from '@bbplayer/core'
 import type {
 	BilibiliCaptchaTokenData,
 	BilibiliCommentsResponse,
@@ -16,7 +16,7 @@ import type {
 	BilibiliSmsSendData,
 	BilibiliToViewVideoList,
 	BilibiliWebPlayerInfo,
-} from '@/types/apis/bilibili'
+} from '@bbplayer/core'
 import {
 	type BilibiliAudioStreamParams,
 	type BilibiliAudioStreamResponse,
@@ -35,12 +35,12 @@ import {
 	type BilibiliUserInfo,
 	type BilibiliUserUploadedVideosResponse,
 	type BilibiliVideoDetails,
-} from '@/types/apis/bilibili'
-import type { BilibiliTrack } from '@/types/core/media'
+} from '@bbplayer/core'
+import type { BilibiliTrack } from '@bbplayer/core'
 import log from '@/utils/log'
 
 import { bilibiliApiClient } from './client'
-import { bv2av } from './utils'
+import { bv2av } from '@bbplayer/core'
 import getWbiEncodedParams from './wbi'
 
 const logger = log.extend('3Party.Bilibili.Api')

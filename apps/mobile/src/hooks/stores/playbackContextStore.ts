@@ -9,7 +9,7 @@ import {
 	type PlaybackContext,
 	type PlaybackContextState,
 	type PlayerMode,
-} from '@/types/core/playback'
+} from '@bbplayer/core'
 import log from '@/utils/log'
 import { legendPersistStorage } from '@/utils/mmkv'
 

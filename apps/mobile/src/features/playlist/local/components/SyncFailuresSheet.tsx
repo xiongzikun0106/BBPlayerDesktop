@@ -10,7 +10,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context'
 
 import Button from '@/components/common/Button'
 import db from '@/lib/db/db'
-import * as schema from '@/lib/db/schema'
+import * as schema from '@bbplayer/core/db/schema'
 import { playlistSyncWorker } from '@/lib/workers/PlaylistSyncWorker'
 import { toastAndLogError } from '@/utils/error-handling'
 import { formatRelativeTime } from '@/utils/time'

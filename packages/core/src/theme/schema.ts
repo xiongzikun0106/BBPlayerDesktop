@@ -1,8 +1,8 @@
 import { ArkErrors, type as arkType } from 'arktype'
 import { err, ok, type Result } from 'neverthrow'
 
-import { ServiceError } from '@/lib/errors'
-import { createSkinValidationFailed } from '@/lib/errors/service'
+import { ServiceError } from '../errors'
+import { createSkinValidationFailed } from '../errors/service'
 
 // ============================================================
 // Helpers

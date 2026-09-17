@@ -48,7 +48,7 @@ export const usePersonalInformation = () => {
 					mid: storeData.mid ?? 0,
 					name: storeData.name,
 					face: storeData.face,
-				} as import('@/types/apis/bilibili').BilibiliUserInfo
+				} as import('@bbplayer/core').BilibiliUserInfo
 			}
 			return undefined
 		},

@@ -22,8 +22,17 @@ jobs:
       - name: 🕵️ Check Dependencies
         run: pnpm check:deps
 
+      - name: 🧱 Check core purity
+        # packages/core 必须保持平台无关（移动端与桌面端共用）
+        run: pnpm check:core
+
       - name: 🚀 Run Lint
         # 需要生成 expo router 的类型来进行类型检查
         run: |
           cd ./apps/mobile && npx expo customize tsconfig.json && cd ../../
           pnpm lint
+
+      - name: 🔎 Run Type Check
+        run: |
+          cd ./apps/mobile && npx expo customize tsconfig.json && cd ../../
+          pnpm type-check

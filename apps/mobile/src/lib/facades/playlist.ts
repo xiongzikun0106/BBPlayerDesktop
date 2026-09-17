@@ -3,9 +3,9 @@ import { ResultAsync, errAsync } from 'neverthrow'
 
 import { api as bbplayerApiInstance } from '@/lib/api/bbplayer/client'
 import defaultDb from '@/lib/db/db'
-import * as schema from '@/lib/db/schema'
-import { createFacadeError } from '@/lib/errors/facade'
-import { createValidationError } from '@/lib/errors/service'
+import * as schema from '@bbplayer/core/db/schema'
+import { createFacadeError } from '@bbplayer/core'
+import { createValidationError } from '@bbplayer/core'
 import { artistService as artistServiceInstance, type ArtistService } from '@/lib/services/artistService'
 import {
 	playlistService as playlistServiceInstance,
@@ -13,12 +13,12 @@ import {
 } from '@/lib/services/playlistService'
 import { trackService as trackServiceInstance, type TrackService } from '@/lib/services/trackService'
 import { playlistSyncWorker } from '@/lib/workers/PlaylistSyncWorker'
-import type { CreateArtistPayload } from '@/types/services/artist'
+import type { CreateArtistPayload } from '@bbplayer/core'
 import type {
 	ReorderLocalPlaylistTrackPayload,
 	UpdatePlaylistPayload,
-} from '@/types/services/playlist'
-import type { CreateTrackPayload } from '@/types/services/track'
+} from '@bbplayer/core'
+import type { CreateTrackPayload } from '@bbplayer/core'
 import log from '@/utils/log'
 
 type BbplayerApiClient = typeof bbplayerApiInstance

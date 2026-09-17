@@ -4,9 +4,9 @@ import {
 	bilibiliApi as bilibiliApiInstance,
 	type bilibiliApi as BilibiliApiService,
 } from '@/lib/api/bilibili/api'
-import { av2bv } from '@/lib/api/bilibili/utils'
-import { createFacadeError } from '@/lib/errors/facade'
-import type { Playlist } from '@/types/core/media'
+import { av2bv } from '@bbplayer/core'
+import { createFacadeError } from '@bbplayer/core'
+import type { Playlist } from '@bbplayer/core'
 
 export class BilibiliFacade {
 	constructor(private readonly bilibiliApi: typeof BilibiliApiService) {}

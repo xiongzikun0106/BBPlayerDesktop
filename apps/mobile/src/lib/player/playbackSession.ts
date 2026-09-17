@@ -12,7 +12,7 @@ import useAppStore from '@/hooks/stores/useAppStore'
 import { usePlayerQueueStore } from '@/hooks/stores/usePlayerQueueStore'
 import usePlayerStore from '@/hooks/stores/usePlayerStore'
 import { playlistService } from '@/lib/services/playlistService'
-import type { PlayerMode } from '@/types/core/playback'
+import type { PlayerMode } from '@bbplayer/core'
 
 async function resolveInitialMode(playlistId?: number): Promise<PlayerMode> {
 	const fallback = useAppStore.getState().settings.defaultPlayerMode

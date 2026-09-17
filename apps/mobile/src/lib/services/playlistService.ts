@@ -6,20 +6,20 @@ import { generateKeyBetween } from 'fractional-indexing'
 import { ResultAsync, errAsync, okAsync } from 'neverthrow'
 
 import defaultDb from '@/lib/db/db'
-import * as schema from '@/lib/db/schema'
-import { ServiceError } from '@/lib/errors'
+import * as schema from '@bbplayer/core/db/schema'
+import { ServiceError } from '@bbplayer/core'
 import {
 	DatabaseError,
 	createPlaylistNotFound,
 	createTrackNotInPlaylist,
 	createValidationError,
-} from '@/lib/errors/service'
-import type { Playlist, Track } from '@/types/core/media'
+} from '@bbplayer/core'
+import type { Playlist, Track } from '@bbplayer/core'
 import type {
 	CreatePlaylistPayload,
 	ReorderLocalPlaylistTrackPayload,
 	UpdatePlaylistPayload,
-} from '@/types/services/playlist'
+} from '@bbplayer/core'
 
 import type { TrackService } from './trackService'
 import { trackService as trackServiceInstance } from './trackService'

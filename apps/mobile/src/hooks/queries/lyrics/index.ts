@@ -5,8 +5,8 @@ import { kugouApi } from '@/lib/api/kugou/api'
 import { neteaseApi } from '@/lib/api/netease/api'
 import { qqMusicApi } from '@/lib/api/qqmusic/api'
 import lyricService from '@/lib/services/lyricService'
-import type { Track } from '@/types/core/media'
-import type { LyricFileData, LyricSearchResult } from '@/types/player/lyrics'
+import type { Track } from '@bbplayer/core'
+import type { LyricFileData, LyricSearchResult } from '@bbplayer/core'
 
 export const lyricsQueryKeys = {
 	all: ['lyrics'] as const,

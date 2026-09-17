@@ -1,4 +1,4 @@
-import { CustomError } from '@/lib/errors'
+import { CustomError } from '@bbplayer/core'
 
 import log, { flatErrorMessage } from './log'
 import toast from './toast'

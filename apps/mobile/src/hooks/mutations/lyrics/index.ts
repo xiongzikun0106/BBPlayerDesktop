@@ -3,7 +3,7 @@ import { useMutation } from '@tanstack/react-query'
 import { lyricsQueryKeys } from '@/hooks/queries/lyrics'
 import { queryClient } from '@/lib/config/queryClient'
 import lyricService from '@/lib/services/lyricService'
-import type { LyricSearchResult } from '@/types/player/lyrics'
+import type { LyricSearchResult } from '@bbplayer/core'
 import toast from '@/utils/toast'
 
 export const useFetchLyrics = () => {

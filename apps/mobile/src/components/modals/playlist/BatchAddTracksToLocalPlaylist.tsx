@@ -8,10 +8,10 @@ import Button from '@/components/common/Button'
 import { useBatchAddTracksToLocalPlaylist } from '@/hooks/mutations/db/playlist'
 import { usePlaylistLists } from '@/hooks/queries/db/playlist'
 import { useModalStore } from '@/hooks/stores/useModalStore'
-import type { Playlist } from '@/types/core/media'
+import type { Playlist } from '@bbplayer/core'
 import type { ListRenderItemInfoWithExtraData } from '@/types/legendlist'
-import type { CreateArtistPayload } from '@/types/services/artist'
-import type { CreateTrackPayload } from '@/types/services/track'
+import type { CreateArtistPayload } from '@bbplayer/core'
+import type { CreateTrackPayload } from '@bbplayer/core'
 
 const renderPlaylistItem = ({
 	item,

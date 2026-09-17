@@ -4,8 +4,8 @@ import * as Sentry from '@sentry/react-native'
 import * as EXPOFS from 'expo-file-system'
 import { err, ok, type Result } from 'neverthrow'
 
-import { CustomError } from '@/lib/errors'
-import type { ProjectScope } from '@/types/core/scope'
+import { CustomError } from '@bbplayer/core'
+import type { ProjectScope } from '@bbplayer/core'
 
 const isDev = __DEV__
 

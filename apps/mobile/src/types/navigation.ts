@@ -1,11 +1,11 @@
 import type { AlertModalProps } from '@/components/modals/AlertModal'
-import type { GarbSkinSearchResult } from '@/lib/api/bilibili/garb'
+import type { GarbSkinSearchResult } from '@bbplayer/core'
 import type { MatchResult } from '@/lib/services/externalPlaylistService'
-import type { Playlist, Track } from '@/types/core/media'
-import type { GenericTrack } from '@/types/external_playlist'
-import type { LyricFileData } from '@/types/player/lyrics'
-import type { CreateArtistPayload } from '@/types/services/artist'
-import type { CreateTrackPayload } from '@/types/services/track'
+import type { Playlist, Track } from '@bbplayer/core'
+import type { GenericTrack } from '@bbplayer/core'
+import type { LyricFileData } from '@bbplayer/core'
+import type { CreateArtistPayload } from '@bbplayer/core'
+import type { CreateTrackPayload } from '@bbplayer/core'
 
 export interface ModalPropsMap {
 	ManualMatchExternalSync: {

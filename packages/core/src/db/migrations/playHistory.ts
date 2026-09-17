@@ -1,9 +1,6 @@
-import { expoDb } from '@/lib/db/db'
-import log from '@/utils/log'
-
+import { getCorePorts } from '../../ports/index'
 import { DataMigration } from './state'
 
-const logger = log.extend('migratePlayHistory')
 const migration = new DataMigration(
 	'play_history_v1',
 	'play_history_migrated_v1',
@@ -11,10 +8,14 @@ const migration = new DataMigration(
 
 /** 将 tracks 表中的 JSON 播放历史迁移到 play_history 表。 */
 export function migratePlayHistory(): void {
+	const { logger: log, db } = getCorePorts()
+	const logger = log.extend('migratePlayHistory')
+	const sqlite = db.sqlite
+
 	if (migration.isApplied()) return
 
 	try {
-		const tracksTableInfo = expoDb.getAllSync<{ name: string }>(
+		const tracksTableInfo = sqlite.getAllSync<{ name: string }>(
 			`PRAGMA table_info(tracks)`,
 		)
 		const hasOldColumn = tracksTableInfo.some(
@@ -28,25 +29,25 @@ export function migratePlayHistory(): void {
 			return
 		}
 
-		const tableExists = expoDb.getFirstSync<{ name: string }>(
+		const tableExists = sqlite.getFirstSync<{ name: string }>(
 			`SELECT name FROM sqlite_master WHERE type='table' AND name='play_history'`,
 		)
 		if (!tableExists) {
-			logger.warning('[play_history] play_history 表尚未创建，跳过本次数据迁移')
+			logger.warn('[play_history] play_history 表尚未创建，跳过本次数据迁移')
 			return
 		}
 
-		expoDb.withTransactionSync(() => {
+		sqlite.withTransactionSync(() => {
 			type Row = { id: number; play_history: string }
-			const rows = expoDb.getAllSync<Row>(
+			const rows = sqlite.getAllSync<Row>(
 				`SELECT id, play_history FROM tracks WHERE play_history IS NOT NULL AND play_history != '[]'`,
 			)
 			if (rows.length > 0) {
 				for (const row of rows) {
-					const history = JSON.parse(row.play_history)
+					const history: unknown = JSON.parse(row.play_history)
 					if (!Array.isArray(history)) continue
 					for (const record of history) {
-						expoDb.runSync(
+						sqlite.runSync(
 							`INSERT INTO play_history (track_id, start_time, duration_played, completed, created_at)
 							 VALUES (?, ?, ?, ?, (unixepoch() * 1000))`,
 							[

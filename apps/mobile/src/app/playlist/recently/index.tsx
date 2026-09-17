@@ -12,7 +12,7 @@ import { PlaylistPageSkeleton } from '@/features/playlist/skeletons/PlaylistSkel
 import { useMostPlayedTracks } from '@/hooks/queries/playHistory'
 import { useScreenTransitionReady } from '@/hooks/router/useScreenTransitionReady'
 import { usePlaylistBackgroundColor } from '@/hooks/ui/usePlaylistBackgroundColor'
-import type { BilibiliTrack, Track } from '@/types/core/media'
+import type { BilibiliTrack, Track } from '@bbplayer/core'
 import { addToQueue } from '@/utils/player'
 import toast from '@/utils/toast'
 

@@ -5,7 +5,7 @@ import { useMMKVBoolean } from 'react-native-mmkv'
 
 import { alert } from '@/components/modals/AlertModal'
 import { playlistService } from '@/lib/services/playlistService'
-import type { Track } from '@/types/core/media'
+import type { Track } from '@bbplayer/core'
 import { toastAndLogError } from '@/utils/error-handling'
 import { storage } from '@/utils/mmkv'
 import { addToQueue } from '@/utils/player'

@@ -29,12 +29,12 @@ import { useModalStore } from '@/hooks/stores/useModalStore'
 import { useDoubleTapScrollToTop } from '@/hooks/ui/useDoubleTapScrollToTop'
 import { usePlaylistBackgroundColor } from '@/hooks/ui/usePlaylistBackgroundColor'
 import { useDebouncedValue } from '@/hooks/utils/useDebouncedValue'
-import { bv2av } from '@/lib/api/bilibili/utils'
+import { bv2av } from '@bbplayer/core'
 import type {
 	BilibiliUserInfo,
 	BilibiliUserUploadedVideosResponse,
-} from '@/types/apis/bilibili'
-import type { BilibiliTrack, Track } from '@/types/core/media'
+} from '@bbplayer/core'
+import type { BilibiliTrack, Track } from '@bbplayer/core'
 import { resolveBilibiliImageUrl } from '@/utils/imageUrl'
 import { formatMMSSToSeconds } from '@/utils/time'
 

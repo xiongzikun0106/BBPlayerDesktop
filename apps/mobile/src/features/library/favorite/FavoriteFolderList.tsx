@@ -12,7 +12,7 @@ import useCurrentTrack from '@/hooks/player/useCurrentTrack'
 import { useGetFavoritePlaylists } from '@/hooks/queries/bilibili/favorite'
 import { usePersonalInformation } from '@/hooks/queries/bilibili/user'
 import useAppStore from '@/hooks/stores/useAppStore'
-import type { BilibiliPlaylist } from '@/types/apis/bilibili'
+import type { BilibiliPlaylist } from '@bbplayer/core'
 
 import FavoriteFolderListItem from './FavoriteFolderListItem'
 

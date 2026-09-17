@@ -1,0 +1,425 @@
+# BBPlayer Desktop 方案（Electron / Windows + Linux）
+
+> 状态：待评审 · 范围：Windows / Linux 桌面端 · 目标运行时：Electron（主进程 = Node，渲染进程 = Web）
+> 本文档基于对当前仓库的只读审计，所有结论均附 `文件:行` 证据。
+
+---
+
+## 0. 现状与口径
+
+| 指标                     | 数值                                                               |
+| ------------------------ | ------------------------------------------------------------------ |
+| 全仓 tracked 文件 / 提交 | 1,302 / 1,151                                                      |
+| `.git` 体积              | 32.3 MB（含 1.3 MB `pnpm-lock.yaml`）                              |
+| `apps/mobile/src`        | **327 文件 / 55,044 行**                                           |
+| `packages/*`             | 308 文件 / 2,922 行（仅少数可复用）                                |
+| 原生代码                 | Kotlin 100 文件（其中 orpheus 83）、Swift 24 文件                  |
+| 当前目标平台             | `platforms: ['android', 'ios']`（`apps/mobile/app.config.ts:108`） |
+| 平台分支文件             | `.web.*` / `.native.*` = **0**                                     |
+
+**口径说明**：桌面端不是「移植 mobile」，而是「复用逻辑、重写呈现」。判断某块代码能否复用的唯一标准是：_它是否 import 了 React Native / Expo / `@bbplayer/{native,orpheus}`_。
+
+---
+
+## 1. 代码复用审计
+
+### 1.1 总账
+
+| 分类               |       行数 | 占比 | 说明                            |
+| ------------------ | ---------: | ---: | ------------------------------- |
+| ✅ 几乎原样复用    |  **5,682** |  10% | 零 RN 依赖                      |
+| 🟡 换 import 即可  |  **4,808** |   9% | 只依赖 4 个可替换的接缝         |
+| 🟡 抽核心 + 换实现 |  **2,926** |   5% | 逻辑要抽，平台部分重写          |
+| 🟡 按新壳重写      |  **3,465** |   6% | 数据层/hook 层，逻辑可搬        |
+| 🔴 硬重写          |    **583** |   1% | 强绑 RN/Expo 配置               |
+| 🔴 完全重做        | **37,580** |  68% | UI 33,209 + 播放引擎 + 原生模块 |
+
+### 1.2 ✅ 几乎原样复用（`packages/core/src/` 直接搬）
+
+| 模块                                                                                          |   行数 | 证据                                                     |
+| --------------------------------------------------------------------------------------------- | -----: | -------------------------------------------------------- |
+| `lib/db/schema.ts`                                                                            |    319 | 纯 `drizzle-orm`，Drizzle 双端可用                       |
+| `lib/errors/{index,service,facade,player}.ts` + `errors/thirdparty/*`                         |    340 | 纯 `neverthrow`                                          |
+| `lib/api/bilibili/{garb,utils}.ts`                                                            |     79 | 零依赖                                                   |
+| `lib/api/bilibili/wbi.ts`                                                                     |    113 | **B 站 WBI 签名**，只依赖 `@/utils/log` + mmkv（可注入） |
+| `lib/api/netease/{api,crypto,utils}.ts`                                                       |    306 | **eapi 加密**，零 RN 依赖                                |
+| `lib/backup/{types,webdav-client}.ts`                                                         |    291 | 已跑在 `testEnvironment: 'node'`                         |
+| `lib/services/{genKey,externalPlaylistService,syncLocalToBilibiliService}.ts`                 |    488 | 零 RN 依赖                                               |
+| `lib/facades/{bilibili,playlist,sharedPlaylist,syncBilibiliPlaylist,syncExternalPlaylist}.ts` |  2,924 | 只碰 4 个接缝                                            |
+| `lib/theme/{schema,types,transformer}.ts`                                                     |    394 | 纯函数                                                   |
+| `lib/types/**`（大部分）                                                                      | ~1,600 | 纯类型                                                   |
+| `packages/splash`                                                                             |    807 | **RN/Expo 引用数 = 0**                                   |
+| `packages/logs`                                                                               |    981 | 依赖注入式 transport                                     |
+| `packages/heatmap`                                                                            |    656 | 纯 TS + `react-native-svg`（渲染层需换）                 |
+
+### 1.3 🟡 换 import 即可（4 个接缝）
+
+| 接缝    | 现状                                         |    出现次数 | 桌面端替换                                   |
+| ------- | -------------------------------------------- | ----------: | -------------------------------------------- |
+| DB 实例 | `@/lib/db/db`（`expo-sqlite`）               |          12 | `better-sqlite3` / `node:sqlite`             |
+| 日志    | `@/utils/log`（`expo-file-system` + Sentry） | **51 文件** | `@bbplayer/logs`（已是纯 JS）                |
+| KV 存储 | `@/utils/mmkv`（`react-native-mmkv`）        | **22 文件** | 新建 `@bbplayer/storage`（桌面 = 落盘 JSON） |
+| HTTP    | `react-native-nitro-fetch`                   |           8 | Node 原生 `fetch`                            |
+
+> **关键发现**：这 4 个接缝都是**通过项目内薄封装**引入的（`@/utils/log`、`@/utils/mmkv`、`@/lib/db/db`），没有任何业务文件直接 import RN 库。**替换 = 改封装 + 换 import 路径，不碰业务逻辑。**
+
+### 1.4 🟡 抽核心 + 换实现
+
+| 模块                                                           |  行数 | 复用部分                         | 重写部分                                   |
+| -------------------------------------------------------------- | ----: | -------------------------------- | ------------------------------------------ |
+| `lib/services/{playlistService,trackService,artistService}.ts` | 2,741 | 业务逻辑、查询、`ResultAsync` 流 | `expo-sqlite` 类型、`@sentry/react-native` |
+| `lib/backup/{export,import,webdav}.ts`                         |   191 | 数据契约                         | `expo-file-system`、`@bbplayer/native`     |
+| `lib/services/lyricService.ts`                                 |   625 | 智能匹配、缓存、偏移             | `Orpheus` 推送、`FileSystem`               |
+| `lib/workers/PlaylistSyncWorker.ts`                            |   451 | 同步调度逻辑                     | 去掉 `@/hooks/stores/useAppStore` 依赖     |
+
+### 1.5 🟡 按新壳重写（逻辑可搬，形态必须换）
+
+| 模块                                                    |   行数 | 说明                                                                           |
+| ------------------------------------------------------- | -----: | ------------------------------------------------------------------------------ |
+| `lib/player/{seek,progressListener,playbackSession}.ts` |    141 | 全部围绕 `Orpheus.*` — **定义 `AudioPort` 即可原样复用**（见 §2.2）            |
+| `hooks/player/*`                                        | ~1,900 | `useSmoothProgress` 用 `react-native-reanimated`；改用 `requestAnimationFrame` |
+| `hooks/stores/*`（Zustand）                             |    448 | **Zustand 是框架无关的**，vanilla store 可直接用                               |
+| `hooks/{queries,mutations}`（React Query）              | ~2,135 | React Query 桌面可用，只需换 `queryClient` 配置                                |
+| `lib/config/{queryClient,sentry}.ts`                    |    174 | 换成桌面等价物                                                                 |
+
+### 1.6 🔴 必须重写
+
+| 模块                                                                                                  |                行数 | 原因                                                                                                                                 |
+| ----------------------------------------------------------------------------------------------------- | ------------------: | ------------------------------------------------------------------------------------------------------------------------------------ |
+| `app/` + `components/` + `features/`                                                                  |          **33,209** | React Native 组件树；`react-native-paper`(134)、`react-native-reanimated`(26)、`expo-router`(67)、`react-native-gesture-handler`(23) |
+| `Orpheus` 播放引擎                                                                                    | 83 Kotlin / 9 Swift | 完全原生，零 TS                                                                                                                      |
+| `packages/{native,expo-wavy-slider}`                                                                  |                 912 | `platforms: ["android"]`；`PlayerSlider.tsx:3` 顶层导入 wavy-slider                                                                  |
+| `lib/theme/{material3Colors,runtime,SkinManager,downloadManager}.ts` + `@bbplayer/image-theme-colors` |                 611 | Android 原生取色、换肤下载                                                                                                           |
+| `lib/{performance,services/{analyticsService,updateService,updateTelemetry}}.ts`                      |                 537 | `react-native-release-profiler`、Firebase、`expo-updates`                                                                            |
+| `lib/db/migrations/*.ts`                                                                              |                 300 | **SQL 逻辑可复用**，但执行器要换（移动端是 `useFastMigrations` 内联执行）                                                            |
+
+---
+
+## 2. 桌面端技术架构
+
+### 2.1 进程与职责
+
+```
+electron/main       纯 Node 进程
+  ├─ 消费 packages/core（9.5k 行业务逻辑，零适配）
+  ├─ better-sqlite3（Drizzle driver 换掉 expo-sqlite）
+  ├─ 日志 → 文件
+  ├─ 音频/CDN 请求代理（见 §2.3，这是桌面端最重要的技术决策）
+  └─ IPC server
+
+electron/renderer   Web 进程
+  ├─ 新 UI（React + 自选组件库）
+  ├─ <audio> / WebAudio 播放
+  ├─ 桌面歌词窗口（独立 BrowserWindow）
+  └─ MediaSession（系统媒体键 / 任务栏缩略图控制）
+```
+
+**为什么业务逻辑放主进程**：主进程就是 Node，`fetch` / `fs` / SQLite 都是原生能力 —— 你最初担心的「9.5k 行靠 Node 跑」在这里**不需要任何适配层**。
+
+### 2.2 `AudioPort`：复用播放层逻辑的钥匙
+
+移动端实际调用 `Orpheus` 共 **65 个方法**，但真正被播放器业务逻辑使用、需要跨端一致的核心只有 **25 个**：
+
+```
+play / pause / skipToNext / skipToPrevious / seekTo / skipTo / setPlaybackSpeed
+setRepeatMode / setShuffleMode / getRepeatMode / getShuffleMode
+getCurrentTrack / getQueue / getCurrentIndex / getPosition / getDuration / getBuffered
+getIsPlaying / addToEnd / playNext / removeTrack / clear / reverseRemainingQueue
+setSleepTimer / getSleepTimerEndTime / cancelSleepTimer
+```
+
+**做法**：新建 `packages/core/src/ports/audio.ts` 定义这个接口，把现有 `lib/player/*.ts` 从 `import { Orpheus }` 改为注入 `AudioPort`。这样：
+
+| 端      | 实现                                                 |
+| ------- | ---------------------------------------------------- |
+| mobile  | `Orpheus`（现有原生模块，包一层）                    |
+| desktop | 主进程 `HTMLAudioElement` 或渲染进程 `<audio>` + IPC |
+
+剩下 **40 个方法是移动端专属**（桌面歌词悬浮窗、状态栏歌词、车机、下载、APK 更新、目录选择器、导出、headless），**不进 `AudioPort`**，由各端自行处理。这也顺带解决了 iOS 上 `setLyrics` 必抛的问题。
+
+### 2.3 ⚠️ 关键发现：B 站音频有防盗链，桌面端必须处理
+
+**证据**：
+
+- `packages/orpheus/android/.../NetworkModule.kt:42-45` — OkHttp 拦截器注入 `User-Agent` + `Referer: https://www.bilibili.com/`
+- `packages/orpheus/android/.../DownloadUtil.kt:142,154` — 下载同样注入 cookie + Referer
+
+**影响**：浏览器里 `<audio src="https://.../audio.m4s">` 会被 403（缺 Referer），且 CDN 不返回 CORS 头。**这是 Electron 方案里唯一可能导致"播放不了"的技术风险。**
+
+**推荐方案（二选一，按稳健度排序）**：
+
+| 方案                          | 做法                                                                                                                    | 评价                                                                           |
+| ----------------------------- | ----------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------ |
+| **A. 自定义协议代理**（推荐） | 主进程注册 `bbplayer-audio://`，用 Node 侧带 header 发请求、流式回传；渲染进程 `<audio src="bbplayer-audio://trackId">` | 不牺牲渲染进程安全（不开 `webSecurity: false`），支持 Range 请求，可顺带做缓存 |
+| B. session 注入 header        | `session.webRequest.onBeforeSendHeaders` 注入 Referer                                                                   | 简单，但仍需处理 CORS，通常要配 `webSecurity: false`                           |
+
+**必须在 Phase 1 就验证这一点**，它决定整个播放路径的形态。
+
+### 2.4 打包策略（避开 pnpm + monorepo 的坑）
+
+```
+阶段 1  build：esbuild / tsup
+    packages/core + electron/main + ipc handlers → 单个 main.cjs
+    renderer → Vite 产出静态资源
+
+阶段 2  dist：electron-builder
+    files:      只含 dist/ + 裁剪过的生产依赖
+    asarUnpack: 只放 better-sqlite3 等原生模块
+    exclude:    packages/*/{android,ios}、apps/mobile、.agents
+```
+
+**原则**：bundle 用你熟悉的工具链（esbuild + pnpm），分发用 electron-builder 只处理产物，两边都不理解对方。
+
+**具体坑与对策**：
+
+1. pnpm symlink → build 阶段 bundle 掉，dist 阶段只发产物
+2. 原生模块 ABI → `better-sqlite3` 必须 `electron-rebuild`
+3. workspace 解析 → electron-builder 不接触 `workspace:*`（已被 bundle）
+4. `packages/*/android/**` 被误打包 → `files` 白名单强制约束
+
+---
+
+## 3. 交互逻辑重新设计（手机 → 桌面）
+
+### 3.1 范式差异总表
+
+| 维度      | 移动端现状                                                       | 桌面端设计                                                            |
+| --------- | ---------------------------------------------------------------- | --------------------------------------------------------------------- |
+| 导航      | 3 个底部 Tab（`(tabs)/_layout.tsx:78,91,105` 主页/音乐库/设置）  | 左侧边栏，**列表常驻可见**                                            |
+| 页面      | 全屏 stack，一次一页                                             | 三栏并存，页面不再独占                                                |
+| 播放器    | 全屏 `app/player.tsx`，从 NowPlayingBar 推入                     | 中栏/右栏常驻，**不再"进入"播放器**                                   |
+| 元信息    | NowPlayingBar（已支持 bottom/float 两种高度）                    | 底部常驻控制条 + 右侧歌词/队列面板                                    |
+| 手势      | 上下滑收/展队列（react-native-true-sheet）、左右滑切歌、长按多选 | 双击播放、右键菜单、拖拽排序、框选、Shift/Ctrl 多选、hover 操作       |
+| 快捷键    | 无                                                               | 全局媒体键 + `Space`/`←→`/`Ctrl+F` 等（见 3.4）                       |
+| 分享      | 系统分享面板、二维码、存相册                                     | 复制链接 + 生成分享图导出到文件                                       |
+| 歌词      | 全屏歌词页、悬浮窗（`SYSTEM_ALERT_WINDOW`）、状态栏歌词          | 常驻右侧面板 + **独立可拖动歌词窗口**；**状态栏歌词整块砍掉**         |
+| 通知/后台 | 前台服务、Media3 通知                                            | `MediaSession`（Win 任务栏缩略图 / Linux MPRIS）                      |
+| 更新      | `@bbplayer/native` 下载 APK 并调系统安装器                       | `electron-updater`                                                    |
+| 登录      | 扫码 / 短信 / Cookie（`settings/bilibili-account/*`，9 个页面）  | 扫码（浏览器完成授权后回跳）+ Cookie 粘贴；**短信验证码在小窗里保留** |
+
+### 3.2 新的信息架构：三栏 + 底部播放条
+
+```
+┌──────────┬────────────────────────────────┬───────────────┐
+│ 侧边栏    │  主内容区                        │  Now Playing  │
+│ (240px)  │                                 │  面板 (320px) │
+│          │                                 │               │
+│ 发现      │  当前选中项的列表/详情             │  封面 + 歌词   │
+│ 音乐库    │  （歌曲表 / 歌单详情 / 搜索结果）    │  或 播放队列   │
+│ 歌单      │                                 │  （可切换）    │
+│ 历史      │                                 │               │
+│ 下载      │                                 │               │
+│ 设置      │                                 │               │
+├──────────┴────────────────────────────────┴───────────────┤
+│ ◀◀  ▶  ▶▶ │ ▬▬▬▬▬▬●▬▬▬▬ │ 曲名 - 歌手 │ 🔀 🔁 🔊 ⛶ │
+└───────────────────────────────────────────────────────────┘
+```
+
+**理由**：
+
+- 底部 Tab 在桌面上是浪费 —— 3 个入口却有 40 个页面，必须换成侧边栏展示**全部一级入口**
+- **队列面板常驻 + 可切歌词**，替代移动端"上下滑收展 sheet"。桌面用户调队列的频率远高于手机，modal 式队列（`PlayerQueueModal.tsx`）会成为高频摩擦
+- 需要保留「沉浸模式」（隐藏左右栏，只留歌词）以承接移动端 `player.tsx:5` 的 Skia 流体背景 + 歌词体验
+
+### 3.3 交互改造逐项
+
+| #   | 移动端机制          | 现状证据                                                            | 桌面端改造                                                                    |
+| --- | ------------------- | ------------------------------------------------------------------- | ----------------------------------------------------------------------------- |
+| 1   | 底部 Tab 导航       | `(tabs)/_layout.tsx:68-119`                                         | → 侧边栏，含「全部歌单/收藏夹」树                                             |
+| 2   | 全屏播放器页        | `app/player.tsx`                                                    | → 右侧常驻面板；保留沉浸模式切换                                              |
+| 3   | 上滑 sheet 队列     | `components/modals/PlayerQueueModal.tsx`                            | → 右栏 tab（队列/歌词）                                                       |
+| 4   | 长按菜单            | `features/*/hooks/use*Menu.ts`（10+ 处 `ios:`/`android:` 图标映射） | → 右键上下文菜单 + hover 才出现的行内操作按钮                                 |
+| 5   | 长按多选            | `LocalTrackList.tsx` 等                                             | → `Ctrl` 点选 / `Shift` 范围选 / `Ctrl+A` 全选 / 框选                         |
+| 6   | 下滑关闭 modal      | 29 个 `components/modals/*`                                         | → 窗口内对话框 + `Esc`；高频操作（改名、加歌单）改**行内编辑**                |
+| 7   | 分享 sheet          | `SongShareModal.tsx`                                                | → 复制链接 / 导出分享图到文件                                                 |
+| 8   | 二维码登录          | `settings/bilibili-account/qrcode-login.tsx`                        | → 应用内扫码（保留）+ 浏览器授权回跳（新增）                                  |
+| 9   | 悬浮窗歌词          | `Orpheus.showDesktopLyrics` + `SYSTEM_ALERT_WINDOW`                 | → 无边框透明 `BrowserWindow`（always-on-top），**接口形态一致，实现完全不同** |
+| 10  | 状态栏歌词          | `lyrics.tsx:261,279`（SuperLyric / Lyricon / 魅族）                 | → **整块删除**，改用 `MediaSession`                                           |
+| 11  | 皮肤/开屏动画       | `lib/theme/SkinManager.ts`、`AnimatedBootSplash.tsx`                | → 主题色保留；**视频开屏 + 动态封面砍掉**                                     |
+| 12  | 音频导出到 `Music/` | `Orpheus.exportDownloads` + SAF 目录选择器                          | → 主进程 `fs.copyFile`，**比移动端简单得多**                                  |
+| 13  | APK 自更新          | `UpdateAppModal.tsx` + `@bbplayer/native`                           | → `electron-updater`                                                          |
+| 14  | 无键盘操作          | —                                                                   | → 全量快捷键（见 3.4）                                                        |
+
+### 3.4 快捷键设计
+
+| 分类 | 按键                  | 行为                                             |
+| ---- | --------------------- | ------------------------------------------------ |
+| 播放 | `Space`               | 播放/暂停                                        |
+|      | `←` / `→`             | −5s / +5s                                        |
+|      | `Shift+←` / `Shift+→` | 上一首 / 下一首                                  |
+|      | `Ctrl+←` / `Ctrl+→`   | 音量 −5% / +5%                                   |
+|      | `↑` / `↓`             | 列表内上下移动选择                               |
+|      | `Enter`               | 播放选中项                                       |
+|      | `Ctrl+M`              | 静音                                             |
+| 模式 | `Ctrl+R`              | 随机开关                                         |
+|      | `Ctrl+L`              | 循环模式切换                                     |
+| 视图 | `Ctrl+1..5`           | 切换一级入口                                     |
+|      | `Ctrl+Q`              | 队列/歌词面板切换                                |
+|      | `Ctrl+Shift+F`        | 沉浸模式                                         |
+| 功能 | `Ctrl+F`              | 聚焦搜索（**App 级，需处理与列表内搜索的冲突**） |
+|      | `Ctrl+,`              | 设置                                             |
+|      | `Ctrl+D`              | 下载选中项                                       |
+|      | `Delete`              | 从歌单移除                                       |
+| 系统 | 媒体键                | `MediaSession` 处理                              |
+
+**架构要求**：在渲染层建一个**中心化快捷键分发器（registry）**，支持「全局 / 上下文相关（焦点在输入框时失效）/ 覆盖」三级优先级。否则 30+ 快捷键必然互相打架。
+
+### 3.5 必须保留的逻辑（换交互但不换行为）
+
+这些是移动端已经写好、**桌面端必须原样继承**的业务语义 —— 交互变了，但决策逻辑不能变：
+
+- 搜索的**多源回退链**与 BV/AV/短链解析（`lib/api/bilibili/api.ts`）
+- 音频流的**降级顺序**：杜比 → Hi-Res → 指定音质 → durl 回退（`api.ts:373-420`）
+- 外部歌单**匹配算法**与手动匹配（`lib/facades/syncExternalPlaylist.ts`、`ManualMatchExternalSync.tsx` 背后的逻辑）
+- 歌单同步的**冲突处理**（`syncBilibiliPlaylist.ts` 1,040 行）
+- 歌词**智能匹配 + 偏移 + SPL 逐字**（`lyricService.ts` + `packages/splash`）
+- 播放**断点续播策略**（`ResumeStrategy`：NONE / PODCAST）
+- 备份格式与 WebDAV 目录结构（**桌面端必须与移动端互通**）
+
+---
+
+## 4. 分阶段计划
+
+### Phase 0 — 架构基座（不动 mobile 一行行为）✅ 已完成
+
+| 步骤 | 产出                                                                                                                                                  | 状态                                                                                                           |
+| ---- | ----------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------- |
+| 0.0  | 修复既有类型缺陷：`apps/mobile` 借道编译 `apps/backend` 源码时 `Env` 未解析                                                                           | ✅ `apps/backend/src/env.ts` 显式声明绑定类型，不再依赖环境全局                                                |
+| 0.1  | `git mv` 迁移 34 个纯净文件（含 1 个测试）→ `packages/core/`，共 3,393 行                                                                             | ✅ 历史保留（`git log --follow` 可追溯）                                                                       |
+| 0.2  | `packages/core/tsconfig.json` 设 `types: []` + `lib: ["ES2023"]`，加入根 references                                                                   | ✅ **已验证**：core 内写 `import 'react-native'` 会编译失败                                                    |
+| 0.3  | 定义端口：`LoggerPort` / `StoragePort` / `SecureStoragePort` / `DbPort`（含 `SqliteSyncPort`）/ `HttpPort` / `AudioPort` + `CorePorts` + 运行时注册表 | ✅ `packages/core/src/ports/index.ts`                                                                          |
+| 0.4  | 新建 `packages/design-tokens`（间距/圆角/字号/动效/语义色板）                                                                                         | ✅ 171 行                                                                                                      |
+| 0.5  | **mobile 提供四个 port 的 RN 实现并在启动时注册**；`apps/mobile` 的 import 路径全部改写                                                               | ✅ `apps/mobile/src/ports/index.ts`（logger / storage / secureStorage / db / http），`app/_layout.tsx:57` 注册 |
+| 0.6  | `scripts/check-core-purity.mjs` + `pnpm check:core` + CI 门禁（含补上 `type-check`）                                                                  | ✅ 双向验证通过                                                                                                |
+| 0.7  | 数据迁移改为端口注入并搬入 core（6 个文件），验证注入设计可用                                                                                         | ✅ `packages/core/src/db/migrations/`                                                                          |
+
+**验收结果**
+
+| 检查                                          | 结果                                                                                                                                                                          |
+| --------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `pnpm type-check`（根）                       | ✅ exit 0                                                                                                                                                                     |
+| `pnpm check:core`                             | ✅ 43 个文件无违规                                                                                                                                                            |
+| 边界强制（core 内写 `import 'react-native'`） | ✅ 编译即失败（每轮均复验）                                                                                                                                                   |
+| `pnpm lint`                                   | ⚠️ 1 个**既有**错误（`apps/mobile/src/app/settings/account.tsx:73`），与本次无关                                                                                              |
+| `pnpm install` / `pnpm check:deps`            | ✅                                                                                                                                                                            |
+| `jest.webdav`                                 | ⚠️ **既有失败**（TypeScript 6.0 + ts-jest 的 `moduleResolution=node10` 弃用报错）。已用 `git show HEAD:apps/mobile/jest.webdav.config.cjs` 原配置对照复现，确认与本次迁移无关 |
+
+**core 最终规模**：43 个文件 / 3,764 行（迁移 34 个文件用 `git mv` 保留历史）。
+
+**端口注入已验证**：`packages/core/src/db/migrations/` 里的迁移代码不再 import
+`expo-sqlite` / `@/utils/log` / `@/utils/mmkv`，而是通过 `getCorePorts()` 取用；
+`apps/mobile` 在 `_layout.tsx` 注册实现。这证明了「9.5k 行逻辑两端共用」的机制可行。
+
+**未纳入 Phase 0 的部分（有意推迟）**
+
+- 其余仍留在 `apps/mobile/src/lib/` 的纯逻辑（`facades/*` 2,924 行、`services/{playlist,track,artist}Service`、
+  `theme/adapter.ts`、`workers/PlaylistSyncWorker.ts`、`api/*/client.ts`、`wbi.ts`）：它们的接缝是
+  DB 实例 / HTTP / 日志的**直接 import**，要搬到 core 需先把调用点改为端口参数注入，
+  属于 Phase 1～2 的连续工作，届时两端同时消费端口才是验证时机。
+- `design-tokens` 尚未被 mobile 消费：把散落的 `borderRadius: 24/20/12/8/4` 字面量改为引用 token
+  会产生视觉回归风险，安排在桌面端 UI 动工前（Phase 2）一并处理。
+
+### Phase 1 — Electron 骨架 + **音频可行性验证**
+
+| 步骤 | 产出                                                                               |
+| ---- | ---------------------------------------------------------------------------------- |
+| 1.1  | `apps/desktop/`：esbuild/tsup 打 main，Vite 打 renderer                            |
+| 1.2  | 主进程：`better-sqlite3` + Drizzle + `packages/core` 跑通「拉一次 B 站歌单并落库」 |
+| 1.3  | **⚠️ 验证 §2.3**：自定义协议代理能否播放 B 站音频（含 Range、拖动 seek）           |
+| 1.4  | 最小播放器：能播下一首、能 seek、能显示进度                                        |
+
+**这是整个方案的 go/no-go 关卡**。1.3 过不了，方案要重估。
+
+### Phase 2 — 音乐库（第一个完整功能面）
+
+| 步骤 | 产出                                                     |
+| ---- | -------------------------------------------------------- |
+| 2.1  | 三栏 shell + 底部播放条                                  |
+| 2.2  | 音乐库：本地歌单 / B 站收藏夹 / 合集的列表与详情         |
+| 2.3  | 搜索（复用多源回退链）                                   |
+| 2.4  | 右键菜单 + 多选 + `Ctrl+F` 搜索                          |
+| 2.5  | 播放队列面板（右栏）+ 拖拽排序                           |
+| 2.6  | 歌词面板（SPL 逐字/翻译/罗马音，复用 `packages/splash`） |
+| 2.7  | 全局快捷键 registry（3.4 全表）                          |
+
+### Phase 3 — 账号与同步
+
+| 步骤 | 产出                                                          |
+| ---- | ------------------------------------------------------------- |
+| 3.1  | 扫码登录（应用内 + 浏览器回跳）、Cookie 粘贴                  |
+| 3.2  | 收藏夹 / 合集订阅与同步（`syncBilibiliPlaylist.ts` 直接复用） |
+| 3.3  | 外部歌单导入（网易云 / QQ）+ 手动匹配                         |
+| 3.4  | 共享歌单（`sharedPlaylist.ts` 914 行直接复用）                |
+| 3.5  | 播放历史 / 排行榜（`packages/heatmap` 换渲染层）              |
+
+### Phase 4 — 桌面专属能力
+
+| 步骤 | 产出                                            |
+| ---- | ----------------------------------------------- |
+| 4.1  | 独立歌词窗口（无边框透明 + always-on-top）      |
+| 4.2  | `MediaSession`（媒体键 / 任务栏缩略图 / MPRIS） |
+| 4.3  | 下载与导出（主进程 `fs`，比移动端简单）         |
+| 4.4  | 主题换肤（保留配色，砍视频开屏）                |
+| 4.5  | WebDAV 备份 / 恢复（**必须与移动端格式互通**）  |
+| 4.6  | 定时关闭、响度均衡                              |
+
+### Phase 5 — 打包发布
+
+| 步骤 | 产出                                                                      |
+| ---- | ------------------------------------------------------------------------- |
+| 5.1  | `electron-builder`：Windows NSIS + portable、Linux `.deb`/`.rpm`/AppImage |
+| 5.2  | `apps/update-publisher` 支持桌面产物（**当前只收 `.apk`**，见 §5 风险 3） |
+| 5.3  | 各自签名策略                                                              |
+| 5.4  | 桌面端独立版本号，从 `0.1.0` 起步（mobile 当前 `2.7.0-alpha.1`）          |
+
+---
+
+## 5. 风险与对策
+
+| #   | 风险                                                                                                                                                              | 等级  | 对策                                                          |
+| --- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----- | ------------------------------------------------------------- |
+| 1   | **B 站音频防盗链导致播不了**（`NetworkModule.kt:42-45`）                                                                                                          | 🔴 高 | Phase 1.3 作为 go/no-go 关卡；自定义协议代理                  |
+| 2   | 33k 行 UI 重写的工作量被低估                                                                                                                                      | 🔴 高 | 明确「不是移植」；Phase 2 只做核心三页，其余迭代补            |
+| 3   | **`apps/update-publisher/src/index.ts:211` 只收 `.apk`**（`if (!asset.name.toLowerCase().endsWith('.apk')) continue`），`:252` 硬编码 `/Applications/Zed.app/...` | 🟡 中 | Phase 5.2 改造发布工具，否则桌面安装包进不了更新清单          |
+| 4   | 歌词服务剥离（625 行 + `Orpheus` 推送）                                                                                                                           | 🟡 中 | 抽出「匹配/缓存/偏移」，推送通过 `AudioPort` 可选方法         |
+| 5   | 两套 UI 长期漂移                                                                                                                                                  | 🟡 中 | `packages/design-tokens` 单一来源 + 共享 `packages/core` 契约 |
+| 6   | 打包体积（Electron ~120 MB）                                                                                                                                      | 🟢 低 | 接受；或用 `asar` + 裁剪依赖压到 ~90 MB                       |
+| 7   | mobile 回归                                                                                                                                                       | 🟡 中 | Phase 0 每步都跑 `pnpm type-check` + `pnpm lint`；CI 门禁     |
+| 8   | `pnpm install` 未执行，Phase 0 无法验证                                                                                                                           | 🟡 中 | 开工前需先安装依赖                                            |
+
+---
+
+## 6. 明确不做的
+
+| 砍掉                                                            | 原因                                                                   |
+| --------------------------------------------------------------- | ---------------------------------------------------------------------- |
+| 开屏视频动画（`AnimatedBootSplash.tsx`、`BootSplashVideoView`） | Android 原生视图；桌面用静态启动图                                     |
+| 状态栏歌词（SuperLyric / Lyricon / 魅族，`lyrics.tsx:261,279`） | 无桌面对应物，由 `MediaSession` 替代                                   |
+| 车机歌词 / `isCarLyricsEnabled`                                 | 面向 Android Auto                                                      |
+| APK 自更新（`UpdateAppModal.tsx`）                              | 由 `electron-updater` 替代                                             |
+| 冷启动测量脚本（`measure-cold-start.sh`）                       | Android `adb` 专属                                                     |
+| 移动端分享到系统（二维码 / 存相册）                             | 改复制链接 + 导出分享图                                                |
+| `react-native-web` / `react-native-windows` 路线                | 12 个 Android-only 依赖 + `.web.*` 文件数为 0                          |
+| macOS 产物                                                      | 按当前范围只做 Win/Linux；代码天然三平台中立，将来加 target + 签名即可 |
+
+---
+
+## 7. 验收标准
+
+**Phase 0 完成时**：
+
+- `apps/mobile` 的 `pnpm type-check` / `pnpm lint` / 现有 jest 全绿，**零行为变更**
+- `packages/core` 里 import `react-native` 会编译失败
+- CI 能在 PR 上拦住边界违规
+
+**Phase 1 完成时**：
+
+- Windows 与 Linux 上都能启动 Electron 壳
+- 能真实播放一首 B 站音频并拖动 seek
+- 能从 B 站拉歌单落进本地 SQLite
+
+**整体完成时**：
+
+- Windows `.exe` 与 Linux `.deb`/AppImage 可安装运行
+- 核心路径（播放 / 搜索 / 歌单 / 歌词 / 同步 / 备份）行为与移动端一致
+- 备份文件与移动端互通

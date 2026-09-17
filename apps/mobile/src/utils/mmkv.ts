@@ -2,7 +2,7 @@ import { ObservablePersistLocalStorageBase } from '@legendapp/state/persist-plug
 import { createMMKV } from 'react-native-mmkv'
 import type { StateStorage } from 'zustand/middleware/persist'
 
-import type { TypedMMKVInterface } from '@/types/storage'
+import type { TypedMMKVInterface } from '@bbplayer/core'
 
 const mmkv = createMMKV()
 

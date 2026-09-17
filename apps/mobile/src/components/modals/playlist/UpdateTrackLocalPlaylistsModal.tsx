@@ -12,8 +12,8 @@ import {
 	usePlaylistsContainingTrack,
 } from '@/hooks/queries/db/playlist'
 import { useModalStore } from '@/hooks/stores/useModalStore'
-import generateUniqueTrackKey from '@/lib/services/genKey'
-import type { Playlist, Track } from '@/types/core/media'
+import { generateUniqueTrackKey } from '@bbplayer/core'
+import type { Playlist, Track } from '@bbplayer/core'
 import type { ListRenderItemInfoWithExtraData } from '@/types/legendlist'
 import toast from '@/utils/toast'
 

@@ -6,7 +6,7 @@ import { Divider, Icon, Text, useTheme } from 'react-native-paper'
 
 import CoverWithPlaceHolder from '@/components/common/CoverWithPlaceHolder'
 import { LIST_ITEM_COVER_SIZE } from '@/theme/dimensions'
-import type { Playlist } from '@/types/core/media'
+import type { Playlist } from '@bbplayer/core'
 
 const LocalPlaylistItem = memo(
 	({ item }: { item: Playlist & { isToView?: boolean } }) => {

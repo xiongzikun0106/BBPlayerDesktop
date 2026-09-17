@@ -9,7 +9,7 @@ import UniversalCheckbox from '@/components/common/UniversalCheckbox'
 import { useMergePlaylists } from '@/hooks/mutations/db/playlist'
 import { usePlaylistLists } from '@/hooks/queries/db/playlist'
 import { useModalStore } from '@/hooks/stores/useModalStore'
-import type { Playlist } from '@/types/core/media'
+import type { Playlist } from '@bbplayer/core'
 import type { ListRenderItemInfoWithExtraData } from '@/types/legendlist'
 
 const SelectablePlaylistItem = memo(function SelectablePlaylistItem({

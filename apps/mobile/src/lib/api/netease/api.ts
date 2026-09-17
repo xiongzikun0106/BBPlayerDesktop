@@ -1,20 +1,20 @@
 import { parseYrc } from '@bbplayer/splash/src/converter/netease'
 import { errAsync, okAsync, type ResultAsync } from 'neverthrow'
 
-import { NeteaseApiError } from '@/lib/errors/thirdparty/netease'
+import { NeteaseApiError } from '@bbplayer/core'
 import type {
 	NeteaseLyricResponse,
 	NeteasePlaylistResponse,
 	NeteaseSearchResponse,
-} from '@/types/apis/netease'
+} from '@bbplayer/core'
 import type {
 	LyricProviderResponseData,
 	LyricSearchResult,
-} from '@/types/player/lyrics'
+} from '@bbplayer/core'
 
 import type { RequestOptions } from './request'
 import { createRequest } from './request'
-import { createOption } from './utils'
+import { createOption } from '@bbplayer/core'
 
 interface SearchParams {
 	keywords: string

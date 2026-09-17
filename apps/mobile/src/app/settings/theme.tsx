@@ -26,8 +26,8 @@ import type {
 	SkinAssetDeclaration,
 	SkinAssetFeatures,
 	SkinBootSplashAsset,
-} from '@/lib/theme/types'
-import { assetFeaturesFromManifest } from '@/lib/theme/types'
+} from '@bbplayer/core'
+import { assetFeaturesFromManifest } from '@bbplayer/core'
 import { storage } from '@/utils/mmkv'
 import toast from '@/utils/toast'
 

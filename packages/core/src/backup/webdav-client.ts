@@ -9,10 +9,31 @@ import type {
 	WebDAVClientError,
 } from 'webdav'
 
+/**
+ * WebDAV 底层 fetch 签名。
+ *
+ * 不直接引用 DOM 的 `RequestInfo` / `Response`：本包刻意不引入 `"lib": ["DOM"]`，
+ * 因为同一份代码要同时跑在移动端（RN 的 fetch）与桌面端（Node 的 fetch）上。
+ * 这里只声明两端都满足的最小契约。
+ */
+export interface WebDavFetchResponse {
+	ok: boolean
+	status: number
+	statusText: string
+	headers: { get(name: string): string | null }
+	text(): Promise<string>
+	arrayBuffer(): Promise<ArrayBuffer>
+}
+
 export type WebDavFetch = (
-	input: RequestInfo | URL,
-	init?: RequestInit,
-) => Promise<Response>
+	input: string | URL,
+	init?: {
+		method?: string
+		headers?: Record<string, string>
+		body?: string
+		signal?: AbortSignal
+	},
+) => Promise<WebDavFetchResponse>
 
 export interface WebDavClientConfig {
 	baseUrl: string

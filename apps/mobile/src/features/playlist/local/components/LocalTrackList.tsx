@@ -26,7 +26,7 @@ import useCurrentTrack from '@/hooks/player/useCurrentTrack'
 import { useBatchDownloadStatus } from '@/hooks/queries/orpheus'
 import usePreventRemove from '@/hooks/router/usePreventRemove'
 import { LIST_ITEM_COVER_SIZE } from '@/theme/dimensions'
-import type { Playlist, Track } from '@/types/core/media'
+import type { Playlist, Track } from '@bbplayer/core'
 import type {
 	ListRenderItemInfoWithExtraData,
 	SelectionState,

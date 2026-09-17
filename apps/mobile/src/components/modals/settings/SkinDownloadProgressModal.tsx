@@ -7,9 +7,9 @@ import Button from '@/components/common/Button'
 import LinearProgressIndicator from '@/components/common/LinearProgressIndicator'
 import { alert } from '@/components/modals/AlertModal'
 import { useModalStore } from '@/hooks/stores/useModalStore'
-import type { GarbSkinSearchResult } from '@/lib/api/bilibili/garb'
+import type { GarbSkinSearchResult } from '@bbplayer/core'
 import { installSkin } from '@/lib/theme/SkinManager'
-import type { SkinDownloadProgress } from '@/lib/theme/types'
+import type { SkinDownloadProgress } from '@bbplayer/core'
 import toast from '@/utils/toast'
 
 interface SkinDownloadProgressModalProps {

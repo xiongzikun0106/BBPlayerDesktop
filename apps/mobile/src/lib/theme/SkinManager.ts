@@ -12,19 +12,19 @@ import * as FileSystem from 'expo-file-system'
 import { errAsync, okAsync, ResultAsync } from 'neverthrow'
 
 import useSkinStore from '@/hooks/stores/useSkinStore'
-import type { GarbSkinSearchResult } from '@/lib/api/bilibili/garb'
-import { ServiceError } from '@/lib/errors'
+import type { GarbSkinSearchResult } from '@bbplayer/core'
+import { ServiceError } from '@bbplayer/core'
 import {
 	createSkinInstallFailed,
 	createSkinUninstallFailed,
-} from '@/lib/errors/service'
+} from '@bbplayer/core'
 import log from '@/utils/log'
 import { storage } from '@/utils/mmkv'
 
 import { fetchGarbSkinAssetDeclaration } from './adapter'
 import { downloadManifestAssets } from './downloadManager'
 import { transformManifestToInstalledSkin } from './transformer'
-import type { InstalledSkin, InstalledSkinMeta } from './types'
+import type { InstalledSkin, InstalledSkinMeta } from '@bbplayer/core'
 
 // ============================================================
 // 路径

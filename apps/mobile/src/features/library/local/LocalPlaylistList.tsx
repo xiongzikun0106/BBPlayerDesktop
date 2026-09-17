@@ -15,7 +15,7 @@ import {
 } from '@/hooks/queries/db/playlist'
 import useAppStore from '@/hooks/stores/useAppStore'
 import { useModalStore } from '@/hooks/stores/useModalStore'
-import type { Playlist } from '@/types/core/media'
+import type { Playlist } from '@bbplayer/core'
 
 import LocalPlaylistItem from './LocalPlaylistItem'
 

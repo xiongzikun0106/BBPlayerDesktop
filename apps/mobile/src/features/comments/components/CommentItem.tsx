@@ -11,7 +11,7 @@ import { useLikeComment } from '@/hooks/mutations/bilibili/comments'
 import type {
 	BilibiliCommentEmote,
 	BilibiliCommentItem,
-} from '@/types/apis/bilibili'
+} from '@bbplayer/core'
 import { toastAndLogError } from '@/utils/error-handling'
 import { formatRelativeTime } from '@/utils/time'
 

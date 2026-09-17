@@ -14,7 +14,7 @@ import {
 } from '@/hooks/queries/bilibili/favorite'
 import { usePersonalInformation } from '@/hooks/queries/bilibili/user'
 import useAppStore from '@/hooks/stores/useAppStore'
-import type { BilibiliFavoriteListContent } from '@/types/apis/bilibili'
+import type { BilibiliFavoriteListContent } from '@bbplayer/core'
 
 import MultiPageVideosItem from './MultiPageVideosItem'
 

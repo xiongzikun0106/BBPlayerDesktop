@@ -18,7 +18,7 @@ import {
 	LIST_ITEM_COVER_SIZE,
 	LIST_ITEM_BORDER_RADIUS,
 } from '@/theme/dimensions'
-import type { Playlist, Track } from '@/types/core/media'
+import type { Playlist, Track } from '@bbplayer/core'
 import { resolveTrackCover } from '@/utils/imageUrl'
 import { formatDurationToHHMMSS } from '@/utils/time'
 

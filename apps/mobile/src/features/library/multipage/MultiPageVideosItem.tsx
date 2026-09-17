@@ -6,7 +6,7 @@ import { Divider, Icon, Text } from 'react-native-paper'
 
 import CoverWithPlaceHolder from '@/components/common/CoverWithPlaceHolder'
 import { LIST_ITEM_COVER_SIZE } from '@/theme/dimensions'
-import type { BilibiliFavoriteListContent } from '@/types/apis/bilibili'
+import type { BilibiliFavoriteListContent } from '@bbplayer/core'
 import { formatDurationToHHMMSS } from '@/utils/time'
 
 const MultiPageVideosItem = memo(

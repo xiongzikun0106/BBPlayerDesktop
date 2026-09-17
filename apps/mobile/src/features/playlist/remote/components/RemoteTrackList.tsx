@@ -11,7 +11,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context'
 
 import ActivityIndicator from '@/components/common/ActivityIndicator'
 import useCurrentTrackId from '@/hooks/player/useCurrentTrackId'
-import type { BilibiliTrack } from '@/types/core/media'
+import type { BilibiliTrack } from '@bbplayer/core'
 import type {
 	ListRenderItemInfoWithExtraData,
 	SelectionState,

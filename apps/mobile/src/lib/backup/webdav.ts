@@ -2,8 +2,8 @@ import * as SecureStore from 'expo-secure-store'
 
 import { storage } from '@/utils/mmkv'
 
-import { configureWebDavTransport, createWebDavClient } from './webdav-client'
-import type { WebDavClient } from './webdav-client'
+import { configureWebDavTransport, createWebDavClient } from '@bbplayer/core'
+import type { WebDavClient } from '@bbplayer/core'
 
 const WEBDAV_CREDENTIAL_STORAGE_KEY = 'bbplayer.webdav.password'
 

@@ -1,14 +1,14 @@
 import type { Result } from 'neverthrow'
 import { err, ok } from 'neverthrow'
 
-import type { ServiceError } from '@/lib/errors'
+import type { ServiceError } from '../errors'
 import {
 	createNotImplementedError,
 	createValidationError,
-} from '@/lib/errors/service'
-import type { TrackSourceData } from '@/types/services/track'
+} from '../errors/service'
+import type { TrackSourceData } from '../types/services/track'
 
-export default function generateUniqueTrackKey(
+export function generateUniqueTrackKey(
 	payload: TrackSourceData,
 ): Result<string, ServiceError> {
 	switch (payload.source) {

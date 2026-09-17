@@ -18,9 +18,9 @@ import { useScreenTransitionReady } from '@/hooks/router/useScreenTransitionRead
 import { useModalStore } from '@/hooks/stores/useModalStore'
 import { useDoubleTapScrollToTop } from '@/hooks/ui/useDoubleTapScrollToTop'
 import { usePlaylistBackgroundColor } from '@/hooks/ui/usePlaylistBackgroundColor'
-import { bv2av } from '@/lib/api/bilibili/utils'
-import type { BilibiliMediaItemInCollection } from '@/types/apis/bilibili'
-import type { BilibiliTrack, Track } from '@/types/core/media'
+import { bv2av } from '@bbplayer/core'
+import type { BilibiliMediaItemInCollection } from '@bbplayer/core'
+import type { BilibiliTrack, Track } from '@bbplayer/core'
 import { resolveBilibiliImageUrl } from '@/utils/imageUrl'
 import toast from '@/utils/toast'
 

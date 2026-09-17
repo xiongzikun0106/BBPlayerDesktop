@@ -24,12 +24,12 @@ import { useScreenTransitionReady } from '@/hooks/router/useScreenTransitionRead
 import { useModalStore } from '@/hooks/stores/useModalStore'
 import { useDoubleTapScrollToTop } from '@/hooks/ui/useDoubleTapScrollToTop'
 import { usePlaylistBackgroundColor } from '@/hooks/ui/usePlaylistBackgroundColor'
-import { bv2av } from '@/lib/api/bilibili/utils'
+import { bv2av } from '@bbplayer/core'
 import type {
 	BilibiliMultipageVideo,
 	BilibiliVideoDetails,
-} from '@/types/apis/bilibili'
-import type { BilibiliTrack, Track } from '@/types/core/media'
+} from '@bbplayer/core'
+import type { BilibiliTrack, Track } from '@bbplayer/core'
 import type { ListRenderItemInfoWithExtraData } from '@/types/legendlist'
 import * as Haptics from '@/utils/haptics'
 import { resolveBilibiliImageUrl } from '@/utils/imageUrl'

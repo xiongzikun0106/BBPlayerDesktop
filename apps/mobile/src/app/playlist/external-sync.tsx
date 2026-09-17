@@ -35,7 +35,7 @@ import {
 	LIST_ITEM_BORDER_RADIUS,
 	LIST_ITEM_COVER_SIZE,
 } from '@/theme/dimensions'
-import type { GenericTrack } from '@/types/external_playlist'
+import type { GenericTrack } from '@bbplayer/core'
 import type { ListRenderItemInfoWithExtraData } from '@/types/legendlist'
 import toast from '@/utils/toast'
 

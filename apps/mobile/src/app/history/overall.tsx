@@ -12,7 +12,7 @@ import {
 	usePlayCountHistoryPaginated,
 	useTotalPlaybackDuration,
 } from '@/hooks/queries/db/track'
-import type { Track } from '@/types/core/media'
+import type { Track } from '@bbplayer/core'
 
 interface HistoryItemData {
 	track: Track

@@ -9,7 +9,7 @@ import {
 	migratePlayHistoryToMs,
 	migrateSortKeysV2,
 	migrateSortKeysV3,
-} from '@/lib/db/migrations'
+} from '@bbplayer/core'
 import log from '@/utils/log'
 
 const logger = log.extend('useFastMigrations')

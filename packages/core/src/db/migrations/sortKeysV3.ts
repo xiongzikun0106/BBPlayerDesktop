@@ -1,28 +1,29 @@
 import { generateKeyBetween } from 'fractional-indexing'
 
-import { expoDb } from '@/lib/db/db'
-import log from '@/utils/log'
-
+import { getCorePorts } from '../../ports/index'
 import { DataMigration } from './state'
 
-const logger = log.extend('migrateSortKeysV3')
 const migration = new DataMigration('sort_key_v3', 'sort_key_migrated_v3') // gitleaks:allow
 
 /** 将非 local 播放列表的 sort_key 翻转。 */
 export function migrateSortKeysV3(): void {
+	const { logger: log, db } = getCorePorts()
+	const logger = log.extend('migrateSortKeysV3')
+	const sqlite = db.sqlite
+
 	if (migration.isApplied()) return
 
 	try {
-		expoDb.withTransactionSync(() => {
+		sqlite.withTransactionSync(() => {
 			type PlaylistRow = { id: number }
-			const playlists = expoDb.getAllSync<PlaylistRow>(
+			const playlists = sqlite.getAllSync<PlaylistRow>(
 				`SELECT id FROM playlists WHERE type != 'local'`,
 			)
 			let totalUpdated = 0
 
 			for (const playlist of playlists) {
 				type TrackRow = { track_id: number }
-				const tracks = expoDb.getAllSync<TrackRow>(
+				const tracks = sqlite.getAllSync<TrackRow>(
 					`SELECT track_id FROM playlist_tracks WHERE playlist_id = ? ORDER BY sort_key ASC`,
 					[playlist.id],
 				)
@@ -38,7 +39,7 @@ export function migrateSortKeysV3(): void {
 				}
 
 				for (const [trackId, sortKey] of newKeys) {
-					expoDb.runSync(
+					sqlite.runSync(
 						`UPDATE playlist_tracks SET sort_key = ? WHERE playlist_id = ? AND track_id = ?`,
 						[sortKey, playlist.id, trackId],
 					)

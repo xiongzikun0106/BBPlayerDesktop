@@ -18,9 +18,9 @@ import {
 } from '@/hooks/stores/useSharedPlaylistMembersStore'
 import { api as bbplayerApiClient } from '@/lib/api/bbplayer/client'
 import defaultDb from '@/lib/db/db'
-import * as schema from '@/lib/db/schema'
-import { FacadeError, createFacadeError } from '@/lib/errors/facade'
-import { createValidationError } from '@/lib/errors/service'
+import * as schema from '@bbplayer/core/db/schema'
+import { FacadeError, createFacadeError } from '@bbplayer/core'
+import { createValidationError } from '@bbplayer/core'
 import {
 	artistService as artistServiceInstance,
 	type ArtistService,

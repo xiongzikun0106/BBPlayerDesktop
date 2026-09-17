@@ -2,7 +2,7 @@ import { Orpheus, type Track as OrpheusTrack } from '@bbplayer/orpheus'
 import { create } from 'zustand'
 
 import { trackService } from '@/lib/services/trackService'
-import type { Track } from '@/types/core/media'
+import type { Track } from '@bbplayer/core'
 import { toastAndLogError } from '@/utils/error-handling'
 import log from '@/utils/log'
 

@@ -17,9 +17,9 @@ import { usePersonalInformation } from '@/hooks/queries/bilibili/user'
 import { useScreenTransitionReady } from '@/hooks/router/useScreenTransitionReady'
 import { useModalStore } from '@/hooks/stores/useModalStore'
 import { useDoubleTapScrollToTop } from '@/hooks/ui/useDoubleTapScrollToTop'
-import { bv2av } from '@/lib/api/bilibili/utils'
-import type { BilibiliFavoriteListContent } from '@/types/apis/bilibili'
-import type { BilibiliTrack, Track } from '@/types/core/media'
+import { bv2av } from '@bbplayer/core'
+import type { BilibiliFavoriteListContent } from '@bbplayer/core'
+import type { BilibiliTrack, Track } from '@bbplayer/core'
 
 const mapApiItemToTrack = (
 	apiItem: BilibiliFavoriteListContent,

@@ -1,7 +1,7 @@
 import { useRouter } from 'expo-router'
 
 import { bilibiliApi } from '@/lib/api/bilibili/api'
-import { av2bv } from '@/lib/api/bilibili/utils'
+import { av2bv } from '@bbplayer/core'
 
 import { toastAndLogError } from './error-handling'
 import log from './log'

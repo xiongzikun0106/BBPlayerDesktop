@@ -14,7 +14,7 @@ import {
 	LIST_ITEM_BORDER_RADIUS,
 	LIST_ITEM_COVER_SIZE,
 } from '@/theme/dimensions'
-import type { BilibiliTrack } from '@/types/core/media'
+import type { BilibiliTrack } from '@bbplayer/core'
 import type { ListRenderItemInfoWithExtraData } from '@/types/legendlist'
 import * as Haptics from '@/utils/haptics'
 import { formatDurationToHHMMSS } from '@/utils/time'

@@ -6,7 +6,7 @@ import { Divider, Icon, Text } from 'react-native-paper'
 
 import CoverWithPlaceHolder from '@/components/common/CoverWithPlaceHolder'
 import { LIST_ITEM_COVER_SIZE } from '@/theme/dimensions'
-import type { BilibiliCollection } from '@/types/apis/bilibili'
+import type { BilibiliCollection } from '@bbplayer/core'
 
 const CollectionListItem = memo(({ item }: { item: BilibiliCollection }) => {
 	const router = useRouter()
