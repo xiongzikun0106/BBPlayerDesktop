@@ -20,6 +20,10 @@ const {
 
 /** 自验证模式：跑完验证就退出，便于脚本化 */
 const PROBE_MODE = process.argv.includes('--probe')
+/** 方案对比模式：验证 webRequest 注入这条路（见 compare-driver.cjs） */
+const COMPARE_MODE = process.argv.includes('--compare')
+/** 对比模式的「不安全」变体：关掉 webSecurity，用于量化其代价 */
+const INSECURE_MODE = process.argv.includes('--insecure')
 const SHOT_DIR = path.join(__dirname, '..', 'probe-output')
 
 // 自定义协议必须在 app ready 之前声明特权：
@@ -52,12 +56,36 @@ function createWindow() {
 			preload: path.join(__dirname, 'preload.cjs'),
 			contextIsolation: true,
 			nodeIntegration: false,
-			// 注意：不需要 webSecurity:false —— 音频走自定义协议，CORS 由协议层解决
+			// 生产路径**不需要** webSecurity:false —— 音频走自定义协议，CORS 由协议层解决。
+			// 仅在 `--compare --insecure` 下才关闭，用来量化「方案 B 到底要付什么代价」。
+			webSecurity: !INSECURE_MODE,
 		},
 	})
 
 	void mainWindow.loadFile(path.join(__dirname, 'renderer', 'index.html'))
 	return mainWindow
+}
+
+/**
+ * 方案 B（webRequest 注入）所需的头注入。
+ *
+ * 只在 `--compare` 模式下挂载；默认的生产路径不挂，因为音频走自定义协议，
+ * 由 audio-proxy.cjs 自己带头发请求。
+ */
+function installWebRequestHeaderInjection() {
+	const { session } = require('electron')
+	const filter = { urls: ['*://*.bilivideo.com/*', '*://*.bilivideo.cn/*'] }
+	session.defaultSession.webRequest.onBeforeSendHeaders(
+		filter,
+		(details, callback) => {
+			const headers = { ...details.requestHeaders }
+			headers.Referer = 'https://www.bilibili.com/'
+			headers['User-Agent'] =
+				'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36'
+			callback({ requestHeaders: headers })
+		},
+	)
+	console.log('[desktop] 已挂载 webRequest 头注入（对比模式）')
 }
 
 // 显式 void：Electron 的 ready 回调是「即发即忘」，内部已有错误处理
@@ -112,7 +140,21 @@ void app.whenReady().then(() => {
 
 	createWindow()
 
-	if (PROBE_MODE) {
+	if (COMPARE_MODE) {
+		installWebRequestHeaderInjection()
+		// 网络追踪必须在窗口发起任何请求之前挂上，否则会漏掉 <audio> 的早期请求
+		require('./compare-driver.cjs').installNetworkTracer()
+		mainWindow.webContents.once('did-finish-load', () => {
+			const { run } = require('./compare-driver.cjs')
+			void run(mainWindow)
+				.catch((error) => {
+					console.error('[desktop] 对比探针执行失败:', error)
+				})
+				.finally(() => {
+					setTimeout(() => app.exit(0), 500)
+				})
+		})
+	} else if (PROBE_MODE) {
 		// 探针模式：等页面加载完，跑完整验证序列，然后退出
 		mainWindow.webContents.once('did-finish-load', () => {
 			const { run } = require('./probe-driver.cjs')

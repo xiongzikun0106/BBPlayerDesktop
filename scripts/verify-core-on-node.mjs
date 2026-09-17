@@ -5,7 +5,12 @@
  *
  * 目的：证明 `packages/core` 真的可以脱离移动端运行 —— 这是桌面端方案的前提。
  *
- * 用法：node scripts/verify-core-on-node.mjs
+ * 用法（**必须用 tsx**）：
+ *   pnpm exec tsx scripts/verify-core-on-node.mjs
+ *
+ * 不能用 `node`：core 源码是 TS，内部用无扩展名的 ESM import
+ * （如 `from './errors/index'`），Node 的 ESM 解析器要求显式扩展名，会报
+ * `ERR_MODULE_NOT_FOUND`。tsx 会处理。
  */
 import { DatabaseSync } from 'node:sqlite'
 
