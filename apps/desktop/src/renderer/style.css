@@ -395,6 +395,14 @@ body {
 	padding: 8px var(--sp-md);
 	font: inherit;
 	cursor: pointer;
+	/*
+	 * ⚠️ 页签文字**不许折行**。
+	 *
+	 * 登录弹窗的「粘贴 Cookie」在窄弹窗里被折成两行 —— 那一颗胶囊变成
+	 * 其它页签的两倍高，整行基线被拉歪（截图审查发现的，坐标都量过）。
+	 * 页签的高度应当由内容与内边距决定，**不该由容器宽度决定**。
+	 */
+	white-space: nowrap;
 	transition:
 		background var(--motion-duration-fast) ease,
 		color var(--motion-duration-fast) ease;
@@ -646,9 +654,32 @@ body {
 }
 
 /* 曲目表 */
+/*
+ * ⚠️ `table-layout: fixed` 是**必须的**，否则标题列会被压扁。
+ *
+ * 截图审查发现：搜索结果页里「标题」列只有约 150px（标题全被截成「…」），
+ * 而「作者」列右边空着约 480px —— **截断与大片空白同屏**。
+ *
+ * 原因是 `auto` 布局下 `.col-title { max-width: 0 }`（为了让 ellipsis 生效）
+ * 被理解成"这一列可以任意窄"，补空白的活就交给了没有宽度约束的作者列。
+ *
+ * 改成 `fixed` 之后：有显式宽度的列（序号 / 时长 / 操作）按宽度来，
+ * 没写宽度的列（标题 / 作者）平分剩余空间 —— 于是标题至少能拿到一半，
+ * 不再被作者列挤扁。
+ */
 .track-table {
 	width: 100%;
 	border-collapse: collapse;
+	table-layout: fixed;
+}
+
+/* 作者列不让它无限膨胀；标题列吃掉剩下的 */
+.track-table td.col-artist,
+.track-table th.col-artist {
+	width: 28%;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
 }
 
 .track-table th,

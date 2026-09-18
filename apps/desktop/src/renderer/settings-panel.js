@@ -423,7 +423,7 @@
 			els.loudnessStatus,
 			enabled
 				? `已启用（目标 ${state.targetDb} dB，最大增益 ${state.maxGainDb} dB）—— 基于电平的自适应，不是 EBU R128 精确归一化`
-				: '未启用（B 站 playurl 不返回逐曲响度数据，详见文件注释）',
+				: '未启用（B 站没有逐曲响度数据，暂时无法分析）',
 			enabled ? 'ok' : null,
 		)
 	}
