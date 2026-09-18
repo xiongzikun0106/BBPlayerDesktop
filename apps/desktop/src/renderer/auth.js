@@ -97,6 +97,17 @@
 
 		if (!els.account) return
 
+		/*
+		 * ⚠️ 「退出登录」按钮必须跟着登录态显隐。
+		 *
+		 * 它原来**从来没有被隐藏过** —— 于是账号页出现
+		 * "写着你尚未登录，唯一的按钮却是退出登录"这种自相矛盾的画面
+		 * （截图审查发现的）。
+		 *
+		 * 按钮与它描述的状态必须一致：没登录就没有可退的。
+		 */
+		if (els.logout) els.logout.hidden = !loggedIn
+
 		if (!loggedIn) {
 			els.account.textContent = ''
 			const p = document.createElement('p')

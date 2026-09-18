@@ -1089,6 +1089,23 @@ select {
 		box-shadow 120ms ease;
 }
 
+/*
+ * ⚠️ 行内（`.settings-row` / `.row-actions`）的输入框**必须设最小宽度**。
+ *
+ * 上面那条 `width: 100%` 在 flex 行里配合默认的 `flex-shrink: 1`
+ * 会被压到只剩几十像素 —— 设置 › 播放的「自定义分钟」数字框实测只剩约
+ * 50px，框里的字被硬裁掉一半（截图审查发现，量过坐标）。
+ *
+ * `flex: 1 1 160px` 的意思是"以 160px 为基准伸缩"，
+ * 再兜一个 `min-width` 保证极端情况下也不至于读不出内容。
+ */
+.settings-row input:not([type='range']):not([type='checkbox']):not([type='color']),
+.row-actions input:not([type='range']):not([type='checkbox']) {
+	flex: 1 1 160px;
+	min-width: 120px;
+	width: auto;
+}
+
 textarea {
 	min-height: 72px;
 	resize: vertical;
@@ -1235,6 +1252,29 @@ input[type='range']::-webkit-slider-runnable-track {
 		var(--primary) 0 var(--range-fill, 0%),
 		var(--surface-3) var(--range-fill, 0%) 100%
 	);
+}
+
+/*
+ * 禁用的滑杆不能看起来还能用。
+ *
+ * ⚠️ 响度均衡关掉时，「目标电平」原来仍是**主色轨道 + 亮色圆点** ——
+ * 视觉上等于说"这个控件是活的、当前生效的"，而上方的开关明明写着未启用。
+ * 截图审查把它列为"状态与外观矛盾"。
+ */
+input[type='range']:disabled {
+	cursor: default;
+}
+
+input[type='range']:disabled::-webkit-slider-runnable-track {
+	background: linear-gradient(
+		to right,
+		var(--outline) 0 var(--range-fill, 0%),
+		var(--surface-2) var(--range-fill, 0%) 100%
+	);
+}
+
+input[type='range']:disabled::-webkit-slider-thumb {
+	background: var(--outline);
 }
 
 input[type='range']::-webkit-slider-thumb {

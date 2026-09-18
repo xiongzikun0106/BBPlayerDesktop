@@ -418,6 +418,20 @@
 
 	function renderLoudness(enabled) {
 		if (els.loudnessToggle) els.loudnessToggle.checked = Boolean(enabled)
+		/*
+		 * ⚠️ 关掉响度均衡时，「目标电平」滑杆必须**真的禁用**。
+		 *
+		 * 它原来一直是可拖的状态，而且轨道还用主色渲染 ——
+		 * 视觉上等于告诉用户"这个控件是活的、当前生效的"，
+		 * 而上方的开关明明写着未启用（截图审查发现的）。
+		 * 控件的外观必须与它是否可交互一致。
+		 */
+		if (els.loudnessTarget) {
+			els.loudnessTarget.disabled = !enabled
+			// 禁用态下把已填充比例也清零 —— 否则主色段还在，像仍生效
+			els.loudnessTarget.style.setProperty('--range-fill', enabled ? '' : '0%')
+			if (enabled) syncRangeFill(els.loudnessTarget)
+		}
 		const state = features.loudness.describe()
 		setStatus(
 			els.loudnessStatus,
