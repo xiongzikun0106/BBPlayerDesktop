@@ -110,23 +110,52 @@ export interface SemanticColors {
 	onSecondaryContainer: string
 	tertiary: string
 	onTertiary: string
+	tertiaryContainer: string
+	onTertiaryContainer: string
 	error: string
 	onError: string
+	errorContainer: string
+	onErrorContainer: string
 	background: string
 	onBackground: string
 	surface: string
 	onSurface: string
 	surfaceVariant: string
 	onSurfaceVariant: string
+	/**
+	 * M3 的「surface 容器」五级。
+	 *
+	 * 桌面端特别需要这一组：抽屉、卡片、悬浮播放条、对话框都要靠**层级**区分，
+	 * 而不是靠 1px 分隔线。第一版的做法是到处画边框（`.sidebar` / `.rightbar` /
+	 * `.playbar` / `.status-bar` 都有 `border-*`），视觉上就成了"IDE 面板"。
+	 */
+	surfaceContainerLowest: string
+	surfaceContainerLow: string
+	surfaceContainer: string
+	surfaceContainerHigh: string
+	surfaceContainerHighest: string
+	/** 主色的"染色"版本，用于把表面染上一层主题色 */
+	surfaceTint: string
 	outline: string
 	outlineVariant: string
 	inverseSurface: string
 	inverseOnSurface: string
+	shadow: string
 	scrim: string
 }
 
 export type ColorScheme = 'light' | 'dark'
 
+/**
+ * 语义色板。
+ *
+ * 照搬 Material Design 3 的语义命名，因为移动端已经基于 MD3
+ * （`react-native-paper` 的 `MD3LightTheme` / `MD3DarkTheme`），
+ * 桌面端沿用同一套语义即可保证配色一致。
+ *
+ * 实际主题会在运行时被「莫奈取色 / B 站装扮 / 系统主题色」覆盖；
+ * 这里是**回退基线**（M3 baseline 的标准取值）。
+ */
 export const colorSchemes: Record<ColorScheme, SemanticColors> = {
 	light: {
 		primary: '#6750A4',
@@ -139,18 +168,29 @@ export const colorSchemes: Record<ColorScheme, SemanticColors> = {
 		onSecondaryContainer: '#1D192B',
 		tertiary: '#7D5260',
 		onTertiary: '#FFFFFF',
+		tertiaryContainer: '#FFD8E4',
+		onTertiaryContainer: '#31111D',
 		error: '#B3261E',
 		onError: '#FFFFFF',
+		errorContainer: '#F9DEDC',
+		onErrorContainer: '#410E0B',
 		background: '#FFFBFE',
 		onBackground: '#1C1B1F',
 		surface: '#FFFBFE',
 		onSurface: '#1C1B1F',
 		surfaceVariant: '#E7E0EC',
 		onSurfaceVariant: '#49454F',
+		surfaceContainerLowest: '#FFFFFF',
+		surfaceContainerLow: '#F7F2FA',
+		surfaceContainer: '#F3EDF7',
+		surfaceContainerHigh: '#ECE6F0',
+		surfaceContainerHighest: '#E6E0E9',
+		surfaceTint: '#6750A4',
 		outline: '#79747E',
 		outlineVariant: '#CAC4D0',
 		inverseSurface: '#313033',
 		inverseOnSurface: '#F4EFF4',
+		shadow: '#000000',
 		scrim: '#000000',
 	},
 	dark: {
@@ -164,21 +204,56 @@ export const colorSchemes: Record<ColorScheme, SemanticColors> = {
 		onSecondaryContainer: '#E8DEF8',
 		tertiary: '#EFB8C8',
 		onTertiary: '#492532',
+		tertiaryContainer: '#633B48',
+		onTertiaryContainer: '#FFD8E4',
 		error: '#F2B8B5',
 		onError: '#601410',
+		errorContainer: '#8C1D18',
+		onErrorContainer: '#F9DEDC',
 		background: '#1C1B1F',
 		onBackground: '#E6E1E5',
 		surface: '#1C1B1F',
 		onSurface: '#E6E1E5',
 		surfaceVariant: '#49454F',
 		onSurfaceVariant: '#CAC4D0',
+		surfaceContainerLowest: '#0F0D13',
+		surfaceContainerLow: '#1D1B20',
+		surfaceContainer: '#211F26',
+		surfaceContainerHigh: '#2B2930',
+		surfaceContainerHighest: '#36343B',
+		surfaceTint: '#D0BCFF',
 		outline: '#938F99',
 		outlineVariant: '#49454F',
 		inverseSurface: '#E6E1E5',
 		inverseOnSurface: '#313033',
+		shadow: '#000000',
 		scrim: '#000000',
 	},
 }
 
 export const getColors = (scheme: ColorScheme): SemanticColors =>
 	colorSchemes[scheme]
+
+// ============================================================
+// 状态色（**不属于 MD3**，是 BBPlayer 自己的语义）
+// ============================================================
+
+/**
+ * MD3 只有 `error` 一个状态语义，而播放器需要区分
+ * 「好了 / 坏了 / 需要注意」三种。
+ *
+ * 刻意**不**塞进 `colorSchemes`：那样两个方案里都要重复维护，
+ * 而且会让人以为它们是 M3 标准角色。它们是应用级语义，单独放。
+ */
+export const statusColors: Record<ColorScheme, { ok: string; warn: string }> = {
+	light: { ok: '#2E7D32', warn: '#8F6C00' },
+	dark: { ok: '#7DDC8A', warn: '#F5D67B' },
+}
+
+// ============================================================
+// 主题偏好（含「跟随系统」）
+// ============================================================
+
+export type ThemePreference = 'system' | ColorScheme
+
+export const themePreferences: ThemePreference[] = ['system', 'light', 'dark']

@@ -44,6 +44,16 @@ const ENTRIES = [
 		input: path.join(ROOT, 'packages', 'splash', 'src', 'parser', 'merge.ts'),
 		output: path.join(OUT_DIR, 'splash-merge.cjs'),
 	},
+	{
+		label: 'design-tokens',
+		// 设计令牌：主进程用它生成 CSS 变量并下发给渲染进程。
+		//
+		// 为什么要打 bundle 而不是在 style.css 里手抄一份：手抄就会漂移 ——
+		// 第一版正是如此（`packages/design-tokens` 里有完整的 MD3 亮/暗 24 个
+		// 语义色 + 10 级字阶，而 `style.css` 只抄了暗色 6 个变量、字阶一个没用）。
+		input: path.join(ROOT, 'packages', 'design-tokens', 'src', 'index.ts'),
+		output: path.join(OUT_DIR, 'tokens.cjs'),
+	},
 ]
 
 /** 取 esbuild 的可执行入口（用它的 JS API 更可控，避免命令行转义问题） */

@@ -21,8 +21,16 @@
  */
 const SETTINGS_KEY = 'desktop-settings'
 
-/** 主题：`dark` 是现有默认（M3 深色 token），`light` 是新增的浅色 */
-const THEMES = ['dark', 'light']
+/**
+ * 主题偏好。
+ *
+ * `system` 是默认：跟随系统的深浅色。
+ *
+ * 第一版默认写死 `dark` —— 于是首次启动永远是一套暗色界面，而移动端是
+ * **亮色为主**（截图里就是）。桌面端同样应该先尊重系统的选择，
+ * 而不是替用户决定"音乐播放器就该是黑的"。
+ */
+const THEMES = ['system', 'light', 'dark']
 
 /** 定时关闭的预设（分钟），与移动端 `PRESET_DURATIONS` 一致 */
 const SLEEP_PRESETS_MINUTES = [15, 30, 45, 60]
@@ -31,7 +39,7 @@ const SLEEP_PRESETS_MINUTES = [15, 30, 45, 60]
 const SLEEP_FADE_MS = 5000
 
 const DEFAULT_SETTINGS = {
-	theme: 'dark',
+	theme: 'system',
 	/** 定时关闭的结束时间戳；null 表示未启用 */
 	sleepEndsAt: null,
 	/** 响度均衡开关 */

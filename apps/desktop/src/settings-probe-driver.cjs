@@ -147,11 +147,6 @@ async function run(window) {
 	check('window.bbSettings 已暴露', modules.panel === 'object')
 	check('window.bbUI.settingsPanel 可访问', modules.viaUI === 'function')
 	check('侧栏有设置齿轮按钮', modules.gear === true)
-	check(
-		'启动时已应用主题（data-theme 有值）',
-		modules.theme === 'dark' || modules.theme === 'light',
-		String(modules.theme),
-	)
 	await shot(window, 'settings-01-boot')
 
 	// ---------- 2. 打开抽屉 ----------
@@ -176,33 +171,81 @@ async function run(window) {
 		)) === true,
 	)
 
-	// ---------- 3. 主题切换 ----------
-	const beforeTheme = await evaluate(
-		window,
-		`document.documentElement.getAttribute('data-theme')`,
+	// ---------- 3. 主题：跟随系统 / 浅色 / 深色 三态 ----------
+	//
+	// ⚠️ 这一节在阶段 1 重写过。原来是「默认 dark，点浅色，点回深色」——
+	// 默认改成 `system` 之后，那套断言会在"系统本来就是浅色"的机器上**空转**
+	// （点「浅色」时它已经是浅色，"light -> light" 什么都没测到）。
+	//
+	// 现在验的是三态往返 + **偏好真的被解析**（含 `system` 解析成系统模式）。
+	const themeState = () =>
+		evaluate(
+			window,
+			`(() => ({
+				theme: document.documentElement.getAttribute('data-theme'),
+				bg: getComputedStyle(document.body).backgroundColor,
+				described: window.bbTheme?.describe?.() ?? null,
+			}))()`,
+		)
+
+	const initial = await themeState()
+	check(
+		'启动时已应用主题（data-theme 有值）',
+		initial.theme === 'dark' || initial.theme === 'light',
+		String(initial.theme),
 	)
-	await click(window, '[data-testid="theme-light"]')
-	const themed = await waitFor(
+	check(
+		'默认偏好是「跟随系统」（由主进程用 nativeTheme 解析）',
+		initial.described?.preference === 'system',
+		`preference=${initial.described?.preference} → ${initial.theme}`,
+	)
+	check(
+		'主题变量表确实落地了（不是只有兜底值）',
+		initial.described?.hasVars === true &&
+			Number(initial.described?.varCount ?? 0) > 40,
+		`${initial.described?.varCount} 段变量，color-scheme=${initial.described?.colorScheme}`,
+	)
+
+	// 切到深色
+	await click(window, '[data-testid="theme-dark"]')
+	const darkOk = await waitFor(
 		window,
-		`document.documentElement.getAttribute('data-theme') === 'light'
-			? { ok: true } : false`,
+		`document.documentElement.getAttribute('data-theme') === 'dark' ? { ok: true } : false`,
+		10_000,
+		'theme-dark',
+	)
+	const afterDark = await themeState()
+	check('切到深色生效', darkOk.ok, `${initial.theme} -> ${afterDark.theme}`)
+	check(
+		'深色偏好被记录下来（不是被忽略）',
+		afterDark.described?.preference === 'dark',
+		String(afterDark.described?.preference),
+	)
+	check(
+		'深色下背景确实是暗的',
+		/^rgb\((1[0-9]|2[0-9]|3[0-9]), /.test(String(afterDark.bg)),
+		String(afterDark.bg),
+	)
+
+	// 切到浅色
+	await click(window, '[data-testid="theme-light"]')
+	const lightOk = await waitFor(
+		window,
+		`document.documentElement.getAttribute('data-theme') === 'light' ? { ok: true } : false`,
 		10_000,
 		'theme-light',
 	)
+	const afterLight = await themeState()
+	check('切到浅色生效', lightOk.ok, `${afterDark.theme} -> ${afterLight.theme}`)
 	check(
-		'点「浅色」后 data-theme 变为 light',
-		themed.ok,
-		`${beforeTheme} -> ${await evaluate(window, `document.documentElement.getAttribute('data-theme')`)}`,
-	)
-	// 浅色主题必须真的改变了背景色（否则只是改了个属性）
-	const lightBg = await evaluate(
-		window,
-		`getComputedStyle(document.body).backgroundColor`,
+		'浅色真的改变了背景色（不是只改了个属性）',
+		afterLight.bg !== afterDark.bg,
+		`${afterDark.bg} -> ${afterLight.bg}`,
 	)
 	check(
-		'浅色主题真的改变了背景色',
-		!/^rgb\(2[0-9], 2[0-9], 3[0-9]\)$/.test(String(lightBg)),
-		String(lightBg),
+		'浅色下背景确实是亮的',
+		/^rgb\(2[0-9][0-9], /.test(String(afterLight.bg)),
+		String(afterLight.bg),
 	)
 	check(
 		'浅色按钮被标为选中',
@@ -213,21 +256,29 @@ async function run(window) {
 	)
 	await shot(window, 'settings-02-light-theme')
 
-	// 切回深色
-	await click(window, '[data-testid="theme-dark"]')
-	await waitFor(
-		window,
-		`document.documentElement.getAttribute('data-theme') === 'dark' ? { ok: true } : false`,
-		10_000,
-		'theme-dark',
+	// 切回「跟随系统」：模式应当回到系统事实（这台机器是浅色还是深色都行，
+	// 关键是与 `systemPrefersDark` 一致）
+	await click(window, '[data-testid="theme-system"]')
+	await sleep(800)
+	const afterSystem = await themeState()
+	check(
+		'切回「跟随系统」时模式与系统事实一致',
+		afterSystem.described?.preference === 'system' &&
+			afterSystem.theme ===
+				(afterSystem.described?.systemPrefersDark ? 'dark' : 'light'),
+		`preference=${afterSystem.described?.preference}，系统偏好深色=${afterSystem.described?.systemPrefersDark}，实际模式=${afterSystem.theme}`,
 	)
 	check(
-		'切回深色生效',
+		'「跟随系统」按钮被标为选中',
 		(await evaluate(
 			window,
-			`document.documentElement.getAttribute('data-theme')`,
-		)) === 'dark',
+			`document.querySelector('[data-testid="theme-system"]').classList.contains('is-active')`,
+		)) === true,
 	)
+
+	// 最后停在深色，后面的截图与断言按深色走
+	await click(window, '[data-testid="theme-dark"]')
+	await sleep(800)
 
 	// 主题必须持久化到主进程设置里（重启后仍在）
 	const persistedTheme = await evaluate(
@@ -235,7 +286,7 @@ async function run(window) {
 		`window.bbplayer.settings.get().then((r) => r?.data?.settings?.theme ?? null)`,
 	)
 	check(
-		'主题已持久化到设置（重启后保留）',
+		'主题偏好已持久化到设置（重启后保留）',
 		persistedTheme === 'dark',
 		String(persistedTheme),
 	)

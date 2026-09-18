@@ -31,15 +31,21 @@
 	// ---------------------------------------------------------------
 
 	/**
-	 * 应用主题。
+	 * 应用主题偏好。
 	 *
-	 * 用 `<html data-theme="light">` 而不是给每个元素加类：CSS 里只需在
-	 * `:root[data-theme='light']` 覆盖一遍语义 token，其余样式一行都不用动。
+	 * ⚠️ 实现已经**搬走**：真正干活的是 `theme.js`（`window.bbTheme`）——
+	 * 它从主进程取回由 `packages/design-tokens` 生成的 CSS 变量，
+	 * 顺带把 `data-theme` 与 `color-scheme` 标上。
+	 *
+	 * 这里留一个薄封装是为了不动调用方（`renderer.js` 与设置面板），
+	 * 但它**不再自己决定深浅色**：`system` 该解析成什么由主进程说了算
+	 * （`nativeTheme.shouldUseDarkColors`），渲染进程猜不出来。
+	 *
+	 * @param {'system'|'light'|'dark'} theme 偏好值（设置里存的就是它）
 	 */
 	function applyTheme(theme) {
-		const normalized = theme === 'light' ? 'light' : 'dark'
-		document.documentElement.setAttribute(THEME_ATTR, normalized)
-		return normalized
+		void window.bbTheme?.refresh?.()
+		return theme
 	}
 
 	// ---------------------------------------------------------------

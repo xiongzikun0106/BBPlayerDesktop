@@ -262,6 +262,199 @@ async function run(window) {
 	)
 
 	// ---------------------------------------------------------------
+	// 1.7 样式表花括号配平
+	// ---------------------------------------------------------------
+	//
+	// ⚠️ 这条是**事故复盘**换来的。
+	//
+	// `.settings-row label { … }` 曾经**少了一个闭合花括号**，于是紧随其后的
+	// `.settings-row button { … }` 被当成嵌套规则 —— 普通 CSS 不支持嵌套，
+	// 解析器把整块丢掉并一直吞到花括号重新配平为止。
+	//
+	// 后果：设置页那排按钮**完全没有样式**，是浏览器默认外观。用户看到并
+	// 明确抱怨过（"很多小输入框都是默认的 HTML 样式"）。当时是靠加一层
+	// 全局控件基础样式把症状盖住的，**根因一直没被发现** ——
+	// 因为没有任何断言会去看样式表本身。
+	//
+	// CSS 的好处是坏了通常"看得见"，坏处是**丢一整块规则是静默的**：
+	// 后面的规则照样生效，只是错位了。所以这里直接查文件。
+	console.log('\n[ui] 1.7) 样式表结构')
+	const cssCheck = (() => {
+		const files = ['style.css', 'lyrics-panel.css', 'lyrics-window.css']
+		const problems = []
+		for (const name of files) {
+			const file = path.join(__dirname, 'renderer', name)
+			if (!fs.existsSync(file)) continue
+			const raw = fs.readFileSync(file, 'utf8')
+			// 去掉注释（保留换行以便报行号）
+			let stripped = ''
+			let inComment = false
+			for (let i = 0; i < raw.length; i++) {
+				if (!inComment && raw.startsWith('/*', i)) {
+					inComment = true
+					i++
+					continue
+				}
+				if (inComment && raw.startsWith('*/', i)) {
+					inComment = false
+					i++
+					continue
+				}
+				if (!inComment) stripped += raw[i]
+				else if (raw[i] === '\n') stripped += '\n'
+			}
+			let depth = 0
+			let lastZero = 1
+			stripped.split('\n').forEach((line, index) => {
+				depth +=
+					(line.match(/\{/g) || []).length - (line.match(/\}/g) || []).length
+				if (depth === 0) lastZero = index + 1
+			})
+			if (depth !== 0) {
+				problems.push(
+					`${name}: 最终深度 ${depth}，从第 ${lastZero} 行之后有规则被吞掉`,
+				)
+			}
+		}
+		return problems
+	})()
+	check(
+		'样式表花括号配平（不配平会静默吞掉后面的规则）',
+		cssCheck.length === 0,
+		cssCheck.length > 0 ? cssCheck.join('；') : '3 个样式表都配平',
+	)
+
+	// ---------------------------------------------------------------
+	// 1.8 字阶：不能停留在 11–13px 的"控制台字号"
+	// ---------------------------------------------------------------
+	//
+	// 第一版全站字号压在 11–13px（`font-size:12px` 出现 29 次），而令牌包里
+	// 有 10 级字阶（11→24）**一个都没用**。这条断言按**角色**检查实际字号：
+	// 页面标题要够大、区块标题要分层、正文与副标题不能缩到 12。
+	console.log('\n[ui] 1.8) 字阶（按角色）')
+	const typeScale = JSON.parse(
+		await evaluate(
+			window,
+			`(() => {
+				const size = (sel) => {
+					const el = document.querySelector(sel)
+					if (!el) return null
+					return Number.parseFloat(getComputedStyle(el).fontSize)
+				}
+				return JSON.stringify({
+					body: size('body'),
+					viewTitle: size('.view-head h2'),
+					// 设置抽屉里的区块标题（抽屉关着也能算，getComputedStyle 不看可见性）
+					sectionTitle: size('.settings-panel h3'),
+					formLabel: size('.settings-grid label'),
+					secondary: size('.playbar__artist'),
+					hint: size('.settings-hint'),
+				})
+			})()`,
+		),
+	)
+	check(
+		'正文基准 = 14（body-medium）',
+		typeScale.body === 14,
+		`实际 ${typeScale.body}px`,
+	)
+	check(
+		'页面标题 ≥ 22（title-large，与移动端的大标题同级）',
+		typeScale.viewTitle !== null && typeScale.viewTitle >= 22,
+		`实际 ${typeScale.viewTitle}px`,
+	)
+	check(
+		'区块标题 ≥ 16 且明显大于正文（层级看得出来）',
+		typeScale.sectionTitle !== null && typeScale.sectionTitle >= 16,
+		`实际 ${typeScale.sectionTitle}px`,
+	)
+	check(
+		'表单标签 = 14（不再缩到 13）',
+		typeScale.formLabel === 14,
+		`实际 ${typeScale.formLabel}px`,
+	)
+	check(
+		'内容副标题 ≥ 14（歌手名这类信息不该比正文还小）',
+		typeScale.secondary !== null && typeScale.secondary >= 14,
+		`实际 ${typeScale.secondary}px`,
+	)
+	check(
+		'提示文字 = 12（body-small，最小的一档）',
+		typeScale.hint === 12,
+		`实际 ${typeScale.hint}px`,
+	)
+
+	// ---------------------------------------------------------------
+	// 1.9 只有一种「选中态」
+	// ---------------------------------------------------------------
+	//
+	// 用户指出：右侧「播放队列 / 歌词」用的是**下划线**，而左栏「音乐库」是
+	// 填充胶囊 —— "安卓端完全不会出现这种不等线 UI，而且样式太杂"。
+	//
+	// 第一版确实有三套混用：nav 是硬编码的紫色胶囊、tab 是下划线、
+	// segmented 是主色实心。清一遍只解决今天，所以这里钉住：
+	// **所有"选中/激活"必须算出同一套底色与前景色**，且**不许用下边框**表达选中。
+	console.log('\n[ui] 1.9) 选中态一致性')
+	const activeStyles = JSON.parse(
+		await evaluate(
+			window,
+			`(() => {
+				const pick = (sel) => {
+					const el = document.querySelector(sel)
+					if (!el) return null
+					const s = getComputedStyle(el)
+					return {
+						bg: s.backgroundColor,
+						color: s.color,
+						borderBottomWidth: s.borderBottomWidth,
+						borderBottomStyle: s.borderBottomStyle,
+						radius: s.borderRadius,
+					}
+				}
+				return JSON.stringify({
+					nav: pick('.nav__item.is-active'),
+					tab: pick('.tab.is-active'),
+					segmented: pick('.segmented button.is-active'),
+				})
+			})()`,
+		),
+	)
+
+	check(
+		'左栏导航项处于选中态（作为基准）',
+		activeStyles.nav !== null,
+		JSON.stringify(activeStyles.nav),
+	)
+	check(
+		'右栏页签的选中底色与左栏导航项**完全一致**（不再一套一套地写）',
+		activeStyles.tab !== null && activeStyles.tab.bg === activeStyles.nav?.bg,
+		`nav=${activeStyles.nav?.bg} tab=${activeStyles.tab?.bg}`,
+	)
+	check(
+		'右栏页签的选中前景色也与左栏一致',
+		activeStyles.tab?.color === activeStyles.nav?.color,
+		`nav=${activeStyles.nav?.color} tab=${activeStyles.tab?.color}`,
+	)
+	check(
+		'分段控件（跟随系统/浅色/深色）也是同一套选中底色',
+		activeStyles.segmented !== null &&
+			activeStyles.segmented.bg === activeStyles.nav?.bg,
+		`nav=${activeStyles.nav?.bg} segmented=${activeStyles.segmented?.bg}`,
+	)
+	check(
+		'任何选中态都不用下边框表达（移动端没有这种 UI）',
+		(activeStyles.tab?.borderBottomWidth ?? '0px') === '0px' &&
+			(activeStyles.nav?.borderBottomWidth ?? '0px') === '0px',
+		`tab=${activeStyles.tab?.borderBottomWidth} nav=${activeStyles.nav?.borderBottomWidth}`,
+	)
+	check(
+		'选中态是胶囊（圆角取满）',
+		activeStyles.nav?.radius === '9999px' &&
+			activeStyles.tab?.radius === '9999px',
+		`nav=${activeStyles.nav?.radius} tab=${activeStyles.tab?.radius}`,
+	)
+
+	// ---------------------------------------------------------------
 	// 2. 空库 → 导入示例合集
 	// ---------------------------------------------------------------
 	console.log('\n[ui] 2) 空库欢迎视图 + 导入合集')

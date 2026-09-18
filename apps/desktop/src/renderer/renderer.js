@@ -712,6 +712,15 @@
 
 		await window.bbLibrary.init()
 
+		// 主题变量要在宣布「就绪」之前落地。
+		// 否则探针（和用户）可能在 `<style id="bb-theme-vars">` 还空着的时候
+		// 就去看界面 —— 「启动时已应用主题」会变成看运气。
+		try {
+			await window.bbTheme?.ready
+		} catch {
+			// 主题拿不到不该让应用起不来：style.css 里有暗色兜底
+		}
+
 		window.__bbReady = true
 		log('初始化完成')
 	}

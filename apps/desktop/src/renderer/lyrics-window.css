@@ -38,7 +38,7 @@ body {
 	display: flex;
 	flex-direction: column;
 	background: var(--bg);
-	border: 1px solid var(--outline);
+	border: 1px solid var(--outline-variant);
 	border-radius: 14px;
 	/* 内容不超出圆角 */
 	overflow: hidden;
@@ -57,7 +57,7 @@ body.is-locked {
 	justify-content: space-between;
 	gap: 8px;
 	padding: 6px 10px;
-	border-bottom: 1px solid var(--outline);
+	border-bottom: 1px solid var(--outline-variant);
 	flex: 0 0 auto;
 }
 

@@ -219,6 +219,20 @@ contextBridge.exposeInMainWorld('bbplayer', {
 	diagnostics: () => ipcRenderer.invoke('diagnostics:info'),
 	/** 重启应用（恢复备份后需要） */
 	relaunch: () => ipcRenderer.invoke('app:relaunch'),
+	/**
+	 * 主题（阶段 1）。
+	 *
+	 * 主进程把设计令牌解析成 CSS 变量下发；渲染进程只负责应用。
+	 * `onChanged` 在系统深浅色切换、或用户改了偏好时触发。
+	 */
+	theme: {
+		describe: () => ipcRenderer.invoke('theme:describe'),
+		onChanged: (handler) => {
+			const listener = (_event, theme) => handler(theme)
+			ipcRenderer.on('theme:changed', listener)
+			return () => ipcRenderer.removeListener('theme:changed', listener)
+		},
+	},
 })
 
 /**

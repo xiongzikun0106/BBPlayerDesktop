@@ -1,37 +1,92 @@
 /*
- * 桌面端配色 / 尺寸取自 packages/design-tokens（与移动端同一套语义 token），
- * 因此两端视觉不会长期漂移。
+ * 桌面端配色 / 尺寸**来自 `packages/design-tokens`**。
+ *
+ * ⚠️ 下面这一块只是**首屏兜底**，不是真相。
+ *
+ * 真正的变量由主进程用令牌包生成（见 `apps/desktop/src/theme.cjs`），
+ * 通过 `theme:describe` / `theme:changed` 下发，由 `theme.js` 写进
+ * `<style id="bb-theme-vars">`。这个 `<style>` 排在 `<head>` 里本表之后，
+ * 所以会**覆盖**下面这些值。
+ *
+ * 那为什么还要留一份？因为 IPC 是异步的：首屏绘制时变量还没到，
+ * 不留兜底就会闪一下无样式（白底黑字）再跳成主题色。
+ * 兜底取的是**暗色**——绝大多数桌面系统默认深色，猜错的时代价最小。
+ *
+ * ⚠️ 不要在这里加新的语义色。加令牌 → 改 `packages/design-tokens`。
  */
 :root {
 	color-scheme: dark;
 
-	/* 间距（design-tokens: spacing） */
+	/* 兜底：暗色 MD3 基线（与 colorSchemes.dark 一致） */
+	--bg: #1c1b1f;
+	--surface: #1c1b1f;
+	--surface-2: #211f26;
+	--surface-3: #2b2930;
+	--primary: #d0bcff;
+	--on-primary: #381e72;
+	--on-surface: #e6e1e5;
+	--on-surface-variant: #cac4d0;
+	--outline: #938f99;
+	--outline-variant: #49454f;
+	--ok: #7ddc8a;
+	--bad: #f2b8b5;
+	--warn: #f5d67b;
+
+	/* 间距 / 圆角兜底（与 design-tokens 一致；真值同样由主进程下发） */
 	--sp-xxs: 4px;
 	--sp-xs: 8px;
 	--sp-sm: 12px;
 	--sp-md: 16px;
 	--sp-lg: 20px;
 	--sp-xl: 24px;
-
-	/* 圆角（design-tokens: radius） */
+	--sp-xxl: 32px;
+	--r-xs: 4px;
 	--r-sm: 8px;
 	--r-md: 12px;
 	--r-lg: 16px;
+	--r-xl: 20px;
+	--r-xxl: 24px;
+	--r-button: 28px;
 	--r-full: 9999px;
 
-	/* 语义色（design-tokens: colorSchemes.dark） */
-	--bg: #1c1b1f;
-	--surface: #211f26;
-	--surface-2: #2b2930;
-	--surface-3: #36343b;
-	--primary: #d0bcff;
-	--on-primary: #381e72;
-	--on-surface: #e6e1e5;
-	--on-surface-variant: #cac4d0;
-	--outline: #49454f;
-	--ok: #7ddc8a;
-	--bad: #f2b8b5;
-	--warn: #f5d67b;
+	/*
+	 * 图标尺寸。
+	 *
+	 * 刻意**不**混进字阶：M3 的字阶描述的是文字（body/title/label），
+	 * 而按钮里那些"字形图标"的字号表达的是图标大小。混在一起之后
+	 * 调正文会顺带改掉图标，很难定位。
+	 */
+	--icon-sm: 14px;
+	--icon-md: 16px;
+	--icon-lg: 20px;
+
+	/*
+	 * 字阶兜底（与 design-tokens.typography 逐条一致）。
+	 *
+	 * 必须留：首屏那一帧主进程的变量还没到，而 `font-size: var(--fs-body-medium)`
+	 * 在变量未定义时整条声明**失效**（invalid at computed-value time），
+	 * 字号会掉回默认 16px —— 看起来就是"先大一下再变小"。
+	 */
+	--fs-label-small: 11px;
+	--lh-label-small: 16px;
+	--fs-label-medium: 12px;
+	--lh-label-medium: 16px;
+	--fs-label-large: 14px;
+	--lh-label-large: 20px;
+	--fs-body-small: 12px;
+	--lh-body-small: 16px;
+	--fs-body-medium: 14px;
+	--lh-body-medium: 20px;
+	--fs-body-large: 16px;
+	--lh-body-large: 24px;
+	--fs-title-small: 14px;
+	--lh-title-small: 20px;
+	--fs-title-medium: 16px;
+	--lh-title-medium: 24px;
+	--fs-title-large: 22px;
+	--lh-title-large: 28px;
+	--fs-headline-small: 24px;
+	--lh-headline-small: 32px;
 }
 
 * {
@@ -49,7 +104,10 @@ body {
 	color: var(--on-surface);
 	font-family:
 		'Segoe UI', 'Microsoft YaHei', system-ui, -apple-system, sans-serif;
-	font-size: 14px;
+	/* 正文基准 = body-medium(14)。所有字号都从令牌的字阶里取，
+	   不再手写 px —— 手写的结果就是全站压在 11–13px。 */
+	font-size: var(--fs-body-medium);
+	line-height: var(--lh-body-medium);
 	overflow: hidden;
 }
 
@@ -69,7 +127,7 @@ body {
 .sidebar {
 	grid-area: sidebar;
 	background: var(--surface);
-	border-right: 1px solid var(--outline);
+	border-right: 1px solid var(--outline-variant);
 	display: flex;
 	flex-direction: column;
 	min-height: 0;
@@ -86,7 +144,7 @@ body {
 .rightbar {
 	grid-area: rightbar;
 	background: var(--surface);
-	border-left: 1px solid var(--outline);
+	border-left: 1px solid var(--outline-variant);
 	display: flex;
 	flex-direction: column;
 	min-height: 0;
@@ -95,7 +153,7 @@ body {
 .playbar {
 	grid-area: playbar;
 	background: var(--surface-2);
-	border-top: 1px solid var(--outline);
+	border-top: 1px solid var(--outline-variant);
 	display: grid;
 	grid-template-columns: 240px auto minmax(0, 1fr) auto;
 	align-items: center;
@@ -116,16 +174,16 @@ body {
 	align-items: center;
 	justify-content: space-between;
 	padding: var(--sp-md);
-	border-bottom: 1px solid var(--outline);
+	border-bottom: 1px solid var(--outline-variant);
 }
 
 .sidebar__title {
-	font-size: 16px;
+	font-size: var(--fs-body-large);
 	font-weight: 600;
 }
 
 .sidebar__badge {
-	font-size: 11px;
+	font-size: var(--fs-label-medium);
 	padding: 2px 8px;
 	border-radius: var(--r-full);
 	background: var(--surface-3);
@@ -145,30 +203,65 @@ body {
 	padding: var(--sp-xs);
 }
 
-.nav__item {
-	display: flex;
+/* ══════════════════════════════════════════════════════════
+   统一的「选中态」：填充胶囊
+   ────────────────────────────────────────────────────────── */
+/*
+ * ⚠️ 全工程**只允许一种**「选中 / 激活」视觉：填充胶囊。
+ *
+ * 第一版有三套混着用，用户明确指出来了：
+ *
+ *   .nav__item  填充胶囊，但颜色是**硬编码**的 `rgba(208,188,255,.16)`
+ *               —— 那是暗色专用值，浅色主题下只能碰巧不难看
+ *   .tab        **下划线**（浏览器 / IDE 的惯用法）
+ *               —— 原话：「安卓端完全不会出现这种不等线 UI」
+ *   .segmented  主色**实心**填充
+ *
+ * 现在统一到 M3 导航抽屉的 active indicator 上：选中 = `secondary-container`
+ * 底 + `on-secondary-container` 字。这两个角色在亮/暗两套令牌里都有值，
+ * 所以"统一"是**令牌级的统一**，不是把某个颜色抄三遍。
+ *
+ * 需要新的可选中的控件时，直接复用下面这三个选择器，不要另起一套。
+ */
+.nav__item,
+.tab,
+.segmented button {
+	display: inline-flex;
 	align-items: center;
+	justify-content: center;
 	gap: var(--sp-xs);
 	background: transparent;
 	border: none;
-	color: var(--on-surface-variant);
-	text-align: left;
-	padding: 10px var(--sp-sm);
 	border-radius: var(--r-full);
-	cursor: pointer;
+	color: var(--on-surface-variant);
+	padding: 8px var(--sp-md);
 	font: inherit;
-	width: 100%;
+	cursor: pointer;
+	transition:
+		background var(--motion-duration-fast) ease,
+		color var(--motion-duration-fast) ease;
 }
 
-.nav__item:hover {
-	background: var(--surface-2);
+.nav__item:hover,
+.tab:hover,
+.segmented button:hover {
+	background: var(--surface-container-high);
 	color: var(--on-surface);
 }
 
-.nav__item.is-active {
-	background: rgba(208, 188, 255, 0.16);
-	color: var(--primary);
+.nav__item.is-active,
+.tab.is-active,
+.segmented button.is-active {
+	background: var(--secondary-container);
+	color: var(--on-secondary-container);
 	font-weight: 600;
+}
+
+/* 左栏是竖向排列，文字左对齐并铺满整行 */
+.nav__item {
+	width: 100%;
+	justify-content: flex-start;
+	text-align: left;
 }
 
 .nav__icon {
@@ -181,7 +274,7 @@ body {
 	min-height: 0;
 	display: flex;
 	flex-direction: column;
-	border-top: 1px solid var(--outline);
+	border-top: 1px solid var(--outline-variant);
 	margin-top: var(--sp-xs);
 }
 
@@ -189,7 +282,7 @@ body {
 	display: flex;
 	justify-content: space-between;
 	padding: var(--sp-sm) var(--sp-md) var(--sp-xs);
-	font-size: 12px;
+	font-size: var(--fs-label-large);
 	color: var(--on-surface-variant);
 	text-transform: uppercase;
 	letter-spacing: 0.04em;
@@ -221,8 +314,8 @@ body {
 }
 
 .playlist-list__item.is-active {
-	background: rgba(208, 188, 255, 0.16);
-	color: var(--primary);
+	background: var(--secondary-container);
+	color: var(--on-secondary-container);
 }
 
 .playlist-list__name {
@@ -236,7 +329,7 @@ body {
    ────────────────────────────────────────────────────────── */
 .topbar {
 	padding: var(--sp-md);
-	border-bottom: 1px solid var(--outline);
+	border-bottom: 1px solid var(--outline-variant);
 	display: flex;
 	flex-direction: column;
 	gap: var(--sp-xs);
@@ -250,7 +343,7 @@ body {
 .search-box input {
 	flex: 1;
 	background: var(--surface-2);
-	border: 1px solid var(--outline);
+	border: 1px solid var(--outline-variant);
 	border-radius: var(--r-full);
 	color: var(--on-surface);
 	padding: 9px var(--sp-md);
@@ -263,7 +356,7 @@ body {
 }
 
 .topbar__hint {
-	font-size: 12px;
+	font-size: var(--fs-body-small);
 }
 
 .content {
@@ -283,7 +376,7 @@ body {
 
 .view-head h2 {
 	margin: 0;
-	font-size: 18px;
+	font-size: var(--fs-title-large);
 }
 
 .muted {
@@ -309,7 +402,7 @@ body {
 }
 
 .track-table th {
-	font-size: 12px;
+	font-size: var(--fs-label-large);
 	color: var(--on-surface-variant);
 	font-weight: 500;
 	position: sticky;
@@ -326,8 +419,8 @@ body {
 }
 
 .track-table tbody tr.is-playing {
-	background: rgba(208, 188, 255, 0.14);
-	color: var(--primary);
+	background: var(--secondary-container);
+	color: var(--on-secondary-container);
 }
 
 .track-table td.col-index {
@@ -362,26 +455,18 @@ body {
 /* ══════════════════════════════════════════════════════════
    右栏
    ────────────────────────────────────────────────────────── */
+/*
+ * 页签容器只负责排布：**没有下划线，也没有底部分隔线**。
+ * 外观（含选中态）全部来自上面那组「统一的选中态」。
+ */
 .tabs {
 	display: flex;
-	border-bottom: 1px solid var(--outline);
+	gap: var(--sp-xxs);
+	padding: var(--sp-xs);
 }
 
 .tab {
 	flex: 1;
-	background: transparent;
-	border: none;
-	border-bottom: 2px solid transparent;
-	color: var(--on-surface-variant);
-	padding: var(--sp-sm);
-	cursor: pointer;
-	font: inherit;
-}
-
-.tab.is-active {
-	color: var(--primary);
-	border-bottom-color: var(--primary);
-	font-weight: 600;
 }
 
 .panel {
@@ -417,7 +502,7 @@ body {
 	content: counter(q);
 	width: 20px;
 	text-align: right;
-	font-size: 12px;
+	font-size: var(--fs-body-small);
 	opacity: 0.6;
 }
 
@@ -427,8 +512,8 @@ body {
 }
 
 .queue-list__item.is-playing {
-	background: rgba(208, 188, 255, 0.14);
-	color: var(--primary);
+	background: var(--secondary-container);
+	color: var(--on-secondary-container);
 }
 
 .queue-list__title {
@@ -452,7 +537,7 @@ body {
 }
 
 .playbar__artist {
-	font-size: 12px;
+	font-size: var(--fs-body-medium);
 	overflow: hidden;
 	text-overflow: ellipsis;
 	white-space: nowrap;
@@ -470,7 +555,7 @@ body {
 	border-radius: var(--r-full);
 	background: var(--primary) !important;
 	color: var(--on-primary) !important;
-	font-size: 16px;
+	font-size: var(--icon-md);
 }
 
 .playbar__progress {
@@ -551,7 +636,7 @@ button.btn--filled:hover:not(:disabled) {
 /* 次要动作：只有描边（「测试连接」「导出」这类可选项） */
 button.btn--outlined {
 	background: transparent;
-	border-color: var(--outline);
+	border-color: var(--outline-variant);
 }
 
 button.btn--outlined:hover:not(:disabled) {
@@ -582,7 +667,7 @@ select {
 	font: inherit;
 	color: var(--on-surface);
 	background: var(--surface-2);
-	border: 1px solid var(--outline);
+	border: 1px solid var(--outline-variant);
 	border-radius: 10px;
 	padding: 7px 12px;
 	min-height: 36px;
@@ -611,7 +696,7 @@ input[type='password']:hover:not(:disabled),
 input[type='number']:hover:not(:disabled),
 textarea:hover:not(:disabled),
 select:hover:not(:disabled) {
-	border-color: color-mix(in srgb, var(--outline) 60%, var(--on-surface-variant));
+	border-color: color-mix(in srgb, var(--outline-variant) 60%, var(--on-surface-variant));
 }
 
 input[type='text']:focus,
@@ -756,7 +841,7 @@ input[type='range']:focus-visible {
 }
 
 ::-webkit-scrollbar-thumb:hover {
-	background: var(--outline);
+	background: var(--outline-variant);
 	background-clip: content-box;
 }
 
@@ -774,7 +859,7 @@ input[type='range']:focus-visible {
 	justify-content: space-between;
 	padding: 0 var(--sp-md);
 	background: var(--surface-3);
-	font-size: 12px;
+	font-size: var(--fs-body-small);
 }
 
 .status--idle {
@@ -804,7 +889,7 @@ input[type='range']:focus-visible {
 	padding: var(--sp-xs) var(--sp-md);
 	background: #000;
 	color: var(--on-surface-variant);
-	font-size: 11px;
+	font-size: var(--fs-label-medium);
 	z-index: 50;
 }
 
@@ -818,7 +903,7 @@ input[type='range']:focus-visible {
 	align-items: center;
 	gap: var(--sp-xs);
 	padding: var(--sp-xs) var(--sp-md);
-	border-bottom: 1px solid var(--outline);
+	border-bottom: 1px solid var(--outline-variant);
 	background: var(--surface);
 	flex-wrap: wrap;
 }
@@ -829,7 +914,7 @@ input[type='range']:focus-visible {
 
 .favorite-bar input {
 	background: var(--surface-2);
-	border: 1px solid var(--outline);
+	border: 1px solid var(--outline-variant);
 	border-radius: var(--r-sm);
 	color: var(--on-surface);
 	font: inherit;
@@ -841,7 +926,7 @@ input[type='range']:focus-visible {
 .row-actions button {
 	background: var(--surface-2);
 	color: var(--on-surface);
-	border: 1px solid var(--outline);
+	border: 1px solid var(--outline-variant);
 	border-radius: var(--r-sm);
 	padding: 4px var(--sp-sm);
 	cursor: pointer;
@@ -870,7 +955,7 @@ input[type='range']:focus-visible {
 
 .favorite-list__item {
 	background: var(--surface);
-	border: 1px solid var(--outline);
+	border: 1px solid var(--outline-variant);
 	border-radius: var(--r-md);
 	padding: var(--sp-sm);
 	display: grid;
@@ -891,7 +976,7 @@ input[type='range']:focus-visible {
 }
 
 .favorite-list__sub {
-	font-size: 12px;
+	font-size: var(--fs-body-medium);
 }
 
 .favorite-list__actions {
@@ -902,7 +987,7 @@ input[type='range']:focus-visible {
 .favorite-list__actions button {
 	background: var(--surface-2);
 	color: var(--on-surface);
-	border: 1px solid var(--outline);
+	border: 1px solid var(--outline-variant);
 	border-radius: var(--r-sm);
 	padding: 4px var(--sp-sm);
 	cursor: pointer;
@@ -924,7 +1009,7 @@ input[type='range']:focus-visible {
 	grid-column: 1 / -1;
 	max-height: 260px;
 	overflow-y: auto;
-	border-top: 1px solid var(--outline);
+	border-top: 1px solid var(--outline-variant);
 	padding-top: var(--sp-xs);
 }
 
@@ -951,7 +1036,7 @@ input[type='range']:focus-visible {
 
 .modal__card {
 	background: var(--surface);
-	border: 1px solid var(--outline);
+	border: 1px solid var(--outline-variant);
 	border-radius: var(--r-lg);
 	box-shadow: 0 12px 40px rgb(0 0 0 / 45%);
 	display: flex;
@@ -965,12 +1050,12 @@ input[type='range']:focus-visible {
 	align-items: center;
 	justify-content: space-between;
 	padding: var(--sp-md);
-	border-bottom: 1px solid var(--outline);
+	border-bottom: 1px solid var(--outline-variant);
 }
 
 .modal__head h2 {
 	margin: 0;
-	font-size: 16px;
+	font-size: var(--fs-title-large);
 }
 
 .modal__close {
@@ -978,7 +1063,7 @@ input[type='range']:focus-visible {
 	border: none;
 	color: var(--on-surface-variant);
 	cursor: pointer;
-	font-size: 16px;
+	font-size: var(--icon-md);
 	padding: 2px 6px;
 	border-radius: var(--r-sm);
 }
@@ -1031,7 +1116,7 @@ input[type='range']:focus-visible {
 
 .login-status {
 	margin: 0;
-	font-size: 13px;
+	font-size: var(--fs-body-medium);
 	color: var(--on-surface-variant);
 	min-height: 1.3em;
 }
@@ -1053,7 +1138,7 @@ input[type='range']:focus-visible {
 }
 
 .login-hint {
-	font-size: 12px;
+	font-size: var(--fs-body-small);
 	line-height: 1.6;
 	margin: 0;
 }
@@ -1062,14 +1147,14 @@ input[type='range']:focus-visible {
 	background: var(--surface-2);
 	border-radius: 4px;
 	padding: 0 4px;
-	font-size: 12px;
+	font-size: var(--fs-body-small);
 }
 
 .login-panel input[type='text'],
 .login-panel input[type='password'],
 .login-panel textarea {
 	background: var(--surface-2);
-	border: 1px solid var(--outline);
+	border: 1px solid var(--outline-variant);
 	border-radius: var(--r-sm);
 	color: var(--on-surface);
 	font: inherit;
@@ -1084,7 +1169,7 @@ input[type='range']:focus-visible {
 	grid-template-columns: auto minmax(0, 1fr);
 	gap: 4px var(--sp-sm);
 	margin: 0;
-	font-size: 13px;
+	font-size: var(--fs-body-medium);
 }
 
 .login-account__list dt {
@@ -1099,29 +1184,19 @@ input[type='range']:focus-visible {
 }
 
 /* ══════════════════════════════════════════════════════════
-   Phase 4 收尾：浅色主题 + 设置抽屉
+   设置抽屉
    ────────────────────────────────────────────────────────── */
 
 /*
- * 浅色主题只覆盖语义 token —— 所有组件样式都消费这些变量，
- * 因此不需要第二条样式规则。默认（无 data-theme 或 dark）即深色。
+ * ⚠️ 这里原来有一大块 `:root[data-theme='light'] { … }` 手抄浅色令牌。
+ *
+ * 它已经**删除**：浅色的真值现在由主进程从 `packages/design-tokens` 生成
+ * （见 `apps/desktop/src/theme.cjs` 的 `buildCssVars`），`theme.js` 写进
+ * `<style id="bb-theme-vars">`，而且那个 `<style>` 排在本表之后会覆盖兜底值。
+ *
+ * 留着的坏处是它会变成**第二份真相**：令牌包改了浅色，这里不改就静默不一致 ——
+ * 而"手抄令牌"正是第一版 `font-size:12px` 满地都是的原因。
  */
-:root[data-theme='light'] {
-	color-scheme: light;
-
-	--bg: #fef7ff;
-	--surface: #f7f2fa;
-	--surface-2: #ece6f0;
-	--surface-3: #e6e0e9;
-	--primary: #6750a4;
-	--on-primary: #ffffff;
-	--on-surface: #1d1b20;
-	--on-surface-variant: #49454f;
-	--outline: #cac4d0;
-	--ok: #1b6b2a;
-	--bad: #b3261e;
-	--warn: #7a5900;
-}
 
 /* ── 侧栏品牌行：标题 + 图标按钮 + 徽标 ───────────────── */
 .sidebar__brand-actions {
@@ -1135,7 +1210,7 @@ input[type='range']:focus-visible {
 	border: none;
 	color: var(--on-surface-variant);
 	cursor: pointer;
-	font-size: 15px;
+	font-size: var(--icon-md);
 	line-height: 1;
 	padding: 3px 5px;
 	border-radius: var(--r-sm);
@@ -1162,7 +1237,7 @@ input[type='range']:focus-visible {
 
 .settings-card {
 	background: var(--surface);
-	border-left: 1px solid var(--outline);
+	border-left: 1px solid var(--outline-variant);
 	width: 460px;
 	max-width: 92vw;
 	height: 100%;
@@ -1186,7 +1261,7 @@ input[type='range']:focus-visible {
 
 .settings-panel h3 {
 	margin: var(--sp-sm) 0 var(--sp-xxs);
-	font-size: 13px;
+	font-size: var(--fs-title-medium);
 	text-transform: none;
 	color: var(--primary);
 }
@@ -1196,7 +1271,7 @@ input[type='range']:focus-visible {
 }
 
 .settings-hint {
-	font-size: 12px;
+	font-size: var(--fs-body-small);
 	line-height: 1.6;
 	margin: 0;
 }
@@ -1206,7 +1281,7 @@ input[type='range']:focus-visible {
 	background: var(--surface-2);
 	border-radius: 4px;
 	padding: 0 4px;
-	font-size: 12px;
+	font-size: var(--fs-body-small);
 }
 
 .settings-path {
@@ -1224,26 +1299,13 @@ input[type='range']:focus-visible {
 	flex-wrap: wrap;
 }
 
+/*
+ * 分段控件的按钮外观**已经在上面「统一的选中态」里定义**。
+ * 这里只补它自己的排布，不再重复一遍颜色与圆角 ——
+ * 重复写就会出现"三套选中态"那种事。
+ */
 .segmented button {
 	flex: 1 1 auto;
-	background: var(--surface-2);
-	border: 1px solid var(--outline);
-	border-radius: var(--r-sm);
-	color: var(--on-surface);
-	cursor: pointer;
-	font: inherit;
-	padding: var(--sp-xxs) var(--sp-sm);
-}
-
-.segmented button:hover {
-	background: var(--surface-3);
-}
-
-.segmented button.is-active {
-	background: var(--primary);
-	border-color: var(--primary);
-	color: var(--on-primary);
-	font-weight: 600;
 }
 
 /* ── 通用行 ───────────────────────────────────────────── */
@@ -1257,16 +1319,30 @@ input[type='range']:focus-visible {
 	flex-wrap: wrap;
 }
 
+/*
+ * ⚠️ 这里原来**少了一个闭合花括号**。
+ *
+ * `.settings-row label { … flex: 0 0 auto;` 之后直接就是 `.settings-row button {`，
+ * 于是后者被当成了**嵌套在选择器里**的规则 —— 普通 CSS 不支持嵌套，
+ * 解析器会把整块丢掉，一直吞到花括号重新配平为止。
+ *
+ * 后果就是设置页里那一排按钮**完全没有样式**，是浏览器默认外观
+ * （用户看到并明确抱怨过："很多小输入框都是默认的 HTML 样式"）。
+ * 阶段 0 加的表单控件基础层把症状盖住了，但根因在这里。
+ *
+ * 用 `scripts/verify-css.mjs` 之类的括号配平检查可以事前拦住这类问题 ——
+ * 见 `scripts/verify-desktop-ui.mjs` 里那条「样式表括号配平」断言。
+ */
 .settings-row label {
 	white-space: nowrap;
 	color: var(--on-surface-variant);
-	font-size: 13px;
+	font-size: var(--fs-body-medium);
 	flex: 0 0 auto;
-
+}
 
 .settings-row button {
 	background: var(--surface-2);
-	border: 1px solid var(--outline);
+	border: 1px solid var(--outline-variant);
 	border-radius: var(--r-sm);
 	color: var(--on-surface);
 	cursor: pointer;
@@ -1285,7 +1361,7 @@ input[type='range']:focus-visible {
 	overflow: hidden;
 	text-overflow: ellipsis;
 	white-space: nowrap;
-	font-size: 13px;
+	font-size: var(--fs-body-medium);
 }
 
 .settings-row progress {
@@ -1295,7 +1371,7 @@ input[type='range']:focus-visible {
 
 .settings-row input[type='number'] {
 	background: var(--surface-2);
-	border: 1px solid var(--outline);
+	border: 1px solid var(--outline-variant);
 	border-radius: var(--r-sm);
 	color: var(--on-surface);
 	font: inherit;
@@ -1320,12 +1396,12 @@ input[type='range']:focus-visible {
 
 .settings-grid label {
 	color: var(--on-surface-variant);
-	font-size: 13px;
+	font-size: var(--fs-body-medium);
 }
 
 .settings-grid input {
 	background: var(--surface-2);
-	border: 1px solid var(--outline);
+	border: 1px solid var(--outline-variant);
 	border-radius: var(--r-sm);
 	color: var(--on-surface);
 	font: inherit;
@@ -1336,7 +1412,7 @@ input[type='range']:focus-visible {
 /* ── 状态文本 ─────────────────────────────────────────── */
 .settings-status {
 	margin: 0;
-	font-size: 12px;
+	font-size: var(--fs-body-small);
 	line-height: 1.5;
 	color: var(--on-surface-variant);
 	overflow-wrap: anywhere;
@@ -1355,9 +1431,12 @@ input[type='range']:focus-visible {
 }
 
 /* ── 子页签（播放历史用）与表格补充列 ─────────────────── */
+/*
+ * 次级页签（播放历史的「最近 / 最常 / 继续」这类）。
+ * 同样**没有下划线**：外观继承「统一的选中态」，这里只调整尺寸与排布。
+ */
 .tabs--sub {
 	margin-bottom: var(--sp-sm);
-	border-bottom: 1px solid var(--outline);
 }
 
 .tabs--sub .tab {
@@ -1396,7 +1475,7 @@ input[type='range']:focus-visible {
 
 .import-form input[type='text'] {
 	background: var(--surface-2);
-	border: 1px solid var(--outline);
+	border: 1px solid var(--outline-variant);
 	border-radius: var(--r-sm);
 	color: var(--on-surface);
 	font: inherit;
@@ -1406,7 +1485,7 @@ input[type='range']:focus-visible {
 }
 
 .import-progress {
-	font-size: 13px;
+	font-size: var(--fs-body-medium);
 	color: var(--primary);
 	margin-bottom: var(--sp-xs);
 }
@@ -1423,11 +1502,11 @@ input[type='range']:focus-visible {
 .import-table td.col-match select,
 .import-table td.col-match input {
 	background: var(--surface-2);
-	border: 1px solid var(--outline);
+	border: 1px solid var(--outline-variant);
 	border-radius: var(--r-sm);
 	color: var(--on-surface);
 	font: inherit;
-	font-size: 12px;
+	font-size: var(--fs-body-small);
 	margin-top: 2px;
 	padding: 2px var(--sp-xxs);
 	width: 100%;
@@ -1457,7 +1536,7 @@ input[type='range']:focus-visible {
 .import-manual {
 	color: var(--primary);
 	font-family: monospace;
-	font-size: 12px;
+	font-size: var(--fs-body-medium);
 }
 
 /* 选中行的视觉反馈 */
@@ -1495,11 +1574,11 @@ input[type='range']:focus-visible {
 
 .share-head h2 {
 	margin: 0;
-	font-size: 18px;
+	font-size: var(--fs-title-large);
 }
 
 .share-status {
-	font-size: 12px;
+	font-size: var(--fs-body-small);
 	margin: 0 0 var(--sp-md);
 	min-height: 1.2em;
 }
@@ -1522,7 +1601,7 @@ input[type='range']:focus-visible {
 
 .share-section {
 	background: var(--surface);
-	border: 1px solid var(--outline);
+	border: 1px solid var(--outline-variant);
 	border-radius: var(--r-md);
 	padding: var(--sp-sm) var(--sp-md);
 	margin-bottom: var(--sp-md);
@@ -1530,11 +1609,11 @@ input[type='range']:focus-visible {
 
 .share-section h3 {
 	margin: 0 0 var(--sp-xs);
-	font-size: 14px;
+	font-size: var(--fs-title-medium);
 }
 
 .share-hint {
-	font-size: 12px;
+	font-size: var(--fs-body-small);
 	margin: var(--sp-xxs) 0 var(--sp-xs);
 }
 
@@ -1554,14 +1633,14 @@ input[type='range']:focus-visible {
 }
 
 .share-field label {
-	font-size: 12px;
+	font-size: var(--fs-body-medium);
 	color: var(--on-surface-variant);
 }
 
 .share-field input[type='text'],
 .share-field input[type='password'] {
 	background: var(--surface-2);
-	border: 1px solid var(--outline);
+	border: 1px solid var(--outline-variant);
 	border-radius: var(--r-sm);
 	color: var(--on-surface);
 	font: inherit;
@@ -1570,7 +1649,7 @@ input[type='range']:focus-visible {
 }
 
 .share-security {
-	font-size: 12px;
+	font-size: var(--fs-body-small);
 	margin: var(--sp-xxs) 0 var(--sp-xs);
 }
 
@@ -1584,7 +1663,7 @@ input[type='range']:focus-visible {
 
 /* ── 订阅预览 ─────────────────────────────────────────── */
 .share-preview {
-	border-top: 1px dashed var(--outline);
+	border-top: 1px dashed var(--outline-variant);
 	margin-top: var(--sp-xs);
 	padding-top: var(--sp-xs);
 }
@@ -1596,7 +1675,7 @@ input[type='range']:focus-visible {
 .share-preview__meta,
 .share-preview__error,
 .share-preview__link {
-	font-size: 12px;
+	font-size: var(--fs-body-small);
 }
 
 .share-preview__error {
@@ -1606,7 +1685,7 @@ input[type='range']:focus-visible {
 .share-preview__tracks {
 	margin: var(--sp-xxs) 0;
 	padding-left: var(--sp-lg);
-	font-size: 12px;
+	font-size: var(--fs-body-medium);
 	color: var(--on-surface-variant);
 }
 
@@ -1645,7 +1724,7 @@ input[type='range']:focus-visible {
 }
 
 .share-row__meta {
-	font-size: 12px;
+	font-size: var(--fs-body-medium);
 }
 
 .share-row__actions {
@@ -1664,7 +1743,7 @@ input[type='range']:focus-visible {
 }
 
 .share-note {
-	font-size: 12px;
+	font-size: var(--fs-body-small);
 	margin: var(--sp-xxs) 0 0;
 }
 
@@ -1682,7 +1761,7 @@ input[type='range']:focus-visible {
 
 .share-badge {
 	align-self: flex-start;
-	font-size: 11px;
+	font-size: var(--fs-label-medium);
 	padding: 1px 8px;
 	border-radius: var(--r-full);
 	background: var(--surface-3);
@@ -1718,23 +1797,23 @@ input[type='range']:focus-visible {
 .share-inline-link input {
 	flex: 1 1 auto;
 	background: var(--surface-3);
-	border: 1px solid var(--outline);
+	border: 1px solid var(--outline-variant);
 	border-radius: var(--r-sm);
 	color: var(--on-surface);
 	font: inherit;
-	font-size: 12px;
+	font-size: var(--fs-body-small);
 	padding: 4px var(--sp-xs);
 }
 
 .share-members {
 	margin: var(--sp-xxs) 0 0;
 	padding-left: var(--sp-lg);
-	font-size: 12px;
+	font-size: var(--fs-body-medium);
 }
 
 .share-members-box,
 .share-invite-box {
-	border-top: 1px dashed var(--outline);
+	border-top: 1px dashed var(--outline-variant);
 	margin-top: var(--sp-xxs);
 	padding-top: var(--sp-xxs);
 }
@@ -1742,7 +1821,7 @@ input[type='range']:focus-visible {
 /* ── 分享本地歌单后的结果块（中栏底部） ───────────────── */
 .share-result {
 	background: var(--surface);
-	border: 1px solid var(--outline);
+	border: 1px solid var(--outline-variant);
 	border-radius: var(--r-md);
 	margin-top: var(--sp-md);
 	padding: var(--sp-sm) var(--sp-md);
@@ -1753,16 +1832,16 @@ input[type='range']:focus-visible {
 }
 
 .share-result__meta {
-	font-size: 12px;
+	font-size: var(--fs-body-medium);
 	margin-bottom: var(--sp-xxs);
 }
 
 /* 链接行：一次点击即全选，剪贴板不可用时的退路 */
 .share-result__link {
 	background: var(--surface-2);
-	border: 1px solid var(--outline);
+	border: 1px solid var(--outline-variant);
 	border-radius: var(--r-sm);
-	font-size: 12px;
+	font-size: var(--fs-body-small);
 	margin-bottom: var(--sp-xs);
 	padding: 4px var(--sp-xs);
 	user-select: all;
@@ -1773,7 +1852,7 @@ input[type='range']:focus-visible {
 	display: flex;
 	flex-direction: column;
 	gap: 2px;
-	font-size: 12px;
+	font-size: var(--fs-body-medium);
 	color: var(--on-surface-variant);
 	margin-bottom: var(--sp-xs);
 }
@@ -1790,12 +1869,12 @@ input[type='range']:focus-visible {
 .playlist-list__share {
 	flex: 0 0 auto;
 	background: var(--surface-3);
-	border: 1px solid var(--outline);
+	border: 1px solid var(--outline-variant);
 	border-radius: var(--r-sm);
 	color: var(--on-surface-variant);
 	cursor: pointer;
 	font: inherit;
-	font-size: 11px;
+	font-size: var(--fs-label-medium);
 	padding: 1px 8px;
 	white-space: nowrap;
 }
@@ -1825,12 +1904,12 @@ input[type='range']:focus-visible {
 
 .track-remove {
 	background: var(--surface-2);
-	border: 1px solid var(--outline);
+	border: 1px solid var(--outline-variant);
 	border-radius: var(--r-sm);
 	color: var(--bad);
 	cursor: pointer;
 	font: inherit;
-	font-size: 12px;
+	font-size: var(--fs-label-medium);
 	padding: 2px var(--sp-xs);
 }
 

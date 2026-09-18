@@ -7,7 +7,7 @@
 const path = require('node:path')
 const fs = require('node:fs')
 
-const { ipcMain } = require('electron')
+const { ipcMain, nativeTheme, BrowserWindow } = require('electron')
 
 const bilibiliApi = require('./bilibili-api.cjs')
 const db = require('./db.cjs')
@@ -878,10 +878,35 @@ function registerIpcHandlers() {
 		try {
 			const settings = getSettings()
 			await settings.update(patch ?? {})
+			// 主题偏好可能刚被改掉（含 system ↔ light/dark），立刻把解析后的
+			// 变量推给所有窗口，不等下一次 `theme:describe`
+			if (patch && 'theme' in patch) broadcastTheme()
 			return { ok: true, data: await settings.describe() }
 		} catch (error) {
 			return { ok: false, error: error.message }
 		}
+	})
+
+	// ---------- 主题（阶段 1）----------
+	//
+	// 令牌包里的语义值 → CSS 变量。渲染进程只负责把 `css` 塞进一个
+	// `<style>`、把 `mode` 写进 `documentElement.dataset.theme`。
+	//
+	// 「跟随系统」由主进程解析：`nativeTheme.shouldUseDarkColors` 就是系统级的
+	// 深浅色事实，`nativeTheme.on('updated')` 在系统切换时触发。
+
+	ipcMain.handle('theme:describe', async () => {
+		try {
+			return { ok: true, data: await describeCurrentTheme() }
+		} catch (error) {
+			return { ok: false, error: error.message }
+		}
+	})
+
+	nativeTheme.on('updated', () => {
+		// 系统深浅色变了。只有偏好是 `system` 时才需要重推，但这里不做判断 ——
+		// 推一次的成本是一个 IPC，而漏推的后果是「跟随系统」失效。
+		broadcastTheme()
 	})
 
 	// ---------- 播放历史（Phase 3.5）----------
@@ -1113,6 +1138,39 @@ const wrapShareHandler =
 			}
 		}
 	}
+
+/**
+ * 解析当前主题（偏好来自设置，系统事实来自 `nativeTheme`）。
+ *
+ * `theme.cjs` 是纯函数模块，这里只负责把两个输入喂给它。
+ *
+ * ⚠️ `settings.describe()` 返回的是 `{ settings, themes, sleepPresets, … }`，
+ * 偏好藏在 **`settings.settings.theme`** 里。第一版按扁平结构读了
+ * `described.theme`，拿到 `undefined` → `normalizePreference` 回退成 `system`
+ * → **改主题偏好完全不起作用**（界面永远跟随系统）。
+ * 由 `verify:desktop:settings` 的「切回深色生效」断言抓到。
+ */
+async function describeCurrentTheme() {
+	const { describeTheme } = require('./theme.cjs')
+	const described = await getSettings().describe()
+	return describeTheme(
+		described.settings?.theme,
+		nativeTheme.shouldUseDarkColors,
+	)
+}
+
+/** 把解析后的主题推给所有窗口（系统切换 / 用户改偏好时调用） */
+function broadcastTheme() {
+	void describeCurrentTheme()
+		.then((theme) => {
+			for (const window of BrowserWindow.getAllWindows()) {
+				if (!window.isDestroyed()) {
+					window.webContents.send('theme:changed', theme)
+				}
+			}
+		})
+		.catch((error) => logger.warn(`[theme] 推送失败: ${error.message}`))
+}
 
 function registerShareHandlers() {
 	/** 统一把异常转成 `{ok,error,status}`，避免渲染进程收到 Electron 的序列化错误 */
