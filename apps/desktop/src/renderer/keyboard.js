@@ -113,6 +113,49 @@
 		}))
 	}
 
+	/**
+	 * 快捷键帮助的开关。
+	 *
+	 * 说明文字原来是**常驻**在顶栏上的（「快捷键：Space 播放/暂停 · …」）——
+	 * 那是把说明书贴在墙上：看过一遍之后每一屏都还要再看一遍，
+	 * 还占掉了顶栏最值钱的位置。现在收进一个键盘图标按钮，点开才显示。
+	 *
+	 * 文案取自 `list()`（**实际注册**的快捷键表），而不是手写一份 ——
+	 * 手写的说明会与真实键位漂移（这个仓库已经踩过一次）。
+	 */
+	function wireShortcutHelp() {
+		const openButton = document.getElementById('shortcuts-open')
+		const hint = document.getElementById('hint')
+		if (!openButton || !hint) return
+
+		const entries = list()
+		if (entries.length > 0) {
+			hint.textContent =
+				'快捷键：' +
+				entries
+					.map((entry) => `${entry.combo} ${entry.description}`)
+					.join(' · ')
+		}
+
+		const setOpen = (open) => {
+			hint.hidden = !open
+			openButton.classList.toggle('is-active', open)
+			openButton.setAttribute('aria-expanded', String(open))
+		}
+
+		openButton.addEventListener('click', () => setOpen(hint.hidden))
+		setOpen(false)
+
+		window.bbShortcuts = {
+			open: () => setOpen(true),
+			close: () => setOpen(false),
+			isOpen: () => !hint.hidden,
+			text: () => hint.textContent ?? '',
+		}
+	}
+
+	wireShortcutHelp()
+
 	window.bbKeys = {
 		register,
 		unregister,

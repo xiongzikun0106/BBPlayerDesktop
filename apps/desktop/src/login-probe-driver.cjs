@@ -134,7 +134,8 @@ async function run(window) {
 				auth: typeof window.bbAuth,
 				favorites: typeof window.bbFavorites,
 				viaUI: typeof window.bbUI?.auth,
-				badge: document.getElementById('account-badge')?.textContent?.trim() ?? null,
+				accountLoggedIn:
+					document.getElementById('account-open')?.dataset.loggedIn ?? null,
 			})`,
 		),
 	)
@@ -145,20 +146,20 @@ async function run(window) {
 		modules.favorites,
 	)
 	check(
-		'侧栏徽标显示未登录（本探针不预置凭据）',
-		modules.badge === '未登录',
-		`徽标文本: ${modules.badge}`,
+		'账号入口显示未登录态（本探针不预置凭据）',
+		modules.accountLoggedIn === 'false',
+		`data-logged-in=${modules.accountLoggedIn}`,
 	)
 
-	// ---------- 2. 徽标点击打开弹窗 ----------
+	// ---------- 2. 头像按钮点击打开弹窗 ----------
 	check(
 		'弹窗初始隐藏',
 		await evaluate(window, `document.getElementById('login-modal').hidden`),
 	)
-	await click(window, '#account-badge')
+	await click(window, '#account-open')
 	await sleep(400)
 	check(
-		'点击徽标后弹窗可见',
+		'点击头像按钮后弹窗可见',
 		(await evaluate(
 			window,
 			`document.getElementById('login-modal').hidden`,
@@ -289,9 +290,17 @@ async function run(window) {
 		reject.ok ? reject.value.kind : 'n/a',
 	)
 	check(
-		'被拒后仍显示未登录',
-		(await textOf(window, '#account-badge')) === '未登录',
-		await textOf(window, '#account-badge'),
+		'被拒后账号仍是未登录态',
+		(await evaluate(
+			window,
+			`document.getElementById('account-open')?.dataset.loggedIn`,
+		)) === 'false',
+		String(
+			await evaluate(
+				window,
+				`document.getElementById('account-open')?.dataset.loggedIn`,
+			),
+		),
 	)
 
 	// 缺 SESSDATA 的输入也要被拦
@@ -615,9 +624,10 @@ async function run(window) {
 		const loggedIn = await waitFor(
 			window,
 			`(() => {
-				const badge = document.getElementById('account-badge')?.textContent?.trim() ?? ''
-				if (badge === '未登录' || badge === '') return false
-				return { ok: true, badge }
+				const button = document.getElementById('account-open')
+				if (button?.dataset.loggedIn !== 'true') return false
+				// 已登录时按钮会换成 account_circle 图标（颜色也会变）
+				return { ok: true, label: button.getAttribute('aria-label') }
 			})()`,
 			40_000,
 			'loggedin',

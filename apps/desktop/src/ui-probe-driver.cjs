@@ -178,7 +178,42 @@ async function run(window) {
 	let ui = await uiState(window)
 	check('左栏渲染', ui.sidebar)
 	check('中栏渲染', ui.main)
-	check('右栏渲染', ui.rightbar)
+	// ⚠️ 右栏**默认收起**（阶段 2）。原来它常驻 320px，不管有没有内容都占着，
+	// 三栏 + 边框 + 状态栏叠起来观感就是"IDE 面板"而不是播放器。
+	// 所以这里断言的是"存在但宽度为 0"，而不是"渲染出来了"。
+	const rightbarState = await evaluate(
+		window,
+		`(() => {
+			const el = document.querySelector('[data-testid="rightbar"]')
+			if (!el) return null
+			return {
+				width: Math.round(el.getBoundingClientRect().width),
+				collapsed: Boolean(
+					document.querySelector('.app')?.classList.contains('is-rightbar-collapsed'),
+				),
+				hasToggle: Boolean(
+					document.querySelector('[data-testid="rightbar-toggle"]'),
+				),
+			}
+		})()`,
+	)
+	check(
+		'右栏默认收起（宽度 0，不占屏）',
+		rightbarState?.collapsed === true && rightbarState.width === 0,
+		JSON.stringify(rightbarState),
+	)
+	check('右栏有展开入口（顶栏的开关按钮）', rightbarState?.hasToggle === true)
+	// 收起必须**真的能展开**——否则就是"藏起来了打不开"，比常驻还糟
+	await click(window, '[data-testid="rightbar-toggle"]')
+	await sleep(300)
+	const expanded = await evaluate(
+		window,
+		`Math.round(document.querySelector('[data-testid="rightbar"]').getBoundingClientRect().width)`,
+	)
+	check('点开关能展开右栏', Number(expanded) > 200, `展开后宽度 ${expanded}px`)
+	// 再收回去，后续断言按"收起"的初始状态走
+	await click(window, '[data-testid="rightbar-toggle"]')
+	await sleep(300)
 	check('底部播放条渲染', ui.playbar)
 	// Phase 3 加了「收藏夹」，Phase 3.5 加了「最近播放」，Phase 3.3 加了「导入歌单」，
 	// Phase 3.4 加了「共享」，因此现在是 7 个
@@ -609,6 +644,94 @@ async function run(window) {
 	)
 
 	// ---------------------------------------------------------------
+	// 1.11 外壳（阶段 2 换壳）
+	// ---------------------------------------------------------------
+	//
+	// 这一节把 stage 2 的改动与**三个已知缺陷**钉住。缺陷之所以是缺陷，
+	// 是因为当时没有任何断言会去看它们 —— 加断言比改代码更重要。
+	console.log('\n[ui] 1.11) 外壳：状态栏 / 顶栏 / 悬浮播放条')
+	const shell = JSON.parse(
+		await evaluate(
+			window,
+			`(() => {
+				const rect = (sel) => {
+					const el = document.querySelector(sel)
+					return el ? el.getBoundingClientRect() : null
+				}
+				const topbar = rect('.topbar')
+				// 顶栏里的图标按钮是否与搜索框在同一水平线上（第一版会折到第二行）
+				const topbarButtons = [...document.querySelectorAll('.topbar .icon-button')]
+				const strayButtons = topbarButtons
+					.filter((b) => {
+						const r = b.getBoundingClientRect()
+						return topbar && r.top - topbar.top > topbar.height * 0.6
+					})
+					.map((b) => b.id || b.className)
+
+				// 导航项是否被压成两行（第一版文字徽标挤掉了品牌名）
+				const wrappedNav = [...document.querySelectorAll('.nav__item')]
+					.filter((el) => el.getBoundingClientRect().height > 48)
+					.map((el) => (el.textContent || '').trim().slice(0, 8))
+
+				const playbar = rect('.playbar')
+				const playbarStyle = getComputedStyle(
+					document.querySelector('.playbar'),
+				)
+				const content = rect('.content')
+
+				return JSON.stringify({
+					hasStatusBar: Boolean(document.querySelector('.status-bar')),
+					hasStatusElement: Boolean(document.getElementById('status')),
+					strayButtons,
+					wrappedNav,
+					playbarRadius: Number.parseFloat(playbarStyle.borderRadius),
+					playbarShadow: playbarStyle.boxShadow !== 'none',
+					playbarLeftGap: Math.round(playbar?.left ?? 0),
+					// 内容底边与播放条顶边的关系：内容不该压到播放条上
+					overlapPx: content && playbar
+						? Math.round(content.bottom - playbar.top)
+						: null,
+				})
+			})()`,
+		),
+	)
+	check(
+		'底部状态栏已删除（不再是一条常驻的日志行）',
+		shell.hasStatusBar === false,
+		shell.hasStatusBar ? '仍然存在 .status-bar' : '已删除',
+	)
+	check(
+		'但反馈通道保留（#status 仍在，探针与模块都靠它）',
+		shell.hasStatusElement === true,
+	)
+	check(
+		'顶栏图标按钮不再折到第二行（缺陷 2 的同源问题）',
+		shell.strayButtons.length === 0,
+		shell.strayButtons.length > 0
+			? `折行：${shell.strayButtons.join('、')}`
+			: '同行',
+	)
+	check(
+		'左栏导航项都是单行（缺陷 2：按钮换行）',
+		shell.wrappedNav.length === 0,
+		shell.wrappedNav.length > 0
+			? `换行：${shell.wrappedNav.join('、')}`
+			: '全部单行',
+	)
+	check(
+		'底部是悬浮圆角卡（有圆角、有投影、左右留白）',
+		shell.playbarRadius >= 12 &&
+			shell.playbarShadow &&
+			shell.playbarLeftGap >= 4,
+		`radius=${shell.playbarRadius}px shadow=${shell.playbarShadow} leftGap=${shell.playbarLeftGap}px`,
+	)
+	check(
+		'内容区不压到播放条上（缺陷 1）',
+		shell.overlapPx !== null && shell.overlapPx <= 2,
+		`内容底边 - 播放条顶边 = ${shell.overlapPx}px（≤2 视为不重叠）`,
+	)
+
+	// ---------------------------------------------------------------
 	// 2. 空库 → 导入示例合集
 	// ---------------------------------------------------------------
 	console.log('\n[ui] 2) 空库欢迎视图 + 导入合集')
@@ -679,6 +802,64 @@ async function run(window) {
 	// 这一节断言面板确实**在用组件**（而不是又手搓了一套），
 	// 并且组件的关键视觉特征成立。放在导入之后 —— 那时侧栏才有真实行。
 	console.log('\n[ui] 2.5) 组件词汇表')
+	// 封面形状在**这里**量，不在 shell 小节：那时曲目表和侧栏行还没渲染，
+	// 只能量到播放条那一个封面，断言看着"通过"其实没覆盖到什么。
+	// 封面统一是**圆角正方形**（用户明确要求）。
+	//
+	// 不用圆形：圆形是"头像"的语言；封面是唱片/视频的封面，方形才对，
+	// 而且同样高度下方形多显示约 21% 的画面。
+	// 这里同时要求"真的有圆角"（不是切角）与"不是圆"（半径不超过边长一半）。
+	const covers = JSON.parse(
+		await evaluate(
+			window,
+			`(() => {
+				const nodes = [
+					...document.querySelectorAll('.playbar__cover'),
+					...document.querySelectorAll('.track-table .list-row__art'),
+					...document.querySelectorAll('[data-playlist-id] .list-row__art'),
+				]
+				const problems = []
+				let withRadius = 0
+				let square = 0
+				for (const el of nodes) {
+					const rect = el.getBoundingClientRect()
+					if (rect.width === 0) continue
+					const radius = Number.parseFloat(getComputedStyle(el).borderRadius)
+					if (!Number.isFinite(radius) || radius < 4) {
+						problems.push('无圆角: ' + (el.className || el.tagName))
+						continue
+					}
+					withRadius++
+					// 圆角 >= 短边一半就是胶囊/圆形了
+					if (radius < Math.min(rect.width, rect.height) / 2) square++
+					else problems.push('成了圆形: ' + (el.className || el.tagName))
+					// 宽高比接近 1:1 才算"正方形"
+					if (Math.abs(rect.width - rect.height) > 2) {
+						problems.push(
+							'不是正方形: ' +
+								Math.round(rect.width) +
+								'x' +
+								Math.round(rect.height),
+						)
+					}
+				}
+				return JSON.stringify({ count: nodes.length, withRadius, square, problems })
+			})()`,
+		),
+	)
+	check(
+		'界面上有封面位（播放条 / 曲目表 / 侧栏歌单）',
+		covers.count > 0,
+		`${covers.count} 个`,
+	)
+	check(
+		'所有封面都是**圆角正方形**（有圆角、不是圆形、宽高相等）',
+		covers.problems.length === 0 && covers.withRadius === covers.count,
+		covers.problems.length > 0
+			? covers.problems.slice(0, 4).join('；')
+			: `${covers.square}/${covers.count} 个都符合`,
+	)
+
 	const components = JSON.parse(
 		await evaluate(
 			window,
@@ -779,7 +960,13 @@ async function run(window) {
 				const appeared = Boolean(document.querySelector('[data-testid="toast"]'))
 				const text = node.textContent
 				const hasIcon = Boolean(node.querySelector('.icon'))
-				await new Promise((r) => setTimeout(r, 1200))
+				// ⚠️ 轮询「节点是否已移除」，不要用固定 sleep。
+				// 第一版是 await sleep(1200) 再断言，主进程忙的时候（截图、
+				// 大 DOM 查询）页面定时器会被推迟，断言随机失败 —— 典型 flake。
+				const deadline = Date.now() + 5000
+				while (document.body.contains(node) && Date.now() < deadline) {
+					await new Promise((r) => setTimeout(r, 100))
+				}
 				const removed = !document.body.contains(node)
 				return JSON.stringify({ appeared, text, hasIcon, removed })
 			})()`,

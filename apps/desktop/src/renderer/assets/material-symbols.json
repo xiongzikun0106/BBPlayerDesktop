@@ -1,9 +1,10 @@
 {
-	"generatedAt": "2026-09-18T16:08:06.002Z",
+	"generatedAt": "2026-09-18T16:45:48.036Z",
 	"family": "Material Symbols Rounded",
-	"cssUrl": "https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@24,400,0..1,0&icon_names=add,album,arrow_back,blur_on,check,check_circle,chevron_right,close,cloud_off,content_copy,contrast,dark_mode,delete,download,error,expand_less,expand_more,folder,folder_open,graphic_eq,group,history,home,info,key,library_music,light_mode,link,lyrics,more_vert,open_in_new,palette,pause,person,play_arrow,play_circle,playlist_add,queue_music,refresh,repeat,repeat_one,restart_alt,search,search_off,settings,share,shuffle,skip_next,skip_previous,speed,star,star_border,sync,text_fields,timer,upload,video_library,volume_up,warning&display=block",
-	"iconCount": 59,
+	"cssUrl": "https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@24,400,0..1,0&icon_names=account_circle,add,album,arrow_back,blur_on,check,check_circle,chevron_right,close,cloud_off,content_copy,contrast,dark_mode,delete,download,error,expand_less,expand_more,folder,folder_open,graphic_eq,group,history,home,info,key,keyboard,library_music,light_mode,link,lyrics,more_vert,music_note,open_in_new,palette,pause,person,play_arrow,play_circle,playlist_add,queue_music,refresh,repeat,repeat_one,restart_alt,search,search_off,settings,share,shuffle,skip_next,skip_previous,speed,star,star_border,sync,text_fields,timer,upload,video_library,volume_up,warning&display=block",
+	"iconCount": 62,
 	"icons": [
+		"account_circle",
 		"add",
 		"album",
 		"arrow_back",
@@ -29,11 +30,13 @@
 		"home",
 		"info",
 		"key",
+		"keyboard",
 		"library_music",
 		"light_mode",
 		"link",
 		"lyrics",
 		"more_vert",
+		"music_note",
 		"open_in_new",
 		"palette",
 		"pause",
@@ -64,5 +67,5 @@
 		"volume_up",
 		"warning"
 	],
-	"bytes": 9668
+	"bytes": 10036
 }

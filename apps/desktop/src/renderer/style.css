@@ -121,7 +121,32 @@ body {
 	grid-template-areas:
 		'sidebar main rightbar'
 		'playbar playbar playbar';
-	height: calc(100vh - 26px);
+	/* 状态栏已删除（改成浮动提示胶囊），所以整屏都归内容 */
+	height: 100vh;
+}
+
+/*
+ * 右栏收起：宽度归零而不是 `display: none`。
+ *
+ * 两个理由：
+ *   * 过渡能平滑（`display` 不参与动画）；
+ *   * 面板里的 DOM 仍然在文档里，探针读队列/歌词不受影响 ——
+ *     用 `display: none` 会让它们读不到，表现成"操作完成了但界面没变"。
+ */
+.app.is-rightbar-collapsed {
+	grid-template-columns: 240px minmax(0, 1fr) 0px;
+}
+
+/*
+ * 收起时连左边框一起去掉。
+ *
+ * 轨道宽度是 0，但 `border-left: 1px` 仍然会让元素量出 **1px** 宽 ——
+ * 视觉上就是屏幕右边挂着一条无意义的竖线（后面没有任何内容）。
+ * 探针也会因为这 1px 判"没有真的收起"。
+ */
+.app.is-rightbar-collapsed .rightbar {
+	/* ⚠️ 必须是 `width: 0` 而不是 `color: transparent` —— 颜色透明仍然占 1px 宽 */
+	border-left-width: 0;
 }
 
 .sidebar {
@@ -144,21 +169,79 @@ body {
 .rightbar {
 	grid-area: rightbar;
 	background: var(--surface);
+	/*
+	 * ⚠️ `min-width: 0` 是**必须的**，否则收起不生效。
+	 *
+	 * grid 项默认 `min-width: auto`，也就是"不能小于内容的 min-content 宽度"，
+	 * 于是即使把列宽写成 0px，列也会被内容顶开 —— 表现成"设了收起但没反应"。
+	 * `overflow: hidden` 只裁溢出，管不了最小宽度。这个坑很安静：
+	 * 代码看着完全正确，界面一动不动。
+	 */
+	min-width: 0;
+	/* 收起时列宽为 0，裁掉溢出，否则内容会浮在主区上面 */
+	overflow: hidden;
 	border-left: 1px solid var(--outline-variant);
 	display: flex;
 	flex-direction: column;
 	min-height: 0;
 }
 
+/*
+ * 悬浮播放条。
+ *
+ * ⚠️ 原来是一条**贴底的直角横条**：与主区同色 + 顶上一根分隔线，
+ * 观感是"窗口被切成了几块"，而不是"播放器浮在上面"。
+ *
+ * 现在：圆角 + 投影 + 左右留白，从内容区浮起来。
+ * 网格行高留出了下边距（见 `.app` 的 `grid-template-rows`），
+ * 所以它是"悬浮"而不是"贴底"。
+ */
 .playbar {
 	grid-area: playbar;
-	background: var(--surface-2);
-	border-top: 1px solid var(--outline-variant);
+	background: var(--surface-container);
 	display: grid;
-	grid-template-columns: 240px auto minmax(0, 1fr) auto;
+	grid-template-columns: 48px 240px auto minmax(0, 1fr) auto;
 	align-items: center;
 	gap: var(--sp-md);
+	margin: 0 var(--sp-sm) var(--sp-sm);
 	padding: 0 var(--sp-lg);
+	border-radius: var(--r-lg);
+	box-shadow: 0 4px 18px rgb(0 0 0 / 16%);
+}
+
+/*
+ * 封面缩略图。
+ *
+ * 播放条没有封面就像在看文件名 —— 这张图是"我在听什么"最快的答案。
+ * 没有封面时不留空洞，显示一个中性占位。
+ *
+ * ⚠️ 形状是**圆角正方形**，不是圆形。用户明确要求过：
+ * 「封面缩略图和曲绘封面都要是圆角的正方形」。
+ * 圆形是"头像"的语言；封面是唱片/视频的封面，方形才对，
+ * 而且方形能在同样的高度里多显示约 21% 的画面。
+ */
+.playbar__cover {
+	width: 44px;
+	height: 44px;
+	flex: none;
+	/* 44px 的方块配 12px 圆角 = 约 27%，视觉上明确是"圆角方形"而不是"接近圆" */
+	border-radius: var(--r-md);
+	overflow: hidden;
+	display: grid;
+	place-items: center;
+	background: var(--surface-container-highest);
+	color: var(--on-surface-variant);
+}
+
+.playbar__cover img {
+	width: 100%;
+	height: 100%;
+	object-fit: cover;
+	display: block;
+}
+
+.playbar__cover img[hidden] {
+	display: none;
 }
 
 /* 音频元素不显示，只做播放 */
@@ -182,17 +265,16 @@ body {
 	font-weight: 600;
 }
 
-.sidebar__badge {
-	font-size: var(--fs-label-medium);
-	padding: 2px 8px;
-	border-radius: var(--r-full);
-	background: var(--surface-3);
-	color: var(--on-surface-variant);
-	white-space: nowrap;
-}
-
-.sidebar__badge.is-online {
-	background: rgba(125, 220, 138, 0.16);
+/*
+ * 账号入口（`#account-open`）。
+ *
+ * ⚠️ 这里原来是 `.sidebar__badge` —— 一个**文字徽标**显示「未登录 / 用户名」。
+ * 阶段 2 换成头像按钮：登录状态属于"账号"，不属于每一屏的品牌行，
+ * 而且文字徽标会挤掉品牌名（历史上真出现过左栏按钮被压成两行）。
+ *
+ * 已登录时只用一个颜色差表达，不再写文字 —— 具体是谁在弹窗里看。
+ */
+#account-open.is-online {
 	color: var(--ok);
 }
 
@@ -396,17 +478,35 @@ body {
 /* ══════════════════════════════════════════════════════════
    中栏
    ────────────────────────────────────────────────────────── */
+/*
+ * 顶栏：搜索框占满剩余宽度，右侧是**一行图标按钮**。
+ *
+ * ⚠️ 原来是 `flex-direction: column`（搜索框一行、提示文字一行）。
+ * 提示文字收进图标按钮之后，多出来的按钮就自己折到了第二行 ——
+ * 截图里能看到两个图标孤零零挂在搜索框下面。
+ *
+ * 现在改成横向一行：`.search-box` 吃掉剩余空间（`flex: 1`），
+ * 图标按钮固定在右边、**永不换行**（`flex: none` + `flex-wrap: nowrap`）。
+ */
 .topbar {
-	padding: var(--sp-md);
+	padding: var(--sp-sm) var(--sp-md);
 	border-bottom: 1px solid var(--outline-variant);
 	display: flex;
-	flex-direction: column;
+	flex-direction: row;
+	align-items: center;
 	gap: var(--sp-xs);
+	flex-wrap: nowrap;
 }
 
 .search-box {
 	display: flex;
 	gap: var(--sp-xs);
+	flex: 1 1 auto;
+	min-width: 0;
+}
+
+.topbar > .icon-button {
+	flex: none;
 }
 
 .search-box input {
@@ -424,8 +524,35 @@ body {
 	outline-offset: -1px;
 }
 
+/*
+ * 快捷键说明。
+ *
+ * ⚠️ 原来是**常驻**在顶栏里的一行灰字（「快捷键：Space 播放/暂停 · …」）。
+ * 现在默认 `hidden`，点顶栏的键盘图标才出现 —— 而且要在顶栏**之上**
+ * 弹出来，不能再占一行布局（否则展开时又会把图标按钮挤到第二行）。
+ */
 .topbar__hint {
+	position: absolute;
+	top: 100%;
+	right: var(--sp-md);
+	z-index: 30;
+	max-width: min(70ch, 70vw);
+	padding: 10px 14px;
+	border-radius: var(--r-md);
+	background: var(--surface-container-high);
+	color: var(--on-surface);
 	font-size: var(--fs-body-small);
+	line-height: 1.6;
+	box-shadow: 0 6px 20px rgb(0 0 0 / 22%);
+}
+
+.topbar__hint[hidden] {
+	display: none;
+}
+
+/* 顶栏本身要成为定位上下文，`top: 100%` 才是"贴着顶栏下沿" */
+.topbar {
+	position: relative;
 }
 
 .content {
@@ -503,11 +630,43 @@ body {
 	text-align: right;
 }
 
+/*
+ * 曲目表的标题列 = **封面 + 标题**。
+ *
+ * ⚠️ `max-width: 0` 是表格里做省略号的必须写法：表格单元格默认按内容撑宽，
+ * 不给 `max-width: 0` 的话 `text-overflow: ellipsis` 永远不生效
+ * （文字会把列撑开）。
+ *
+ * ⚠️ flex 加在**内层 div** 上，不能加在 `<td>` 上 ——
+ * 给 `td` 设 `display: flex` 会让它不再生成 table-cell 盒，
+ * 表格布局当场崩掉（封面被压成细竖线、标题消失）。
+ */
 .track-table td.col-title {
+	overflow: hidden;
+	max-width: 0;
+}
+
+.col-title__wrap {
+	display: flex;
+	align-items: center;
+	gap: var(--sp-sm);
+	min-width: 0;
+}
+
+/* 列表里的封面比侧栏的小一号；圆角正方形，不用圆形 */
+.track-table .list-row__art {
+	width: 36px;
+	height: 36px;
+	border-radius: 8px;
+	font-size: var(--fs-body-medium);
+}
+
+.track-table .col-title__text {
+	flex: 1;
+	min-width: 0;
 	overflow: hidden;
 	text-overflow: ellipsis;
 	white-space: nowrap;
-	max-width: 0;
 }
 
 .empty {
@@ -959,32 +1118,89 @@ input[type='range']:focus-visible {
 }
 
 /* ══════════════════════════════════════════════════════════
-   状态栏 / 日志
+   全局状态提示（浮动胶囊）
    ────────────────────────────────────────────────────────── */
-.status-bar {
-	height: 26px;
-	display: flex;
-	align-items: center;
-	justify-content: space-between;
-	padding: 0 var(--sp-md);
-	background: var(--surface-3);
-	font-size: var(--fs-body-small);
+/*
+ * ⚠️ 这里原来是一条常驻的**底部状态栏**（`.status-bar`，高 26px，
+ * 永远显示「就绪」）。它有三个问题：
+ *   1. 看起来像**调试控制台** —— 一条永远存在的日志行；
+ *   2. 底部是最不显眼的位置，却承载着"刚刚发生了什么"；
+ *   3. 它把界面永远撑高，还和内容抢空间（历史上真出现过内容压到它上面的
+ *      布局事故，因为 `.main` 缺 overflow）。
+ *
+ * 现在：默认不显示，有反馈时浮在播放条上方，`ok` 几秒后淡出。
+ * 文本**不删除**（见 `status.js`），所以探针仍然读得到 —— 探针一旦读到
+ * `null`，"操作完成了"和"什么都没发生"就分不出来了。
+ */
+.status-host {
+	position: fixed;
+	left: 50%;
+	bottom: 96px;
+	translate: -50% 0;
+	z-index: 40;
+	pointer-events: none;
+	opacity: 0;
+	transition: opacity var(--motion-duration-normal) ease;
 }
 
-.status--idle {
-	color: var(--on-surface-variant);
+.status-host.is-visible {
+	opacity: 1;
 }
 
-.status--ok {
-	color: var(--ok);
+.status {
+	display: inline-block;
+	max-width: min(70ch, 80vw);
+	padding: 10px 18px;
+	border-radius: var(--r-full);
+	background: var(--inverse-surface);
+	color: var(--inverse-on-surface);
+	font-size: var(--fs-body-medium);
+	box-shadow: 0 6px 20px rgb(0 0 0 / 26%);
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
 }
 
-.status--busy {
-	color: var(--warn);
+/* 状态色只染一个**小圆点**，不整块换色 —— 整块换色会像报错弹窗 */
+.status::before {
+	content: '';
+	display: inline-block;
+	width: 7px;
+	height: 7px;
+	margin-right: 8px;
+	border-radius: 50%;
+	background: var(--outline);
+	vertical-align: middle;
 }
 
-.status--bad {
-	color: var(--bad);
+.status--idle::before {
+	background: var(--outline);
+}
+
+.status--ok::before {
+	background: var(--ok);
+}
+
+.status--busy::before {
+	background: var(--primary);
+}
+
+.status--warn::before {
+	background: var(--warn);
+}
+
+.status--bad::before {
+	background: var(--bad);
+}
+
+/* 屏幕阅读器可读、视觉上不占位（构建号这类信息） */
+.visually-hidden {
+	position: absolute;
+	width: 1px;
+	height: 1px;
+	overflow: hidden;
+	clip-path: inset(50%);
+	white-space: nowrap;
 }
 
 .log {

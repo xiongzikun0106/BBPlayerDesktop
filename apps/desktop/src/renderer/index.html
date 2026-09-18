@@ -21,9 +21,25 @@
 		<div class="app">
 			<!-- ── 左栏：导航 + 歌单 ───────────────────────────── -->
 			<aside class="sidebar" data-testid="sidebar">
+				<!--
+					⚠️ 这里原来还有一个**文字徽标**显示「未登录 / 用户名」。
+					它是状态噪音：登录状态属于"账号"，属于设置，不属于每一屏的标题栏。
+					另外它还会挤掉品牌名（历史上出现过左栏按钮换行）。
+
+					现在换成**头像按钮**：未登录显示 person 图标，已登录显示头像/首字。
+					点它打开账号弹窗 —— 这是移动端「设置 › 账号」的桌面等价入口，
+					但把入口放在需要它的地方（顶部），而不是藏进设置。
+				-->
 				<div class="sidebar__brand">
 					<span class="sidebar__title">BBPlayer</span>
 					<div class="sidebar__brand-actions">
+						<button
+							class="icon-button icon-only"
+							id="account-open"
+							data-testid="account-open"
+							title="账号"
+							aria-label="账号"
+						><span class="icon icon--md">person</span></button>
 						<button
 							class="icon-button icon-only"
 							id="settings-open"
@@ -31,12 +47,6 @@
 							title="设置"
 							aria-label="设置"
 						><span class="icon icon--md">settings</span></button>
-						<span
-							class="sidebar__badge"
-							id="account-badge"
-							data-testid="account-badge"
-							>未登录</span
-						>
 					</div>
 				</div>
 
@@ -86,8 +96,40 @@
 						/>
 						<button id="search-button" data-testid="search-button">搜索</button>
 					</div>
-					<div class="topbar__hint muted" id="hint" data-testid="hint">
-						快捷键：Space 播放/暂停 · ←→ 快退/快进 · Ctrl+F 搜索
+					<!--
+						右栏（播放队列 / 歌词）的开关。右栏**默认收起** ——
+						它原来常驻 320px，不管有没有内容都占着，观感偏"IDE 面板"。
+					-->
+					<button
+						class="icon-button icon-only"
+						id="rightbar-toggle"
+						data-testid="rightbar-toggle"
+						title="播放队列 / 歌词"
+						aria-label="播放队列 / 歌词"
+						aria-expanded="false"
+					>
+						<span class="icon icon--md">queue_music</span>
+					</button>
+					<!--
+						⚠️ 这里原来是一行**常驻的快捷键说明**（「快捷键：Space 播放/暂停 ·
+						←→ 快退/快进 · Ctrl+F 搜索」）。那是把说明书贴在墙上：用户看第一遍
+						之后每一屏都还要再看一遍，而且它占掉了顶栏最值钱的位置。
+
+						改成「键盘」图标按钮：需要时点开看（含全部快捷键）。
+						`#hint` 这个 id 保留，内容是**全部**快捷键，便于探针与用户查阅。
+					-->
+					<button
+						class="icon-button icon-only"
+						id="shortcuts-open"
+						data-testid="shortcuts-open"
+						title="快捷键"
+						aria-label="快捷键"
+					>
+						<span class="icon icon--md">keyboard</span>
+					</button>
+					<div class="topbar__hint muted" id="hint" data-testid="hint" hidden>
+						快捷键：Space 播放/暂停 · ←/→ 快退/快进 · Ctrl+F 搜索 ·
+						Ctrl+Q 切换队列/歌词 · Ctrl+Alt+L 独立歌词窗口
 					</div>
 				</header>
 
@@ -169,10 +211,26 @@
 				</div>
 			</aside>
 
-			<!-- ── 底部：常驻播放条 ─────────────────────────────── -->
+			<!--
+				── 底部：悬浮播放条 ───────────────────────────────
+				⚠️ 原来它是一条**贴底的直角横条**（`grid-area: playbar`，
+				背景与主区同色、顶上一条分隔线），观感就是"窗口的分区"。
+
+				阶段 2 改成**悬浮圆角卡**：左右留白、圆角、投影，
+				并从内容区"浮"起来（`margin` + `border-radius` + 阴影），
+				同时补上**封面缩略图** —— 播放条没有封面就像在看文件名。
+			-->
 			<footer class="playbar" data-testid="playbar">
 				<!-- 音频元素：自定义协议代理，由主进程注入 Referer 并透传 Range -->
 				<audio id="audio" preload="metadata"></audio>
+
+				<!-- 封面缩略图：没有时显示一个中性占位（不留空白洞） -->
+				<div class="playbar__cover" data-testid="playbar-cover">
+					<img id="now-cover" data-testid="now-cover" alt="" hidden />
+					<span class="icon icon--md" id="now-cover-placeholder"
+						>music_note</span
+					>
+				</div>
 
 				<div class="playbar__meta">
 					<div class="playbar__title" id="now-title" data-testid="now-title">未在播放</div>
@@ -235,10 +293,22 @@
 			</footer>
 		</div>
 
-		<div class="status-bar">
-			<span id="status" data-testid="status" class="status status--idle">就绪</span>
-			<span class="muted mono" id="build-info" data-testid="build-info"></span>
+		<!--
+			⚠️ 这里原来是常驻的**底部状态栏**（`就绪` / `已导入 24/24 首` / 构建号），
+			看起来像调试控制台。用户不需要一条永久的日志行。
+
+			现在改成**浮动提示胶囊**：默认完全不显示（`idle` 时连元素都不占位），
+			有反馈时出现在播放条上方，`ok` 类几秒后淡出，`busy`/`bad` 留着让用户读完。
+
+			`#status` 这个 id **保留**：它是六个渲染模块共用的反馈出口，
+			也是探针读进度/结果的地方。只是外观与生命周期换了。
+			文本在淡出后**仍然留在 DOM 里**，所以探针不会被"已经消失"骗到。
+		-->
+		<div class="status-host" data-testid="status-host">
+			<span id="status" data-testid="status" class="status status--idle"></span>
 		</div>
+		<!-- 构建号挪到设置 › 关于 里（诊断信息的去处），不再占界面 -->
+		<span class="visually-hidden" id="build-info" data-testid="build-info"></span>
 
 		<!-- ── 登录弹窗 ──────────────────────────────────────── -->
 		<div
@@ -787,6 +857,7 @@
 		-->
 		<script src="theme.js"></script>
 		<script src="components.js"></script>
+		<script src="status.js"></script>
 		<script src="state.js"></script>
 		<script src="player.js"></script>
 		<script src="library.js"></script>

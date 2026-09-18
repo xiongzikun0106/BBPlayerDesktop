@@ -20,7 +20,15 @@
 
 	const els = {
 		modal: document.getElementById('login-modal'),
-		badge: document.getElementById('account-badge'),
+		/**
+		 * 账号入口按钮。
+		 *
+		 * ⚠️ 原来这里是一个**文字徽标**（`#account-badge`，显示「未登录 / 用户名」）。
+		 * 阶段 2 换成了**头像按钮**：登录状态属于"账号"、属于设置，
+		 * 不需要挂在每一屏的品牌行上；文字徽标还会挤掉品牌名
+		 * （历史上真出现过左栏按钮被压成两行）。
+		 */
+		accountOpen: document.getElementById('account-open'),
 		close: document.getElementById('login-close'),
 		tabs: document.querySelectorAll('[data-login-tab]'),
 		panels: document.querySelectorAll('[data-login-panel]'),
@@ -66,13 +74,25 @@
 		currentStatus = status ?? { loggedIn: false }
 		const loggedIn = Boolean(status?.loggedIn)
 
-		if (els.badge) {
+		if (els.accountOpen) {
 			const user = status?.user
-			els.badge.textContent = loggedIn ? (user?.uname ?? '已登录') : '未登录'
-			els.badge.classList.toggle('is-online', loggedIn)
-			els.badge.title = loggedIn
-				? `mid=${user?.mid ?? '?'}${user?.vip ? ` · ${user.vipLabel ?? '会员'}` : ''} · 点击管理登录`
-				: '点击登录（公开收藏夹无需登录也可导入）'
+			// 按钮上**不写文字**：未登录就是 person 图标，已登录换成头像/首字。
+			// 登录与否在弹窗里说清楚，不必在每一屏的标题栏上重复一遍。
+			const name = loggedIn ? (user?.uname ?? '已登录') : ''
+			els.accountOpen.dataset.loggedIn = String(loggedIn)
+			els.accountOpen.title = loggedIn
+				? `${name} · mid=${user?.mid ?? '?'}${user?.vip ? ` · ${user.vipLabel ?? '会员'}` : ''} · 点击管理登录`
+				: '登录 B 站账号（公开收藏夹无需登录也能导入）'
+			els.accountOpen.setAttribute(
+				'aria-label',
+				loggedIn ? `账号：${name}` : '账号：未登录',
+			)
+
+			const iconNode = els.accountOpen.querySelector('.icon')
+			if (iconNode)
+				iconNode.textContent = loggedIn ? 'account_circle' : 'person'
+			// 已登录时给按钮加个色，作为"有登录态"的唯一视觉线索
+			els.accountOpen.classList.toggle('is-online', loggedIn)
 		}
 
 		if (!els.account) return
@@ -341,7 +361,8 @@
 	// 事件绑定
 	// ---------------------------------------------------------------
 
-	if (els.badge) els.badge.addEventListener('click', () => open('qr'))
+	if (els.accountOpen)
+		els.accountOpen.addEventListener('click', () => open('qr'))
 	if (els.close) els.close.addEventListener('click', close)
 	if (els.qrRefresh)
 		els.qrRefresh.addEventListener('click', () => void startQr())

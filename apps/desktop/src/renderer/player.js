@@ -52,6 +52,8 @@
 		timeTotal: document.getElementById('time-total'),
 		title: document.getElementById('now-title'),
 		artist: document.getElementById('now-artist'),
+		cover: document.getElementById('now-cover'),
+		coverPlaceholder: document.getElementById('now-cover-placeholder'),
 		queueList: document.getElementById('queue-list'),
 		queueEmpty: document.getElementById('queue-empty'),
 		status: document.getElementById('status'),
@@ -278,6 +280,40 @@
 		const track = state.queue[state.index]
 		if (els.title) els.title.textContent = track ? track.title : '未在播放'
 		if (els.artist) els.artist.textContent = track ? track.artist || '—' : '—'
+
+		// 封面缩略图：有就显示，加载失败就退回占位图标。
+		// ⚠️ 不能只设 `src` 不管失败 —— 封面域名偶尔会 403，
+		// 那时浏览器会显示一个"破图"图标，比不显示还难看。
+		// ⚠️ 封面字段在不同来源里名字不一样：搜索结果是 `cover`，
+		// 核心层的歌单曲目是 `coverUrl`（数据库列 `cover_url`）。
+		// 三个都认，不然"搜索进来的有封面、从歌单进来的没有"——
+		// 这种不一致很难一眼看出来。
+		const coverUrl = track?.cover ?? track?.coverUrl ?? track?.cover_url ?? null
+		if (els.cover) {
+			if (coverUrl && els.cover.getAttribute('src') !== coverUrl) {
+				els.cover.hidden = true
+				els.cover.src = coverUrl
+			}
+			if (!coverUrl) {
+				els.cover.hidden = true
+				els.cover.removeAttribute('src')
+			}
+		}
+		if (els.coverPlaceholder) els.coverPlaceholder.hidden = Boolean(coverUrl)
+	}
+
+	// 封面**加载成功才显示**，失败就退回占位 —— 否则会留一个破图图标，
+	// 比不显示还难看（封面域名偶尔 403）。
+	if (els.cover && !els.cover.dataset.wired) {
+		els.cover.dataset.wired = '1'
+		els.cover.addEventListener('load', () => {
+			els.cover.hidden = false
+			if (els.coverPlaceholder) els.coverPlaceholder.hidden = true
+		})
+		els.cover.addEventListener('error', () => {
+			els.cover.hidden = true
+			if (els.coverPlaceholder) els.coverPlaceholder.hidden = false
+		})
 	}
 
 	function renderQueue() {

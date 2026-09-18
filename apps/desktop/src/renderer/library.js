@@ -45,17 +45,26 @@
 
 		for (const playlist of playlists) {
 			// 已共享的歌单按钮显示「同步」：用户的意图是同一个 —— 让云端与本地一致
+			//
+			// ⚠️ 原来是**文字按钮**（「分享」/「同步」），在 240px 宽的行里吃掉
+			// 40 多像素，把歌单名挤成「合集·BILIB…」（§1.5 的第 3 个缺陷）。
+			// 改成图标按钮：语义靠图标 + `title`/`aria-label`，把宽度还给标题。
 			const shared = Boolean(playlist.share_id)
 			const shareButton = document.createElement('button')
-			shareButton.className = 'playlist-list__share'
+			shareButton.className = 'icon-only playlist-list__share'
 			shareButton.dataset.testid = `playlist-share-${playlist.id}`
 			// `data-action` 比 testid 稳定（testid 里带歌单 id，值每次都可能不同），
 			// 探针与未来的快捷键都靠它定位
 			shareButton.dataset.action = 'share'
-			shareButton.textContent = shared ? '同步' : '分享'
 			shareButton.title = shared
 				? `已共享（${playlist.share_role ?? '成员'}）· 点一下同步云端改动`
 				: '把这个歌单分享到云端（共享歌单）'
+			shareButton.setAttribute('aria-label', shared ? '同步到云端' : '分享歌单')
+			// 图标形状本身也表达状态：未共享是 share，已共享是 sync
+			shareButton.innerHTML = window.bbComponents.iconHtml(
+				shared ? 'sync' : 'share',
+				'icon--sm',
+			)
 			shareButton.addEventListener('click', (event) => {
 				// 否则会顺带触发行上的「打开歌单」
 				event.stopPropagation()
@@ -399,13 +408,46 @@
 				tr.classList.add('is-playing')
 			}
 
-			const cells = [
-				[String(index + 1), 'col-index'],
-				[track.title || '(无标题)', 'col-title'],
+			// 序号
+			const indexCell = document.createElement('td')
+			indexCell.className = 'col-index'
+			indexCell.textContent = String(index + 1)
+			tr.appendChild(indexCell)
+
+			// 标题单元格特殊处理：**曲绘封面 + 标题**。
+			//
+			// 阶段 2 之前这里只有文字，一整屏看下来是"文件名列表"。
+			// 移动端每一行都有封面，那才是"在选歌"而不是"在读表格"。
+			//
+			// 封面统一是**圆角正方形**（见 components.css 的 .list-row__art）——
+			// 不用圆形：圆形是"头像"的语言，方形才像唱片/视频封面。
+			//
+			// ⚠️ flex 必须加在**单元格里的一层 div** 上，不能加在 `<td>` 上。
+			// 给 `td` 设 `display: flex` 会让它不再生成 table-cell 盒，
+			// 表格布局当场崩掉：封面被压成一条细竖线、标题整段消失
+			// （第一版就是这么写的，截图里一眼可见）。
+			const titleCell = document.createElement('td')
+			titleCell.className = 'col-title'
+			titleCell.title = track.title || '(无标题)'
+			const titleWrap = document.createElement('div')
+			titleWrap.className = 'col-title__wrap'
+			titleWrap.appendChild(
+				window.bbComponents.art({
+					title: track.title,
+					coverUrl: track.cover ?? track.coverUrl ?? track.cover_url ?? null,
+				}),
+			)
+			const titleText = document.createElement('span')
+			titleText.className = 'col-title__text'
+			titleText.textContent = track.title || '(无标题)'
+			titleWrap.appendChild(titleText)
+			titleCell.appendChild(titleWrap)
+			tr.appendChild(titleCell)
+
+			for (const [text, cls] of [
 				[track.artist || track.artist_name || '—', 'col-artist'],
 				[window.bbPlayer.formatTime(track.duration), 'col-duration'],
-			]
-			for (const [text, cls] of cells) {
+			]) {
 				const td = document.createElement('td')
 				td.className = cls
 				td.textContent = text

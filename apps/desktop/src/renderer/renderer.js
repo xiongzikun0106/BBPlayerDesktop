@@ -28,6 +28,37 @@
 	// 右栏面板切换
 	// ---------------------------------------------------------------
 
+	// ---------------------------------------------------------------
+	// 右栏（可折叠，默认收起）
+	// ---------------------------------------------------------------
+	//
+	// ⚠️ 右栏原来**常驻 320px**，不管有没有内容都占着，于是：
+	//   * 主内容区被压窄；
+	//   * 一个"队列为空"的空面板长期占着三分之一的屏；
+	//   * 三栏 + 边框 + 状态栏叠在一起，观感就是"IDE 面板"而不是播放器。
+	//
+	// 改成**默认收起**、按需展开：点图标按钮或 Ctrl+Q 都能开。
+	// 收起时整列宽度归零（不是 `display:none`），所以过渡是平滑的，
+	// 而且面板里的 DOM 仍然存在 —— 探针读队列/歌词不受影响。
+	const app = document.querySelector('.app')
+	const rightbarToggle = document.getElementById('rightbar-toggle')
+
+	function isRightbarOpen() {
+		return !app?.classList.contains('is-rightbar-collapsed')
+	}
+
+	function setRightbar(open) {
+		if (!app) return
+		app.classList.toggle('is-rightbar-collapsed', !open)
+		rightbarToggle?.classList.toggle('is-active', open)
+		rightbarToggle?.setAttribute('aria-expanded', String(open))
+		window.bbState.set({ rightbarOpen: open })
+	}
+
+	rightbarToggle?.addEventListener('click', () =>
+		setRightbar(!isRightbarOpen()),
+	)
+
 	function switchPanel(panel) {
 		for (const tab of document.querySelectorAll('.tab')) {
 			tab.classList.toggle('is-active', tab.dataset.panel === panel)
@@ -35,6 +66,9 @@
 		for (const section of document.querySelectorAll('.panel')) {
 			section.classList.toggle('is-active', section.dataset.panel === panel)
 		}
+		// 切面板的意图就是"我要看它"，所以顺手把栏展开 ——
+		// 否则用户按 Ctrl+Q 会觉得"按了没反应"（栏是收起的，看不见变化）
+		setRightbar(true)
 		window.bbState.set({ rightPanel: panel })
 	}
 
@@ -635,6 +669,9 @@
 	window.bbUI = {
 		switchPanel,
 		setActiveNav,
+		/** 右栏开关（阶段 2：默认收起，按需展开） */
+		setRightbar,
+		isRightbarOpen,
 		/** 从共享视图切回 #content 里的其它视图（library.js 直接渲染时要用） */
 		showContent: () => toggleShareView(false),
 		keys: () => keys.list(),
@@ -711,6 +748,11 @@
 		}
 
 		await window.bbLibrary.init()
+
+		// 右栏默认收起：初次进入时界面只有「导航 + 内容 + 播放条」三块，
+		// 队列/歌词按需展开。这里显式设一次，而不是靠 HTML 上的初始类 ——
+		// 状态只有一处真相（`is-rightbar-collapsed`）。
+		setRightbar(false)
 
 		// 主题变量要在宣布「就绪」之前落地。
 		// 否则探针（和用户）可能在 `<style id="bb-theme-vars">` 还空着的时候
