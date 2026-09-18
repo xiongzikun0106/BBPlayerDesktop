@@ -566,6 +566,34 @@ async function run(window) {
 		//
 		// 截图里看着像重叠，所以这里**量真实几何**而不是靠肉眼判断：
 		// 工具条顶边必须 ≥ 内容区底边（可容忍 1px 取整误差）。
+		// ---------- 状态与操作必须一致 ----------
+		//
+		// `#login-logout` 原来**从来没有根据登录态显隐过**，于是账号页出现
+		// "写着你尚未登录，唯一的按钮却是退出登录"这种自相矛盾的画面
+		// （视觉审查发现的）。
+		const accountStates = JSON.parse(
+			await evaluate(
+				window,
+				`(() => {
+				const box = document.getElementById('login-account')
+				const logout = document.getElementById('login-logout')
+				const text = (box?.textContent ?? '').trim()
+				const loggedOut = text.includes('尚未登录') || text.includes('未登录')
+				const box2 = logout?.getBoundingClientRect()
+				return JSON.stringify({
+					loggedOut,
+					logoutHidden: Boolean(logout?.hidden),
+					logoutPainted: Boolean(box2 && box2.width > 1 && box2.height > 1),
+				})
+			})()`,
+			),
+		)
+		check(
+			'未登录时「退出登录」不显示（状态与操作一致）',
+			!accountStates.loggedOut ||
+				(accountStates.logoutHidden && !accountStates.logoutPainted),
+			`未登录=${accountStates.loggedOut} hidden=${accountStates.logoutHidden} 画出来了=${accountStates.logoutPainted}`,
+		)
 		const geometry = await evaluate(
 			window,
 			`(() => {

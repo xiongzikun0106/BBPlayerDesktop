@@ -519,6 +519,55 @@ async function run(window) {
 	// 切回系统主题色，后面的截图按默认配色走
 	await click(window, '[data-testid="accent-system"]')
 	await sleep(700)
+
+	// ---------- 3d. 状态与外观必须一致（视觉审查发现的）----------
+	//
+	// 这一组断言防的是同一类回归：**控件看起来的样子与它实际能不能用不一致**。
+	// 这类问题断言量不到尺寸、DOM 也完全正常，只能靠人眼看 ——
+	// 所以看出来的每一个都要立刻补一条断言，否则下次改样式就回来了。
+	console.log('\n[settings] 3d) 状态与外观一致')
+	await click(window, '[data-testid="settings-back"]')
+	await sleep(400)
+	await click(window, '[data-testid="settings-cat-playback"]')
+	await sleep(700)
+
+	const controlStates = JSON.parse(
+		await evaluate(
+			window,
+			`(() => {
+				const loudness = document.getElementById('settings-loudness')
+				const target = document.getElementById('settings-loudness-target')
+				const custom = document.getElementById('settings-sleep-custom')
+				const width = (el) => (el ? Math.round(el.getBoundingClientRect().width) : 0)
+				return JSON.stringify({
+					loudnessOn: Boolean(loudness?.checked),
+					targetDisabled: Boolean(target?.disabled),
+					targetFill: target?.style.getPropertyValue('--range-fill') ?? null,
+					customWidth: width(custom),
+					customFitsText: (() => {
+						if (!custom) return false
+						// 框内文字被裁的判据：内容宽度超过可视宽度
+						return custom.scrollWidth <= custom.clientWidth + 1
+					})(),
+				})
+			})()`,
+		),
+	)
+	check(
+		'关掉响度均衡时「目标电平」滑杆**真的禁用**（不能看着还能用）',
+		controlStates.loudnessOn || controlStates.targetDisabled === true,
+		`开关=${controlStates.loudnessOn} disabled=${controlStates.targetDisabled}`,
+	)
+	check(
+		'禁用时滑杆的已填充比例清零（否则主色段还在，像仍生效）',
+		controlStates.loudnessOn || controlStates.targetFill === '0%',
+		`--range-fill = ${controlStates.targetFill}`,
+	)
+	check(
+		'「自定义分钟」输入框不会被压扁（文字不被裁）',
+		controlStates.customWidth >= 110 && controlStates.customFitsText,
+		`宽 ${controlStates.customWidth}px，文字放得下=${controlStates.customFitsText}`,
+	)
 	check(
 		'材质档位也持久化到设置',
 		(await evaluate(

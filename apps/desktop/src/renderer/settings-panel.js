@@ -149,6 +149,21 @@
 	 */
 	function syncRangeFill(input) {
 		if (!input) return
+		/*
+		 * ⚠️ **禁用的滑杆不写填充**。
+		 *
+		 * 否则它会把 `renderLoudness` 特意清成 0% 的值又覆盖回真实值 ——
+		 * 结果是滑杆已经 `disabled` 了，轨道却还显示 36% 的主色段，
+		 * 看起来仍然生效（断言「禁用时填充清零」正是抓这个的，
+		 * 它在第一版修法上直接失败）。
+		 *
+		 * 判据放在**通用的同步函数**里，而不是散在各个调用点上：
+		 * 只要"能不能写"这件事由控件自己的状态决定，就不会漏。
+		 */
+		if (input.disabled) {
+			input.style.setProperty('--range-fill', '0%')
+			return
+		}
 		const min = Number(input.min || 0)
 		const max = Number(input.max || 100)
 		const value = Number(input.value)
