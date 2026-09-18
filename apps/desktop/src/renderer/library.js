@@ -44,24 +44,7 @@
 			els.playlistCount.textContent = String(playlists.length)
 
 		for (const playlist of playlists) {
-			const li = document.createElement('li')
-			li.className = 'playlist-list__item'
-			if (playlist.id === selectedId) li.classList.add('is-active')
-			li.dataset.playlistId = String(playlist.id)
-			li.dataset.testid = `playlist-${playlist.id}`
-			li.dataset.shared = String(Boolean(playlist.share_id))
-
-			const name = document.createElement('span')
-			name.className = 'playlist-list__name'
-			name.textContent = playlist.title
-			li.appendChild(name)
-
-			const count = document.createElement('span')
-			count.className = 'muted mono'
-			count.textContent = String(playlist.item_count ?? 0)
-			li.appendChild(count)
-
-			// 已共享的歌单按钮改成「同步」：用户的意图是同一个 —— 让云端与本地一致
+			// 已共享的歌单按钮显示「同步」：用户的意图是同一个 —— 让云端与本地一致
 			const shared = Boolean(playlist.share_id)
 			const shareButton = document.createElement('button')
 			shareButton.className = 'playlist-list__share'
@@ -74,11 +57,29 @@
 				? `已共享（${playlist.share_role ?? '成员'}）· 点一下同步云端改动`
 				: '把这个歌单分享到云端（共享歌单）'
 			shareButton.addEventListener('click', (event) => {
-				// 否则会顺带触发 li 的「打开歌单」
+				// 否则会顺带触发行上的「打开歌单」
 				event.stopPropagation()
 				void sharePlaylist(playlist, shareButton)
 			})
-			li.appendChild(shareButton)
+
+			// 用组件层的 `.list-row`（封面/首字方块 + 主标题 + 副标题 + 尾部动作），
+			// 不再手搓一套行样式 —— 这正是"同类东西在四个面板里长得都不一样"的根源。
+			//
+			// 收藏夹没有封面，走**首字 + 渐变底色**（移动端的招牌样式，
+			// 也是 BBPlayer 一眼可辨的身份），色相由名字哈希决定、稳定不变。
+			//
+			// 直接生成 `<li>`（保留列表语义），而不是先建 div 再搬节点。
+			const li = window.bbComponents.listRow({
+				title: playlist.title,
+				sub: `${playlist.item_count ?? 0} 首`,
+				coverUrl: playlist.cover_url ?? null,
+				trailing: [shareButton],
+				tag: 'li',
+			})
+			if (playlist.id === selectedId) li.classList.add('is-active')
+			li.dataset.playlistId = String(playlist.id)
+			li.dataset.testid = `playlist-${playlist.id}`
+			li.dataset.shared = String(Boolean(playlist.share_id))
 
 			li.addEventListener('click', () => {
 				void openPlaylist(playlist.id)
@@ -324,13 +325,16 @@
 		}
 
 		if (tracks.length === 0) {
-			const empty = document.createElement('p')
-			empty.className = 'empty muted'
-			empty.dataset.testid = 'content-empty'
-			empty.textContent = query
-				? `没有与「${query}」相关的结果`
-				: '这里还没有内容。用上方搜索框试试，或从左栏选择歌单。'
-			els.content.appendChild(empty)
+			els.content.appendChild(
+				window.bbComponents.empty({
+					testid: 'content-empty',
+					iconName: query ? 'search_off' : 'library_music',
+					title: query ? `没有与「${query}」相关的结果` : '这里还没有内容',
+					hint: query
+						? '换个关键词，或者直接用 BV 号搜索。'
+						: '用上方搜索框找歌，或从左栏选一个歌单。',
+				}),
+			)
 			return
 		}
 

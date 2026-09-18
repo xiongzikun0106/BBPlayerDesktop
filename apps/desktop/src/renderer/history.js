@@ -119,14 +119,17 @@
 	function renderTable(container, rows, { showCount, showPosition }) {
 		const tracks = rows.map(toTrack).filter(Boolean)
 		if (tracks.length === 0) {
-			const empty = document.createElement('p')
-			empty.className = 'empty muted'
-			empty.dataset.testid = 'history-empty'
-			empty.textContent =
-				activeTab === 'resume'
-					? '没有未听完的曲目。播放一些歌之后再回来看。'
-					: '还没有播放记录。'
-			container.appendChild(empty)
+			container.appendChild(
+				window.bbComponents.empty({
+					testid: 'history-empty',
+					iconName: activeTab === 'resume' ? 'play_circle' : 'history',
+					title: activeTab === 'resume' ? '没有未听完的曲目' : '还没有播放记录',
+					hint:
+						activeTab === 'resume'
+							? '听到一半切走的歌会出现在这里，方便接着听。'
+							: '播放任意一首歌之后，这里会记下你听了什么。',
+				}),
+			)
 			return
 		}
 

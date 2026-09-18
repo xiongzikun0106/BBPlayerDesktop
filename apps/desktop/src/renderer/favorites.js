@@ -65,12 +65,14 @@
 		content.appendChild(head)
 
 		if (folders.length === 0) {
-			const empty = document.createElement('p')
-			empty.className = 'empty muted'
-			empty.dataset.testid = 'favorites-empty'
-			empty.textContent =
-				'没有读到收藏夹。若确认该用户有收藏夹，可能是私密收藏夹 —— 需要先登录。'
-			content.appendChild(empty)
+			content.appendChild(
+				window.bbComponents.empty({
+					testid: 'favorites-empty',
+					iconName: 'star',
+					title: '没有读到收藏夹',
+					hint: '确认这个用户有收藏夹的话，可能是**私密收藏夹** —— 需要先登录 B 站账号。',
+				}),
+			)
 			return
 		}
 

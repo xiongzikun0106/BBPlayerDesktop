@@ -37,6 +37,19 @@ const {
 	describeJargonHits,
 } = require('./probe-jargon.cjs')
 
+/**
+ * 需要做结构检查的样式表。
+ *
+ * 放在模块作用域：下面「样式表花括号配平」那段要在**两处**用到它
+ * （遍历 + 拼提示文案），写在闭包里就只能看见一个。
+ */
+const CSS_FILES = [
+	'style.css',
+	'components.css',
+	'lyrics-panel.css',
+	'lyrics-window.css',
+]
+
 async function evaluate(window, expression) {
 	return await window.webContents.executeJavaScript(expression, true)
 }
@@ -280,9 +293,8 @@ async function run(window) {
 	// 后面的规则照样生效，只是错位了。所以这里直接查文件。
 	console.log('\n[ui] 1.7) 样式表结构')
 	const cssCheck = (() => {
-		const files = ['style.css', 'lyrics-panel.css', 'lyrics-window.css']
 		const problems = []
-		for (const name of files) {
+		for (const name of CSS_FILES) {
 			const file = path.join(__dirname, 'renderer', name)
 			if (!fs.existsSync(file)) continue
 			const raw = fs.readFileSync(file, 'utf8')
@@ -321,7 +333,9 @@ async function run(window) {
 	check(
 		'样式表花括号配平（不配平会静默吞掉后面的规则）',
 		cssCheck.length === 0,
-		cssCheck.length > 0 ? cssCheck.join('；') : '3 个样式表都配平',
+		cssCheck.length > 0
+			? cssCheck.join('；')
+			: `${CSS_FILES.length} 个样式表都配平`,
 	)
 
 	// ---------------------------------------------------------------
@@ -653,6 +667,129 @@ async function run(window) {
 		check('视图标题为歌单名', false, '欢迎视图缺失，跳过导入')
 	}
 	await shot(window, 'ui-03-imported')
+
+	// ---------------------------------------------------------------
+	// 2.5 组件词汇表（阶段 1c）
+	// ---------------------------------------------------------------
+	//
+	// 第一版"杂乱"的根因不是配色，而是**没有组件**：每个面板都在用
+	// 「h3 + 一行说明 + 一排等权重灰按钮 + 平铺表单」临时拼，
+	// 列表行 / 空状态 / 开关各写一套。
+	//
+	// 这一节断言面板确实**在用组件**（而不是又手搓了一套），
+	// 并且组件的关键视觉特征成立。放在导入之后 —— 那时侧栏才有真实行。
+	console.log('\n[ui] 2.5) 组件词汇表')
+	const components = JSON.parse(
+		await evaluate(
+			window,
+			`(() => {
+				const rows = [...document.querySelectorAll('[data-playlist-id]')]
+				const firstRow = rows[0]
+				const art = firstRow?.querySelector('.list-row__art')
+				const artStyle = art ? getComputedStyle(art) : null
+
+				return JSON.stringify({
+					// 列表行
+					rowCount: rows.length,
+					rowsAreListRow: rows.every((r) => r.classList.contains('list-row')),
+					hasArt: Boolean(art),
+					artText: (art?.textContent ?? '').trim(),
+					// 首字方块必须真的有渐变（不是纯色）
+					artHasGradient: /gradient/.test(String(artStyle?.backgroundImage)),
+					artHue: art?.style.getPropertyValue('--art-hue') ?? null,
+					hasTitle: Boolean(firstRow?.querySelector('.list-row__title')),
+					hasSub: Boolean(firstRow?.querySelector('.list-row__sub')),
+					// 旧的手搓类名不该再出现
+					legacyRows: document.querySelectorAll('.playlist-list__item').length,
+					// 开关
+					switches: document.querySelectorAll('input.switch').length,
+					rawCheckboxes: [...document.querySelectorAll("input[type=checkbox]")].filter(
+						(el) => !el.classList.contains('switch'),
+					).length,
+					// 组件工具是否可用
+					hasHelpers: typeof window.bbComponents?.listRow === 'function',
+				})
+			})()`,
+		),
+	)
+	check(
+		'侧栏歌单行用的是组件层的 .list-row',
+		components.rowsAreListRow && components.rowCount > 0,
+		`${components.rowCount} 行`,
+	)
+	check(
+		'旧的手搓类名 .playlist-list__item 已消失',
+		components.legacyRows === 0,
+		`残留 ${components.legacyRows} 个`,
+	)
+	check(
+		'每行有封面位、主标题、副标题',
+		components.hasArt && components.hasTitle && components.hasSub,
+	)
+	check(
+		'没有封面的行走「首字 + 渐变底色」（BBPlayer 的身份特征）',
+		components.artHasGradient &&
+			components.artText.length > 0 &&
+			components.artHue !== null,
+		`首字「${components.artText}」，色相 ${components.artHue}，background=${components.artHasGradient ? 'gradient ✓' : '纯色 ✗'}`,
+	)
+	check(
+		'设置里的开关是 M3 开关（没有裸 checkbox）',
+		components.switches > 0 && components.rawCheckboxes === 0,
+		`${components.switches} 个 switch，${components.rawCheckboxes} 个裸 checkbox`,
+	)
+	check('组件工具已暴露到 window.bbComponents', components.hasHelpers === true)
+
+	// 空状态：结构化的（图标 + 标题 + 说明），不是一行居中灰字
+	const emptyProbe = JSON.parse(
+		await evaluate(
+			window,
+			`(() => {
+				// 造一个空状态挂到 body 上量完就拆，避免污染当前界面
+				const node = window.bbComponents.empty({
+					title: '探针用例',
+					hint: '这是一句说明',
+					iconName: 'library_music',
+				})
+				node.style.position = 'fixed'
+				node.style.left = '-9999px'
+				document.body.appendChild(node)
+				const hasIcon = Boolean(node.querySelector('.icon'))
+				const hasTitle = node.querySelector('.empty__title')?.textContent === '探针用例'
+				const hasHint = node.querySelector('.empty__hint')?.textContent === '这是一句说明'
+				const iconIsGlyph =
+					(node.querySelector('.icon')?.getBoundingClientRect().width ?? 99) < 60
+				node.remove()
+				return JSON.stringify({ hasIcon, hasTitle, hasHint, iconIsGlyph })
+			})()`,
+		),
+	)
+	check(
+		'空状态组件：淡图标 + 标题 + 说明（不是一行居中灰字）',
+		emptyProbe.hasIcon && emptyProbe.hasTitle && emptyProbe.hasHint,
+		JSON.stringify(emptyProbe),
+	)
+
+	// Toast：出现、可点掉、会自动消失
+	const toastProbe = JSON.parse(
+		await evaluate(
+			window,
+			`(async () => {
+				const node = window.bbComponents.toast('探针用例：已保存', { timeout: 600 })
+				const appeared = Boolean(document.querySelector('[data-testid="toast"]'))
+				const text = node.textContent
+				const hasIcon = Boolean(node.querySelector('.icon'))
+				await new Promise((r) => setTimeout(r, 1200))
+				const removed = !document.body.contains(node)
+				return JSON.stringify({ appeared, text, hasIcon, removed })
+			})()`,
+		),
+	)
+	check(
+		'Toast：能显示、带图标、超时后自动消失',
+		toastProbe.appeared && toastProbe.hasIcon && toastProbe.removed,
+		JSON.stringify(toastProbe),
+	)
 
 	// ---------------------------------------------------------------
 	// 3. 播放全部 → 真的开始播放

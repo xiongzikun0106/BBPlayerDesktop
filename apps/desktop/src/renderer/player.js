@@ -290,6 +290,8 @@
 			li.className = 'queue-list__item'
 			if (index === state.index) li.classList.add('is-playing')
 			li.dataset.index = String(index)
+			// 语义属性：探针计数用它，改视觉类名不会让它失效（见 ui() 里的注释）
+			li.dataset.queueIndex = String(index)
 			li.dataset.testid = `queue-item-${index}`
 			li.title = track.title
 
@@ -557,9 +559,15 @@
 				rightbar: visible('[data-testid="rightbar"]'),
 				playbar: visible('[data-testid="playbar"]'),
 				navItems: document.querySelectorAll('.nav__item').length,
-				playlistItems: document.querySelectorAll('.playlist-list__item').length,
+				// ⚠️ 用**语义属性**而不是视觉类名来计数。
+				// 侧栏歌单行原来叫 `.playlist-list__item`，阶段 1c 换成组件层的
+				// `.list-row` 之后，这条断言就永远是 0 —— 探针会一直等一个
+				// 永远不会满足的条件，表现为**整个套件卡死到超时**
+				// （不是失败，是挂住，更难查）。
+				// `data-playlist-id` 是行本身带的数据，与外观无关，改样式不会碰它。
+				playlistItems: document.querySelectorAll('[data-playlist-id]').length,
 				trackRows: document.querySelectorAll('.track-table tbody tr').length,
-				queueItems: document.querySelectorAll('.queue-list__item').length,
+				queueItems: document.querySelectorAll('[data-queue-index]').length,
 				activePanel: document.querySelector('.panel.is-active')?.dataset.panel,
 				activeView: document
 					.querySelector('.nav__item.is-active')

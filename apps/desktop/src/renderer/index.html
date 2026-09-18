@@ -10,6 +10,12 @@
 		<link rel="stylesheet" href="assets/material-symbols.css" />
 		<link rel="stylesheet" href="style.css" />
 		<link rel="stylesheet" href="lyrics-panel.css" />
+		<!--
+			components.css 排在最后：它是**设计系统层**（列表行 / 空状态 /
+			开关 / 骨架屏 / toast），需要在需要时覆盖 style.css 里那些
+			历史遗留的同类样式（比如 .empty）。
+		-->
+		<link rel="stylesheet" href="components.css" />
 	</head>
 	<body>
 		<div class="app">
@@ -530,10 +536,16 @@
 					></p>
 
 					<h3>响度均衡</h3>
+					<!--
+						M3 开关。原生 checkbox 在设置里被当成开关用，是「默认 HTML 样式」
+						最明显的一处；组件层的 .switch 提供 52×32 轨道 + 圆形滑块。
+						label 包住 input，所以点文字也能切换（原生行为，不需要额外 JS）。
+					-->
 					<label class="settings-toggle">
 						<input
 							id="settings-loudness"
 							data-testid="settings-loudness"
+							class="switch"
 							type="checkbox"
 						/>
 						<span>启用响度均衡</span>
@@ -774,6 +786,7 @@
 			再跳成真实主题（浅色系统上就是一次明显的闪白）。
 		-->
 		<script src="theme.js"></script>
+		<script src="components.js"></script>
 		<script src="state.js"></script>
 		<script src="player.js"></script>
 		<script src="library.js"></script>

@@ -6,6 +6,7 @@
 # 导航目的地
 library_music      # 音乐库
 search             # 搜索
+search_off         # 搜不到结果
 home               # 主页（阶段 2）
 settings           # 设置
 
@@ -20,6 +21,7 @@ folder             # 目录
 group              # 共享 / 成员
 person             # 账号
 queue_music        # 播放队列
+play_circle        # 继续收听 / 空状态
 lyrics             # 歌词面板
 
 # 播放控制

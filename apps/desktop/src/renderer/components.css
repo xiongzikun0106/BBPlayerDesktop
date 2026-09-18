@@ -1,0 +1,345 @@
+
+/* ══════════════════════════════════════════════════════════
+   组件词汇表（阶段 1c）
+   ────────────────────────────────────────────────────────── */
+/*
+ * ## 为什么要有这一节
+ *
+ * 第一版"杂乱"的根因不是配色（配色本来就是对的 MD3），而是**没有组件**：
+ * 每个面板都在用「h3 + 一行说明 + 一排等权重灰按钮 + 平铺表单」临时拼，
+ * 列表行、空状态、开关各自写一套。结果同类东西在四个面板里长得都不一样。
+ *
+ * 这一节把**可复用的最小集合**定下来。需要新的列表/空态/开关时，
+ * 组合下面的类，不要再写一套。
+ *
+ * 注意：这些都消费设计令牌（`--fs-*` / `--surface-container-*` /
+ * `--secondary-container` …），所以亮暗两套主题自动都对。
+ */
+
+/* ── 列表行 ────────────────────────────────────────────── */
+/*
+ * 移动端的招牌样式：**封面 / 首字方块 + 主标题 + 副标题 + 尾部动作**。
+ * 行高 56–64，无边框，只有悬停底色 —— 靠留白与字重分层，不靠分隔线。
+ */
+.list-row {
+	display: flex;
+	align-items: center;
+	gap: var(--sp-sm);
+	width: 100%;
+	min-height: 56px;
+	padding: 8px var(--sp-sm);
+	background: transparent;
+	border: none;
+	border-radius: var(--r-md);
+	color: var(--on-surface);
+	font: inherit;
+	text-align: left;
+	cursor: pointer;
+	transition: background var(--motion-duration-fast) ease;
+}
+
+.list-row:hover {
+	background: var(--surface-container-high);
+}
+
+/* 当前项：与导航胶囊同一套选中态令牌，全工程只有一种"选中" */
+.list-row.is-active {
+	background: var(--secondary-container);
+	color: var(--on-secondary-container);
+}
+
+/*
+ * 封面位。
+ *
+ * 收藏夹没有封面 —— 移动端的做法是**首字 + 渐变底色**（截图里的
+ * 「默」「星」「H」「R」），这是 BBPlayer 一眼可辨的身份特征，必须保留。
+ * 渐变的两端由 `--art-hue` 决定，JS 按名字哈希算出来（见 tone.js）。
+ */
+.list-row__art {
+	width: 44px;
+	height: 44px;
+	flex: none;
+	display: grid;
+	place-items: center;
+	overflow: hidden;
+	border-radius: var(--r-md);
+	background: linear-gradient(
+		135deg,
+		hsl(var(--art-hue, 265) 58% 62%),
+		hsl(calc(var(--art-hue, 265) + 28) 58% 46%)
+	);
+	color: #fff;
+	font-size: var(--fs-title-medium);
+	font-weight: 600;
+	line-height: 1;
+	user-select: none;
+}
+
+.list-row__art img {
+	width: 100%;
+	height: 100%;
+	object-fit: cover;
+	display: block;
+}
+
+/* 没有首字也没有封面时（例如曲目行只有序号），退化成中性底色 */
+.list-row__art--plain {
+	background: var(--surface-container-highest);
+	color: var(--on-surface-variant);
+}
+
+.list-row__main {
+	flex: 1;
+	min-width: 0;
+}
+
+.list-row__title {
+	font-size: var(--fs-body-large);
+	font-weight: 600;
+	line-height: var(--lh-body-large);
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.list-row__sub {
+	margin-top: 2px;
+	font-size: var(--fs-body-medium);
+	line-height: var(--lh-body-medium);
+	color: var(--on-surface-variant);
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.list-row.is-active .list-row__sub {
+	color: color-mix(in srgb, var(--on-secondary-container) 76%, transparent);
+}
+
+.list-row__trailing {
+	flex: none;
+	display: flex;
+	align-items: center;
+	gap: var(--sp-xxs);
+	color: var(--on-surface-variant);
+}
+
+/* ── 空状态 ────────────────────────────────────────────── */
+/*
+ * 空状态是**被设计过的**界面，不是留白：一个淡图标 + 一句话 +
+ * （可选）一个动作。移动端连"暂无云备份"都会认真排版。
+ *
+ * 反面教材是第一版：一行居中灰字，用户分不清是"没有内容"还是"加载失败"。
+ */
+.empty {
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	gap: var(--sp-xs);
+	padding: var(--sp-xxl) var(--sp-lg);
+	text-align: center;
+	color: var(--on-surface-variant);
+}
+
+.empty .icon {
+	font-size: 40px;
+	color: color-mix(in srgb, var(--on-surface-variant) 55%, transparent);
+	margin-bottom: var(--sp-xxs);
+}
+
+.empty__title {
+	font-size: var(--fs-title-medium);
+	color: var(--on-surface);
+}
+
+.empty__hint {
+	font-size: var(--fs-body-medium);
+	line-height: 1.6;
+	max-width: 44ch;
+}
+
+.empty .row-actions {
+	margin-top: var(--sp-xs);
+	margin-bottom: 0;
+	justify-content: center;
+}
+
+/* ── M3 开关 ───────────────────────────────────────────── */
+/*
+ * 原生 `<input type="checkbox">` 在设置里被当成开关用，是"默认 HTML 样式"
+ * 最明显的一处。M3 的开关是 52×32 的轨道 + 可长大的圆形滑块。
+ */
+.switch {
+	appearance: none;
+	flex: none;
+	position: relative;
+	width: 52px;
+	height: 32px;
+	min-height: 0;
+	border-radius: var(--r-full);
+	border: 2px solid var(--outline);
+	background: var(--surface-container-highest);
+	cursor: pointer;
+	transition:
+		background var(--motion-duration-fast) ease,
+		border-color var(--motion-duration-fast) ease;
+}
+
+.switch::after {
+	content: '';
+	position: absolute;
+	left: 5px;
+	top: 50%;
+	translate: 0 -50%;
+	width: 16px;
+	height: 16px;
+	border-radius: 50%;
+	background: var(--outline);
+	transition:
+		left var(--motion-duration-fast) ease,
+		width var(--motion-duration-fast) ease,
+		height var(--motion-duration-fast) ease,
+		background var(--motion-duration-fast) ease;
+}
+
+.switch:hover::after {
+	width: 20px;
+	height: 20px;
+}
+
+.switch:checked {
+	background: var(--primary);
+	border-color: var(--primary);
+}
+
+.switch:checked::after {
+	left: 25px;
+	width: 24px;
+	height: 24px;
+	background: var(--on-primary);
+}
+
+.switch:checked:hover::after {
+	left: 23px;
+	width: 28px;
+	height: 28px;
+}
+
+.switch:focus-visible {
+	outline: 2px solid var(--primary);
+	outline-offset: 2px;
+}
+
+.switch:disabled {
+	opacity: 0.5;
+	cursor: not-allowed;
+}
+
+/* ── 骨架屏 ────────────────────────────────────────────── */
+/*
+ * 加载中不要只显示一行"载入中…"：位置会跳。骨架屏先把版式占住。
+ */
+.skeleton {
+	border-radius: var(--r-sm);
+	background: linear-gradient(
+		90deg,
+		var(--surface-container-high) 25%,
+		var(--surface-container-highest) 37%,
+		var(--surface-container-high) 63%
+	);
+	background-size: 400% 100%;
+	animation: bb-skeleton 1.4s ease infinite;
+}
+
+.skeleton--text {
+	height: 1em;
+	width: 60%;
+}
+
+@keyframes bb-skeleton {
+	0% {
+		background-position: 100% 50%;
+	}
+	100% {
+		background-position: 0 50%;
+	}
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.skeleton {
+		animation: none;
+	}
+}
+
+/* ── Toast（浮动提示）─────────────────────────────────── */
+/*
+ * 用于**短暂的**成功反馈。错误与需要用户处理的信息仍然留在原地
+ * （内联状态行）—— 会自己消失的提示不适合承载"你需要做点什么"。
+ *
+ * 颜色用 `inverse-surface`：M3 的 snackbar 就是反色，保证在任何主题下
+ * 都从背景里跳出来。
+ */
+.toast-host {
+	position: fixed;
+	left: 50%;
+	bottom: 104px;
+	translate: -50% 0;
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	gap: var(--sp-xs);
+	z-index: 60;
+	pointer-events: none;
+}
+
+.toast {
+	display: flex;
+	align-items: center;
+	gap: var(--sp-xs);
+	max-width: 60ch;
+	padding: 12px 18px;
+	border-radius: var(--r-sm);
+	background: var(--inverse-surface);
+	color: var(--inverse-on-surface);
+	font-size: var(--fs-body-medium);
+	box-shadow: 0 6px 20px rgb(0 0 0 / 28%);
+	animation: bb-toast-in var(--motion-duration-normal) ease;
+}
+
+.toast .icon {
+	font-size: var(--icon-lg);
+	flex: none;
+}
+
+.toast--bad .icon {
+	color: var(--bad);
+}
+
+.toast.is-leaving {
+	animation: bb-toast-out var(--motion-duration-normal) ease forwards;
+}
+
+@keyframes bb-toast-in {
+	from {
+		opacity: 0;
+		translate: 0 8px;
+	}
+	to {
+		opacity: 1;
+		translate: 0 0;
+	}
+}
+
+@keyframes bb-toast-out {
+	to {
+		opacity: 0;
+		translate: 0 8px;
+	}
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.toast,
+	.toast.is-leaving {
+		animation: none;
+	}
+}

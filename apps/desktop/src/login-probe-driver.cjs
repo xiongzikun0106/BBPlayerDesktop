@@ -524,11 +524,22 @@ async function run(window) {
 				: `未匹配到「新增 0」：${JSON.stringify(resynced.value)}（同步前文本: ${statusBefore}）`,
 		)
 
-		// 歌单确实进了左栏
+		// 歌单确实进了左栏。
+		//
+		// ⚠️ 选择器改过：阶段 1c 把侧栏歌单行换成组件层的 `.list-row`，
+		// 旧的手搓类名 `.playlist-list__name` 不再存在 —— 第一版没跟着改，
+		// 这条断言就恒为 0（由它自己抓到了）。
+		//
+		// 这里直接用**语义属性** `data-playlist-id` 定位，而不是视觉类名：
+		// 以后换样式不会再把它弄坏。
 		const playlistTitles = JSON.parse(
 			await evaluate(
 				window,
-				`JSON.stringify(Array.from(document.querySelectorAll('.playlist-list__name')).map((el) => el.textContent))`,
+				`JSON.stringify(
+					Array.from(
+						document.querySelectorAll('[data-playlist-id] .list-row__title'),
+					).map((el) => el.textContent),
+				)`,
 			),
 		)
 		check(
