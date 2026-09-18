@@ -363,8 +363,7 @@ async function run(window) {
 			window,
 			`JSON.stringify({
 				text: document.getElementById('login-account')?.textContent ?? '',
-				security: document.getElementById('login-security')?.textContent ?? '',
-				securityKind: document.getElementById('login-security')?.className ?? '',
+				panel: document.getElementById('login-panel-account')?.textContent ?? '',
 			})`,
 		),
 	)
@@ -373,10 +372,21 @@ async function run(window) {
 		/尚未登录|失效/.test(account.text),
 		account.text.slice(0, 80),
 	)
+	// ⚠️ 这条断言**在 UI 重做阶段 0 被反过来**了。
+	//
+	// 原来断言「存储安全性被如实告知」—— 于是登录面板里写着
+	// 「凭据已由系统密钥环加密存储」/「⚠️ 等同明文 —— 共享电脑请注意」。
+	// 那是把安全审计结论摆在登录流程正中：用户不需要在上号时被教育这件事，
+	// 一句「等同明文」只会让人以为出事了。
+	//
+	// 新规则：**主流程不出现这类实现细节，但必须可查** ——
+	// 事实移到「设置 › 备份 › 诊断信息 › 凭据存储」。
+	// 所以这里改成断言「账号页**没有**这些字眼」，而「查得到」由
+	// `verify-desktop-settings.mjs` 的诊断信息断言负责。
 	check(
-		'存储安全性被如实告知（加密或明确警告）',
-		account.security.length > 0,
-		account.security,
+		'账号页不再出现凭据存储方式的说明（它是诊断信息，不是登录流程的一部分）',
+		!/密钥环|明文|加密存储|混淆/.test(account.panel),
+		account.panel.replace(/\s+/g, ' ').slice(0, 100),
 	)
 	await shot(window, 'login-05-account')
 

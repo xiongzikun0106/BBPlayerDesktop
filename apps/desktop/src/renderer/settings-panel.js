@@ -42,7 +42,13 @@
 		backupExport: document.getElementById('settings-backup-export'),
 		backupList: document.getElementById('settings-backup-list'),
 		backupStatus: document.getElementById('settings-backup-status'),
+		// 「诊断信息」区（实现细节唯一的去处）
 		backupSecurity: document.getElementById('settings-backup-security'),
+		backupOpenFolder: document.getElementById('settings-backup-open-folder'),
+		credentialStorage: document.getElementById('settings-credential-storage'),
+		shareBaseUrl: document.getElementById('settings-share-base-url'),
+		dataDir: document.getElementById('settings-data-dir'),
+		restart: document.getElementById('settings-restart'),
 
 		// 外观
 		themes: document.querySelectorAll('[data-theme-choice]'),
@@ -115,6 +121,27 @@
 	 * @param {(patch: object) => Promise<object>} deps.writeSettings
 	 * @param {number[]} [deps.sleepPresets]
 	 */
+	/**
+	 * 把滑块当前值换算成已填充比例，写进 `--range-fill`。
+	 *
+	 * 滑块统一自绘（`appearance: none`）之后，进度不能再靠 Chromium 原生的
+	 * 填充着色，CSS 用这个变量把轨道分成「已填充（主色）」与「剩余」两段。
+	 * 因此**任何** `<input type="range">` 在设置值之后都必须调一次，
+	 * 否则它会显示成空轨道（探针的「滑块已自绘并写入了已播放比例」就是抓这个）。
+	 */
+	function syncRangeFill(input) {
+		if (!input) return
+		const min = Number(input.min || 0)
+		const max = Number(input.max || 100)
+		const value = Number(input.value)
+		if (!Number.isFinite(min) || !Number.isFinite(max) || max <= min) return
+		const percent = ((value - min) / (max - min)) * 100
+		input.style.setProperty(
+			'--range-fill',
+			`${Math.max(0, Math.min(100, percent))}%`,
+		)
+	}
+
 	function init(deps) {
 		features = deps
 		ready = true
@@ -141,6 +168,7 @@
 			renderLoudness(currentSettings.loudnessNormalization)
 			if (els.loudnessTarget && currentSettings.loudnessTargetDb != null) {
 				els.loudnessTarget.value = String(-currentSettings.loudnessTargetDb)
+				syncRangeFill(els.loudnessTarget)
 			}
 			if (els.downloadParallel && currentSettings.downloadMaxParallel != null) {
 				els.downloadParallel.value = String(currentSettings.downloadMaxParallel)
@@ -321,6 +349,8 @@
 		if (els.loudnessTargetValue) {
 			els.loudnessTargetValue.textContent = `${db} dB`
 		}
+		// 拖动时也要重画已填充段（滑块已自绘，原生填充没了）
+		syncRangeFill(els.loudnessTarget)
 	})
 
 	els.loudnessTarget?.addEventListener('change', () => {
@@ -483,6 +513,51 @@
 	// 备份 / WebDAV
 	// ---------------------------------------------------------------
 
+	/**
+	 * 刷新「诊断信息」折叠区。
+	 *
+	 * 这里的东西**故意不放在主流程上**：凭据怎么存、后端地址是什么、
+	 * 数据落在哪个目录 —— 用户在自己想看的时候能查到就够了。
+	 * 主界面里出现这些只会让人以为「是不是出问题了」。
+	 *
+	 * 后端地址放在这里也是同一个道理：它可改（自建实例是真实需求），
+	 * 但不该和「登录账号」并排出现在共享面板的正中间。
+	 */
+	async function refreshDiagnostics() {
+		try {
+			const info = unwrap(await window.bbplayer.diagnostics(), '读取诊断信息')
+			if (els.credentialStorage) {
+				els.credentialStorage.textContent =
+					info.bilibiliCredentialEncrypted === null
+						? '—'
+						: info.bilibiliCredentialEncrypted
+							? '已加密'
+							: '未加密'
+			}
+			if (els.shareBaseUrl && document.activeElement !== els.shareBaseUrl) {
+				els.shareBaseUrl.value = info.shareBaseUrl ?? ''
+			}
+			if (els.dataDir) els.dataDir.textContent = info.dataDir ?? '—'
+		} catch {
+			// 诊断信息读不到不影响任何功能，安静地留个占位符
+			if (els.dataDir) els.dataDir.textContent = '—'
+		}
+	}
+
+	els.shareBaseUrl?.addEventListener('change', () => {
+		void (async () => {
+			try {
+				const data = unwrap(
+					await window.bbplayer.share.setBaseUrl(els.shareBaseUrl.value),
+					'修改后端地址',
+				)
+				els.shareBaseUrl.value = data.baseUrl ?? els.shareBaseUrl.value
+			} catch (error) {
+				setStatus(els.backupStatus, error.message, 'bad')
+			}
+		})()
+	})
+
 	async function refreshBackupConfig() {
 		try {
 			const config = unwrap(
@@ -502,14 +577,16 @@
 					: '密码'
 			}
 			if (els.backupSecurity) {
+				// 这一段在「诊断信息」折叠区里，不在主流程上。
+				// 所以用最短的说法，且**不标红**：它不是错误，只是事实。
 				setStatus(
 					els.backupSecurity,
-					config.passwordEncrypted
-						? 'WebDAV 密码由系统密钥环加密保存'
-						: config.hasPassword
-							? '⚠️ 系统密钥环不可用，WebDAV 密码未加密保存'
-							: '尚未保存 WebDAV 密码',
-					config.passwordEncrypted ? 'ok' : config.hasPassword ? 'bad' : null,
+					!config.hasPassword
+						? '未保存'
+						: config.passwordEncrypted
+							? '已加密'
+							: '未加密',
+					null,
 				)
 			}
 			return config
@@ -535,13 +612,9 @@
 					'保存备份配置',
 				)
 				if (els.webdavPassword) els.webdavPassword.value = ''
-				setStatus(
-					els.backupStatus,
-					data.passwordEncrypted === true
-						? '已保存（密码已加密）'
-						: '已保存（密码未加密 —— 系统密钥环不可用）',
-					data.passwordEncrypted === false ? 'busy' : 'ok',
-				)
+				// 「已保存」就够了。密码怎么存的属于诊断信息，不属于保存结果的反馈 ——
+				// 用户在保存密码时不需要被教育「你的系统没有密钥环」。
+				setStatus(els.backupStatus, '已保存', 'ok')
 				await refreshBackupConfig()
 			} catch (error) {
 				setStatus(els.backupStatus, error.message, 'bad')
@@ -576,15 +649,33 @@
 					await window.bbplayer.backup.exportLocal(),
 					'本地导出',
 				)
+				// ⚠️ 只报「成功了、多大」，不报文件名与绝对路径。
+				// 原来那句 `已导出 backup-….bbplayer（1654.4 KB）→ C:\Users\…\Temp\…`
+				// 是调试信息：路径长到会把面板撑破，而且用户要的是
+				// 「文件在哪」→ 给一个「打开所在文件夹」按钮比给一串路径有用。
 				setStatus(
 					els.backupStatus,
-					`已导出 ${data.filename}（${formatBytes(data.bytes)}）→ ${data.path}`,
+					`已导出备份文件（${formatBytes(data.bytes)}）`,
 					'ok',
 				)
 			} catch (error) {
 				setStatus(els.backupStatus, error.message, 'bad')
 			}
 		})()
+	})
+
+	els.backupOpenFolder?.addEventListener('click', () => {
+		void (async () => {
+			try {
+				unwrap(await window.bbplayer.backup.openFolder(), '打开备份目录')
+			} catch (error) {
+				setStatus(els.backupStatus, error.message, 'bad')
+			}
+		})()
+	})
+
+	els.restart?.addEventListener('click', () => {
+		void window.bbplayer.relaunch()
 	})
 
 	els.webdavUpload?.addEventListener('click', () => {
@@ -655,8 +746,9 @@
 			const failure = document.createElement('p')
 			failure.className = 'muted'
 			failure.dataset.testid = 'backup-list-error'
+			// 一句话 + 指回上面那个按钮，不要写成一段故障分析。
 			failure.textContent =
-				'读取远端备份失败（列表为空）。常见原因：尚未配置 WebDAV，或上面的连接测试未通过。'
+				'读取不到远端备份。先检查上面的地址与密码，然后点「刷新远端列表」。'
 			els.backupList.appendChild(failure)
 			setStatus(els.backupStatus, error.message, 'bad')
 		}
@@ -688,16 +780,13 @@
 				await window.bbplayer.backup.downloadRemote(item.path),
 				'恢复备份',
 			)
-			const migrated = data.dataMigrations?.results ?? {}
-			setStatus(
-				els.backupStatus,
-				`恢复完成（exportedAt=${data.manifest?.exportedAt ?? '?'}）。` +
-					'请重启应用；数据迁移：' +
-					Object.entries(migrated)
-						.map(([name, status]) => `${name}=${status}`)
-						.join(' '),
-				'ok',
-			)
+			void data
+			// ⚠️ 原来这里打印的是
+			// `恢复完成（exportedAt=…）。请重启应用；数据迁移：migrateX=ok …`
+			// —— 那是把内部字段名和迁移函数名直接甩给用户。
+			// 用户要知道的只有一件事：**现在要重启**。于是直接给按钮。
+			setStatus(els.backupStatus, '已恢复。重启应用后生效。', 'ok')
+			if (els.restart) els.restart.hidden = false
 		} catch (error) {
 			setStatus(els.backupStatus, error.message, 'bad')
 		}
@@ -722,6 +811,7 @@
 			// `verify-desktop-settings.mjs` 的「备份列表渲染出内容」断言抓到。
 			void refreshBackupConfig()
 			void refreshRemoteBackups()
+			void refreshDiagnostics()
 		}
 		if (tab === 'playback') void refreshSettings()
 		if (tab === 'appearance') void refreshSettings()

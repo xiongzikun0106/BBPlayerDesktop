@@ -105,7 +105,7 @@
 		const status = result?.status ?? null
 		const message = result?.error ?? '未知错误'
 		if (status === 401 || result?.code === 'no_token') {
-			return `${what}失败：未登录（或令牌已失效），请先在账号区登录 BBPlayer 账号`
+			return `${what}失败：需要先登录 BBPlayer 账号（登录状态可能已失效）`
 		}
 		if (status === 404) return `${what}失败：歌单不存在或已被删除（404）`
 		if (status === 403) return `${what}失败：当前角色没有这个权限（403）`
@@ -410,9 +410,6 @@
 		const account = state.account
 		if (account?.loggedIn) renderLoggedIn(section, account)
 		else renderLoggedOut(section, account)
-
-		// 后端地址在两种状态下都可改（换了地址等于换了账号体系，提示里说清楚）
-		section.appendChild(renderBaseUrlRow(account))
 		return section
 	}
 
@@ -476,13 +473,19 @@
 
 	function renderLoggedIn(section, account) {
 		const info = account.account ?? {}
+		// 账号区只回答一件事：**你现在是谁**。
+		//
+		// 原来这里是一个 `key: value` 表，列出名称 / 用户名 / **账号 ID（UUID）** /
+		// **后端 URL** / 登录时间，下面还有一段「令牌已由系统密钥环加密存储」
+		// 或「⚠️ 未加密…等同明文」。对照移动端，同一个功能只有一行：
+		// `BBPlayer 账号 · 御坂代理服务（@御坂鱼板）`。
+		//
+		// 账号 ID 与登录时间对用户没有任何用处（UUID 更是只能让人紧张）；
+		// 后端地址与令牌存储方式属于诊断信息，见「设置 › 备份 › 诊断信息」。
 		const list = el('dl', 'login-account__list')
 		const rows = [
 			['名称', info.name ?? '—'],
 			['用户名', info.username ?? '—'],
-			['账号 ID', info.id != null ? String(info.id) : '—'],
-			['后端', account.baseUrl ?? '—'],
-			['登录时间', account.savedAt ? formatRelative(account.savedAt) : '—'],
 		]
 		for (const [label, value] of rows) {
 			const dt = document.createElement('dt')
@@ -494,16 +497,6 @@
 		}
 		section.appendChild(list)
 
-		// 存储是否加密：`false` 时必须显式警告，不能藏起来（等同明文）
-		const security = el('p', 'muted share-security', 'share-security')
-		security.textContent = account.encrypted
-			? '令牌已由系统密钥环加密存储'
-			: '⚠️ 未加密（系统无可用密钥环）：令牌以混淆形式保存在本地，等同明文 —— 共用电脑请注意'
-		security.classList.add(
-			account.encrypted ? 'share-security--ok' : 'share-security--bad',
-		)
-		section.appendChild(security)
-
 		const actions = el('div', 'row-actions')
 		const logoutButton = buttonEl(
 			'share-logout',
@@ -512,48 +505,11 @@
 		)
 		const restoreButton = buttonEl(
 			'share-restore',
-			'从云端恢复',
+			'从云端恢复歌单',
 			() => void restore(restoreButton),
 		)
 		actions.append(logoutButton, restoreButton)
 		section.appendChild(actions)
-
-		section.appendChild(
-			hint(
-				'「从云端恢复」用于换设备：把云端参与了、但本地没有的歌单拉下来（已有副本不会被覆盖）。',
-			),
-		)
-	}
-
-	function renderBaseUrlRow(account) {
-		const box = el('div', 'share-base-url')
-		const grid = el('div', 'share-grid')
-		const input = inputEl('share-base-url', {
-			placeholder: 'https://be.bbplayer.roitium.com',
-			value: account?.baseUrl ?? '',
-			autocomplete: 'off',
-		})
-		grid.appendChild(field('后端地址', input))
-		box.appendChild(grid)
-
-		const actions = el('div', 'row-actions')
-		const applyButton = buttonEl(
-			'share-set-base-url',
-			'修改后端地址',
-			() => void applyBaseUrl(applyButton),
-		)
-		actions.appendChild(applyButton)
-		box.appendChild(actions)
-
-		const fallback =
-			account?.defaultBaseUrl ?? 'https://be.bbplayer.roitium.com'
-		box.appendChild(
-			hint(
-				`默认是官方后端（${fallback}）。自建后端请填你自己的地址；` +
-					`改了地址后原来的登录令牌通常不再有效，需要重新登录。`,
-			),
-		)
-		return box
 	}
 
 	/** 订阅区：链接 + 邀请码 + 预览（预览不需要登录） */
@@ -768,13 +724,16 @@
 		if (Number(playlist.pendingCount ?? 0) > 0 || role === 'subscriber') {
 			const badges = el('div', 'share-row__badges')
 			if (Number(playlist.pendingCount ?? 0) > 0) {
-				// 待推送条数必须显示：否则用户以为「已同步」，实际改动还在 outbox 里
+				// 待同步的改动**必须可见**，否则用户以为「已同步」，
+				// 实际改动还没推上去。但不必露出「outbox / 条数」这种内部概念，
+				// 一个带小圆点的「同步中」就够表达状态了（条数放进 title 供排查）。
 				const pending = el(
 					'div',
 					'share-badge share-badge--pending',
 					`share-pending-${id}`,
 				)
-				pending.textContent = `待同步 ${playlist.pendingCount} 项`
+				pending.textContent = '同步中'
+				pending.title = `${playlist.pendingCount} 项改动待上传`
 				badges.appendChild(pending)
 			}
 			if (role === 'subscriber') {
@@ -961,13 +920,9 @@
 				report(describeFailure(result, '登录'), 'bad')
 				return
 			}
-			const note = data.encrypted
-				? ''
-				: '（⚠️ 令牌未加密存储 —— 系统密钥环不可用）'
-			report(
-				`登录成功：${data.account?.name ?? username}${note}`,
-				data.encrypted ? 'ok' : 'busy',
-			)
+			// 登录成功就说登录成功。令牌存得加不加密是诊断信息
+			// （见「设置 › 备份 › 诊断信息」），不是登录结果的反馈。
+			report(`登录成功：${data.account?.name ?? username}`, 'ok')
 		})
 	}
 
@@ -1013,22 +968,31 @@
 		})
 	}
 
-	async function applyBaseUrl(button) {
-		const url = valueOf('share-base-url').trim()
-		if (!url) {
+	/**
+	 * 改后端地址。
+	 *
+	 * UI 已经搬到「设置 › 备份 › 诊断信息」（那里的输入框直接调
+	 * `share.setBaseUrl`），这里保留一个**带参数**的入口供自动化驱动同一条
+	 * 代码路径 —— 注意它不再去读页面上的输入框，因为那个输入框已经不在这个
+	 * 模块里了（第一版还写着 `valueOf('share-base-url')`，搬迁之后会永远取到
+	 * 空字符串并报「请填写后端地址」）。
+	 */
+	async function applyBaseUrl(button, url) {
+		const next = String(url ?? '').trim()
+		if (!next) {
 			report('请填写后端地址', 'bad')
 			return
 		}
 
 		await runAction(button, '保存中…', async () => {
-			const result = await window.bbplayer.share.setBaseUrl(url)
+			const result = await window.bbplayer.share.setBaseUrl(next)
 			const data = result?.ok === true ? result.data : null
 			await refresh()
 			if (!data) {
 				report(describeFailure(result, '修改后端地址'), 'bad')
 				return
 			}
-			report(`后端地址已改为 ${data.baseUrl}`, 'ok')
+			report('后端地址已更新', 'ok')
 		})
 	}
 

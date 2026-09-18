@@ -210,6 +210,15 @@ contextBridge.exposeInMainWorld('bbplayer', {
 		removeTrack: (payload) =>
 			ipcRenderer.invoke('playlist:removeTrack', payload),
 	},
+	/**
+	 * 诊断信息（实现细节唯一的去处）。
+	 *
+	 * 主界面不展示「密钥环 / 未加密 / 绝对路径」这类东西，但它们必须**可查** ——
+	 * 集中在这里，由「设置 › 诊断信息」折叠区读取。
+	 */
+	diagnostics: () => ipcRenderer.invoke('diagnostics:info'),
+	/** 重启应用（恢复备份后需要） */
+	relaunch: () => ipcRenderer.invoke('app:relaunch'),
 })
 
 /**

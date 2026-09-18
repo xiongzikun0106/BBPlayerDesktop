@@ -546,26 +546,41 @@ async function run(window) {
 			: JSON.stringify(taskSeen.value),
 	)
 	// 面板在有进行中任务时必须渲染进度行；没有时给出空态 —— 两者都要正确
-	const panelConsistency = await evaluate(
-		window,
-		`(() => {
-			const hasRows =
-				document.querySelectorAll('#settings-download-tasks .settings-row').length
-			const emptyText =
-				document.getElementById('settings-download-tasks')?.textContent ?? ''
-			const info = window.bbplayer.download.info()
-			return info.then((r) => ({
-				activeTaskCount: r?.data?.activeTaskCount ?? null,
-				hasRows,
-				saysEmpty: emptyText.includes('没有进行中'),
-			}))
-		})()`,
-	)
+	//
+	// ⚠️ 这里**不能只读一次**。第一版是「读 DOM + 问主进程」各一次然后直接断言，
+	// 结果在下载任务正好从进行中落到终态的那一瞬间会红：
+	// DOM 里还留着上一次渲染的进度行，而主进程已经报 `activeTaskCount: 0`
+	// → `{activeTaskCount:0, hasRows:1, saysEmpty:false}`。
+	// 那是**探针的竞态**，不是产品缺陷（重跑就绿，正是 flake 的特征）。
+	//
+	// 改成允许短暂不一致、但要求它**收敛**：轮询到一致为止，只在超时后判失败。
+	let panelConsistency = null
+	let consistent = false
+	for (let attempt = 0; attempt < 20 && !consistent; attempt++) {
+		panelConsistency = await evaluate(
+			window,
+			`(() => {
+				const hasRows =
+					document.querySelectorAll('#settings-download-tasks .settings-row').length
+				const emptyText =
+					document.getElementById('settings-download-tasks')?.textContent ?? ''
+				const info = window.bbplayer.download.info()
+				return info.then((r) => ({
+					activeTaskCount: r?.data?.activeTaskCount ?? null,
+					hasRows,
+					saysEmpty: emptyText.includes('没有进行中'),
+				}))
+			})()`,
+		)
+		consistent =
+			panelConsistency.activeTaskCount === 0
+				? panelConsistency.saysEmpty
+				: panelConsistency.hasRows > 0
+		if (!consistent) await sleep(500)
+	}
 	check(
-		'面板的「进行中」渲染与主进程状态一致',
-		panelConsistency.activeTaskCount === 0
-			? panelConsistency.saysEmpty
-			: panelConsistency.hasRows > 0,
+		'面板的「进行中」渲染与主进程状态最终一致',
+		consistent,
 		JSON.stringify(panelConsistency),
 	)
 	await shot(window, 'settings-05-download')
@@ -616,9 +631,28 @@ async function run(window) {
 		'export',
 	)
 	check(
-		'本地导出成功并显示路径',
-		exported.ok && /backup-.*\.bbplayer/.test(String(exported.value?.text)),
+		// ⚠️ 这条断言在 UI 重做阶段 0 **被改写过**。
+		//
+		// 原来断言「显示路径」—— 界面于是打印
+		// `已导出 backup-….bbplayer（1654.4 KB）→ C:\Users\…\AppData\Local\Temp\…`。
+		// 那是调试信息：长到会把面板撑破，而且用户要的是「文件在哪」，
+		// 给一个「打开所在文件夹」按钮比给一串路径有用。
+		//
+		// 新规则：成功反馈只说「导出成功了、多大」，路径与文件名不再出现；
+		// 同时必须**有**一个打开目录的入口。
+		'本地导出成功（只报大小，不再把文件名与绝对路径贴到界面上）',
+		exported.ok &&
+			/^已导出备份文件（[\d.]+ [KM]?B）$/.test(
+				String(exported.value?.text).trim(),
+			),
 		exported.ok ? exported.value.text : JSON.stringify(exported.value),
+	)
+	check(
+		'导出旁边有「打开所在文件夹」入口（替代原来的绝对路径）',
+		await evaluate(
+			window,
+			`Boolean(document.querySelector('[data-testid="settings-backup-open-folder"]'))`,
+		),
 	)
 	await shot(window, 'settings-06-backup')
 
@@ -683,6 +717,60 @@ async function run(window) {
 		'地址被回填（非敏感项可以回显）',
 		passwordLeak.urlValue === 'http://127.0.0.1:1/dav',
 		String(passwordLeak.urlValue),
+	)
+
+	// ---------------------------------------------------------------
+	// 诊断信息：实现细节**唯一的去处**
+	// ---------------------------------------------------------------
+	//
+	// 这是阶段 0 的另一半。清掉主流程里的「密钥环 / 明文 / 绝对路径」之后，
+	// 事实不能就此消失 —— 用户有权在自己想看的时候查到。
+	// 所以这里断言：这些值**查得到**，而且**默认是折叠的**（不主动糊到脸上）。
+	const diagnostics = await evaluate(
+		window,
+		`(() => {
+			const box = document.querySelector('[data-testid="settings-diagnostics"]')
+			return {
+				exists: Boolean(box),
+				// <details> 默认不开
+				collapsed: box ? !box.open : null,
+				credential:
+					document.getElementById('settings-credential-storage')?.textContent?.trim() ??
+					null,
+				webdavPassword:
+					document.getElementById('settings-backup-security')?.textContent?.trim() ??
+					null,
+				dataDir:
+					document.getElementById('settings-data-dir')?.textContent?.trim() ?? null,
+				baseUrl:
+					document.getElementById('settings-share-base-url')?.value ?? null,
+			}
+		})()`,
+	)
+	check('设置里有「诊断信息」折叠区', diagnostics.exists)
+	check(
+		'诊断信息默认折叠（不主动糊到用户脸上）',
+		diagnostics.collapsed === true,
+	)
+	check(
+		'诊断信息里查得到凭据存储方式',
+		/已加密|未加密/.test(String(diagnostics.credential)),
+		String(diagnostics.credential),
+	)
+	check(
+		'诊断信息里查得到 WebDAV 密码存储方式',
+		/已加密|未加密|未保存/.test(String(diagnostics.webdavPassword)),
+		String(diagnostics.webdavPassword),
+	)
+	check(
+		'诊断信息里查得到数据目录（绝对路径只在这里出现）',
+		typeof diagnostics.dataDir === 'string' && diagnostics.dataDir.length > 1,
+		String(diagnostics.dataDir).slice(0, 60),
+	)
+	check(
+		'诊断信息里可以改后端地址（自建后端仍然可用，只是不占主流程）',
+		typeof diagnostics.baseUrl === 'string' && diagnostics.baseUrl.length > 1,
+		String(diagnostics.baseUrl),
 	)
 
 	// 连不上的地址必须给出「无法连接」而非未知错误

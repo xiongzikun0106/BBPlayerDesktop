@@ -216,8 +216,23 @@
 			: target
 	}
 
+	/**
+	 * 把滑块已播放的比例写进 `--range-fill`。
+	 *
+	 * 滑块改成自绘（`appearance: none`）之后，进度不能再靠 Chromium 原生的
+	 * 填充着色，需要自己给轨道上色 —— CSS 用这个变量把轨道分成
+	 * 「已播放（主色）」与「剩余（surface-3）」两段。这样不用加任何 DOM。
+	 */
+	function syncRangeFill(input, percent) {
+		if (!input) return
+		const clamped = Math.max(0, Math.min(100, percent))
+		input.style.setProperty('--range-fill', `${clamped}%`)
+	}
+
 	function setVolume(percent) {
-		els.audio.volume = Math.max(0, Math.min(1, percent / 100))
+		const clamped = Math.max(0, Math.min(100, percent))
+		els.audio.volume = clamped / 100
+		syncRangeFill(els.volume, clamped)
 	}
 
 	function cycleMode() {
@@ -272,6 +287,7 @@
 			// 拖动中不要覆盖用户的手动位置
 			if (!isScrubbing) {
 				els.progress.value = String(Math.round((currentTime / duration) * 1000))
+				syncRangeFill(els.progress, (currentTime / duration) * 100)
 			}
 		}
 	}
@@ -307,6 +323,8 @@
 		els.progress.addEventListener('input', () => {
 			isScrubbing = true
 			const duration = els.audio.duration
+			// 拖动过程中也要跟着重画已播放段，否则滑块看着像没动
+			syncRangeFill(els.progress, Number(els.progress.value) / 10)
 			if (Number.isFinite(duration) && duration > 0) {
 				const target = (Number(els.progress.value) / 1000) * duration
 				if (els.timeCurrent) els.timeCurrent.textContent = formatTime(target)
@@ -319,6 +337,8 @@
 			}
 			isScrubbing = false
 		})
+		// 初始状态（value 默认是 0，所以这里是 0%，但显式设一次更稳）
+		syncRangeFill(els.progress, Number(els.progress.value) / 10)
 	}
 
 	if (els.play) els.play.addEventListener('click', () => void toggle())
@@ -329,6 +349,8 @@
 		els.volume.addEventListener('input', () =>
 			setVolume(Number(els.volume.value)),
 		)
+		// 初始音量也要把已填充段画出来（默认 100%）
+		syncRangeFill(els.volume, Number(els.volume.value))
 	}
 
 	// ---------------------------------------------------------------

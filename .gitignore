@@ -67,3 +67,5 @@ bilibili_skin_exp
 codedb.snapshot
 #devlop test
 severs/
+# 安卓端实机截图（只作本地视觉对照，不进仓库）
+UIreferance/

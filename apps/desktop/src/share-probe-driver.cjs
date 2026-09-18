@@ -33,6 +33,11 @@
 const fs = require('node:fs')
 const path = require('node:path')
 
+const {
+	jargonScanExpression,
+	describeJargonHits,
+} = require('./probe-jargon.cjs')
+
 const SHOTS = process.env.BBPLAYER_UI_SHOTS
 	? process.env.BBPLAYER_UI_SHOTS
 	: path.join(__dirname, '..', 'probe-output', 'share-shots')
@@ -235,18 +240,18 @@ async function run(window) {
 		typeof statusText === 'string' && statusText.length > 0,
 		String(statusText),
 	)
+	// ⚠️ 这两条断言在 UI 重做阶段 0 **被搬走了**。
+	//
+	// 后端地址原来渲染在共享面板的账号区（输入框 + 「修改后端地址」按钮 +
+	// 「改了地址后原来的登录令牌通常不再有效」的说明）。自建后端是真实需求，
+	// 但它和「登录账号 / 订阅歌单」并排放在主流程里，只会让普通用户以为
+	// 自己需要填点什么。
+	//
+	// 新位置：「设置 › 备份 › 诊断信息」。所以这里改为断言
+	// **共享面板里不再有它**，而「仍然可改」由设置套件的诊断信息断言负责。
 	check(
-		'账号区有后端地址输入框（自建实例可配）',
-		await exists(window, '[data-testid="share-base-url"]'),
-	)
-	const baseUrlValue = await evaluate(
-		window,
-		`document.querySelector('[data-testid="share-base-url"]')?.value ?? null`,
-	)
-	check(
-		'后端地址输入框预填了当前地址',
-		typeof baseUrlValue === 'string' && baseUrlValue.length > 0,
-		String(baseUrlValue),
+		'共享面板里不再出现后端地址（它属于诊断信息，不属于主流程）',
+		!(await exists(window, '[data-testid="share-base-url"]')),
 	)
 	await shot(window, '01-share-logged-out')
 
@@ -665,6 +670,24 @@ async function run(window) {
 		String(afterText).slice(0, 160),
 	)
 	await shot(window, '10-share-after-leave')
+
+	// ===============================================================
+	// 11. 「开发日志」黑名单（共享面板是重灾区，单独再扫一遍）
+	// ===============================================================
+	//
+	// 共享面板曾经把账号 UUID、后端 URL、登录时间、「令牌已由系统密钥环加密存储」
+	// 和一段「从云端恢复用于换设备…」的接口说明全摆在正中间。
+	//
+	// 主 UI 探针也扫黑名单，但那一遍跑在**共享面板还没被操作过**的时候；
+	// 这里在所有动作都做完、状态文案都写出来之后再扫一次，
+	// 才能覆盖「操作结果」那一类动态文案。
+	console.log('\n[share] 11) 共享界面不得出现实现细节文案')
+	const shareJargon = JSON.parse(await evaluate(window, jargonScanExpression()))
+	check(
+		'共享界面没有「开发日志」式的实现细节（黑名单词零命中）',
+		shareJargon.length === 0,
+		describeJargonHits(shareJargon),
+	)
 
 	// ===============================================================
 	// 待人工验证

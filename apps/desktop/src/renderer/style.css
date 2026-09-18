@@ -490,36 +490,278 @@ body {
 	width: 90px;
 }
 
+/* ══════════════════════════════════════════════════════════
+   表单控件基础层
+   ────────────────────────────────────────────────────────── */
+/*
+ * ⚠️ 这一层是**必需的**，不是锦上添花。
+ *
+ * 原来的写法是给每个容器补样式：
+ *     `.playbar button, .row-actions button, .search-box button { … }`
+ * 但全工程有 71 个按钮、18 个输入框、1 个 select、3 个滑块 —— 落在上面那三个
+ * 容器里的只是一部分，**其余全是浏览器默认样式**：灰色渐变按钮、原生滑块、
+ * 原生下拉箭头。设置页备份区那四个灰按钮就是这么来的。
+ *
+ * 改成「先给所有原生控件一个统一基线，容器只做微调」。新增页面时不需要记得
+ * 给按钮加类名，默认就是对的。
+ */
 button {
 	font: inherit;
-}
-
-.playbar button,
-.row-actions button,
-.search-box button {
-	background: var(--surface-3);
 	color: var(--on-surface);
-	border: none;
+	background: var(--surface-3);
+	border: 1px solid transparent;
 	border-radius: var(--r-full);
-	padding: 8px 14px;
+	padding: 7px 16px;
+	min-height: 32px;
 	cursor: pointer;
+	transition:
+		background 120ms ease,
+		color 120ms ease,
+		border-color 120ms ease;
 }
 
-.playbar button:hover,
-.row-actions button:hover,
-.search-box button:hover {
-	filter: brightness(1.15);
+button:hover:not(:disabled) {
+	background: color-mix(in srgb, var(--surface-3) 78%, var(--on-surface));
 }
 
-.playbar button:disabled,
-.row-actions button:disabled {
+button:active:not(:disabled) {
+	transform: translateY(1px);
+}
+
+button:focus-visible {
+	outline: 2px solid var(--primary);
+	outline-offset: 2px;
+}
+
+button:disabled {
 	opacity: 0.45;
 	cursor: not-allowed;
 }
 
-input[type='range'] {
-	accent-color: var(--primary);
+/* 主要动作：填充主色（「立即备份并上传」这类） */
+button.btn--filled {
+	background: var(--primary);
+	color: var(--on-primary);
+}
+
+button.btn--filled:hover:not(:disabled) {
+	background: color-mix(in srgb, var(--primary) 86%, var(--on-primary));
+}
+
+/* 次要动作：只有描边（「测试连接」「导出」这类可选项） */
+button.btn--outlined {
+	background: transparent;
+	border-color: var(--outline);
+}
+
+button.btn--outlined:hover:not(:disabled) {
+	background: var(--surface-2);
+}
+
+/* 纯文字动作 */
+button.btn--text {
+	background: transparent;
+	color: var(--primary);
+	padding-inline: 10px;
+}
+
+button.btn--text:hover:not(:disabled) {
+	background: color-mix(in srgb, var(--primary) 14%, transparent);
+}
+
+/* ── 文本类输入框 ──────────────────────────────────────── */
+
+input[type='text'],
+input[type='password'],
+input[type='number'],
+input[type='search'],
+input[type='url'],
+input[type='email'],
+textarea,
+select {
+	font: inherit;
+	color: var(--on-surface);
+	background: var(--surface-2);
+	border: 1px solid var(--outline);
+	border-radius: 10px;
+	padding: 7px 12px;
+	min-height: 36px;
 	width: 100%;
+	/* 去掉 UA 外观：默认的内阴影、圆角、数字微调箭头都由这一层接管 */
+	appearance: none;
+	outline: none;
+	transition:
+		border-color 120ms ease,
+		box-shadow 120ms ease;
+}
+
+textarea {
+	min-height: 72px;
+	resize: vertical;
+	line-height: 1.5;
+}
+
+input::placeholder,
+textarea::placeholder {
+	color: color-mix(in srgb, var(--on-surface-variant) 62%, transparent);
+}
+
+input[type='text']:hover:not(:disabled),
+input[type='password']:hover:not(:disabled),
+input[type='number']:hover:not(:disabled),
+textarea:hover:not(:disabled),
+select:hover:not(:disabled) {
+	border-color: color-mix(in srgb, var(--outline) 60%, var(--on-surface-variant));
+}
+
+input[type='text']:focus,
+input[type='password']:focus,
+input[type='number']:focus,
+input[type='search']:focus,
+input[type='url']:focus,
+input[type='email']:focus,
+textarea:focus,
+select:focus {
+	border-color: var(--primary);
+	box-shadow: 0 0 0 3px color-mix(in srgb, var(--primary) 22%, transparent);
+}
+
+input:disabled,
+textarea:disabled,
+select:disabled {
+	opacity: 0.5;
+	cursor: not-allowed;
+}
+
+/* `appearance: none` 之后 select 的箭头要自己画 */
+select {
+	padding-right: 34px;
+	background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%23cac4d0' d='M6 8.4 1.6 4h8.8z'/%3E%3C/svg%3E");
+	background-repeat: no-repeat;
+	background-position: right 12px center;
+}
+
+/* ── 复选框 ────────────────────────────────────────────── */
+
+input[type='checkbox'] {
+	appearance: none;
+	width: 20px;
+	height: 20px;
+	min-height: 0;
+	flex: none;
+	border: 2px solid var(--on-surface-variant);
+	border-radius: 5px;
+	background: transparent;
+	cursor: pointer;
+	position: relative;
+	transition:
+		background 120ms ease,
+		border-color 120ms ease;
+}
+
+input[type='checkbox']:checked {
+	background: var(--primary);
+	border-color: var(--primary);
+}
+
+input[type='checkbox']:checked::after {
+	content: '';
+	position: absolute;
+	left: 5px;
+	top: 1px;
+	width: 5px;
+	height: 10px;
+	border: solid var(--on-primary);
+	border-width: 0 2px 2px 0;
+	transform: rotate(45deg);
+}
+
+input[type='checkbox']:focus-visible {
+	outline: 2px solid var(--primary);
+	outline-offset: 2px;
+}
+
+/* ── 滑块 ──────────────────────────────────────────────── */
+/*
+ * 原来这里只有 `accent-color`，也就是**直接用 Chromium 的原生滑块**——
+ * 界面上最显眼的「默认 HTML 痕迹」就是它。
+ *
+ * 自绘之后进度不能再靠原生的填充，所以轨道用 `--range-fill`（由 JS 写入的
+ * 百分比，默认 0%）分两段着色。这样不需要额外的 DOM。
+ */
+input[type='range'] {
+	appearance: none;
+	background: transparent;
+	width: 100%;
+	height: 18px;
+	min-height: 0;
+	padding: 0;
+	border: none;
+	cursor: pointer;
+}
+
+input[type='range']::-webkit-slider-runnable-track {
+	height: 4px;
+	border-radius: var(--r-full);
+	background: linear-gradient(
+		to right,
+		var(--primary) 0 var(--range-fill, 0%),
+		var(--surface-3) var(--range-fill, 0%) 100%
+	);
+}
+
+input[type='range']::-webkit-slider-thumb {
+	appearance: none;
+	width: 12px;
+	height: 12px;
+	margin-top: -4px;
+	border-radius: 50%;
+	background: var(--primary);
+	transition: box-shadow 120ms ease;
+}
+
+input[type='range']:hover::-webkit-slider-thumb,
+input[type='range']:focus-visible::-webkit-slider-thumb {
+	box-shadow: 0 0 0 6px color-mix(in srgb, var(--primary) 20%, transparent);
+}
+
+input[type='range']:focus-visible {
+	outline: none;
+}
+
+/* ── 滚动条 ────────────────────────────────────────────── */
+/*
+ * 又一个「默认 HTML」痕迹：Chromium 的浅灰滚动条在深色面板上非常跳。
+ * 做成"平时几乎看不见、悬停才显形"的细滚动条。
+ */
+* {
+	scrollbar-width: thin;
+	scrollbar-color: var(--surface-3) transparent;
+}
+
+::-webkit-scrollbar {
+	width: 10px;
+	height: 10px;
+}
+
+::-webkit-scrollbar-track {
+	background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+	background: var(--surface-3);
+	border: 3px solid transparent;
+	background-clip: content-box;
+	border-radius: var(--r-full);
+}
+
+::-webkit-scrollbar-thumb:hover {
+	background: var(--outline);
+	background-clip: content-box;
+}
+
+::-webkit-scrollbar-corner {
+	background: transparent;
 }
 
 /* ══════════════════════════════════════════════════════════

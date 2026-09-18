@@ -25,6 +25,18 @@ function check(name, ok, detail) {
 	)
 }
 
+/**
+ * 「开发日志」黑名单见 `probe-jargon.cjs`。
+ *
+ * 需要新增例外时**先想清楚**：真的必须在主流程里说吗？
+ * 允许的唯一出口是「诊断信息」折叠区（`.settings-diagnostics`），
+ * 以及显式标了 `data-allow-jargon` 的容器。
+ */
+const {
+	jargonScanExpression,
+	describeJargonHits,
+} = require('./probe-jargon.cjs')
+
 async function evaluate(window, expression) {
 	return await window.webContents.executeJavaScript(expression, true)
 }
@@ -165,6 +177,89 @@ async function run(window) {
 		`实际 ${ui.activePanel}`,
 	)
 	await shot(window, 'ui-01-shell')
+
+	// ---------------------------------------------------------------
+	// 1.5 「开发日志」黑名单
+	// ---------------------------------------------------------------
+	//
+	// ⚠️ 这一条是**机制**，不是一次性的清理。
+	//
+	// 桌面端第一版把很多实现细节直接写进了界面：凭据「已由系统密钥环加密存储」、
+	// 「等同明文」的警告、账号 UUID、后端 URL、备份格式（ZIP + SQLite 快照）、
+	// `exportedAt=`、导出后的**绝对路径**、常驻的「就绪」状态栏……
+	// 这些是我当时刻意做的（想把事实说清楚），但位置全错了：
+	// **该知道 ≠ 该在主流程里说**。用户在上号、存密码、点备份的时候，
+	// 不需要被教育这些东西，一句「等同明文」只会让人以为出事了。
+	//
+	// 清一遍只解决今天。所以这里把规则钉住：主界面可见文本不得命中黑名单词。
+	// 允许的唯一出口是「诊断信息」折叠区，以及显式标了
+	// `data-allow-jargon` 的容器（用之前必须想清楚为什么）。
+	console.log('\n[ui] 1.5) 主界面不得出现实现细节文案')
+	// 黑名单与扫描表达式见 `probe-jargon.cjs`（共享模块，也扫隐藏面板）
+	const jargonHits = JSON.parse(await evaluate(window, jargonScanExpression()))
+	check(
+		'主界面没有「开发日志」式的实现细节（黑名单词零命中）',
+		jargonHits.length === 0,
+		describeJargonHits(jargonHits),
+	)
+
+	// ---------------------------------------------------------------
+	// 1.6 原生控件不得停留在浏览器默认外观
+	// ---------------------------------------------------------------
+	//
+	// 第一版只给 `.playbar / .row-actions / .search-box` 三个容器补了按钮样式，
+	// 于是设置页里那一排按钮（保存 / 测试连接 / 立即备份并上传 / 刷新远端列表）
+	// 全裸奔，是 Chromium 默认的浅灰渐变按钮；滑块也只有 `accent-color`，
+	// 也就是**直接用原生控件**。现在有一层基础样式兜底，这里钉住它。
+	console.log('\n[ui] 1.6) 控件基线（不能是浏览器默认外观）')
+	const controls = JSON.parse(
+		await evaluate(
+			window,
+			`(() => {
+				const buttons = [...document.querySelectorAll('button')]
+				// Chromium 的默认按钮底色就是这个灰；我们的按钮都必须有明确底色
+				const defaultLooking = buttons.filter(
+					(b) => getComputedStyle(b).backgroundColor === 'rgb(239, 239, 239)',
+				)
+				const fields = [...document.querySelectorAll('input, textarea, select')]
+				const notNormalized = fields
+					.filter((f) => {
+						const s = getComputedStyle(f)
+						return s.appearance !== 'none' && s.webkitAppearance !== 'none'
+					})
+					.map((f) => f.tagName.toLowerCase() + (f.type ? ':' + f.type : ''))
+				const ranges = [...document.querySelectorAll("input[type='range']")]
+				const filled = ranges.filter(
+					(r) => r.style.getPropertyValue('--range-fill') !== '',
+				)
+				return JSON.stringify({
+					buttonCount: buttons.length,
+					defaultLooking: defaultLooking.length,
+					fieldCount: fields.length,
+					notNormalized,
+					rangeCount: ranges.length,
+					rangesFilled: filled.length,
+				})
+			})()`,
+		),
+	)
+	check(
+		'没有按钮停留在浏览器默认外观',
+		controls.defaultLooking === 0,
+		`${controls.buttonCount} 个按钮，默认外观 ${controls.defaultLooking} 个`,
+	)
+	check(
+		'所有输入框 / 文本域 / 下拉都走统一基线（appearance: none）',
+		controls.notNormalized.length === 0,
+		controls.notNormalized.length > 0
+			? `未归一化：${controls.notNormalized.join('、')}`
+			: `${controls.fieldCount} 个控件全部归一化`,
+	)
+	check(
+		'滑块已自绘并写入了已播放比例（不再依赖原生填充）',
+		controls.rangeCount > 0 && controls.rangesFilled === controls.rangeCount,
+		`${controls.rangesFilled}/${controls.rangeCount} 个滑块有 --range-fill`,
+	)
 
 	// ---------------------------------------------------------------
 	// 2. 空库 → 导入示例合集

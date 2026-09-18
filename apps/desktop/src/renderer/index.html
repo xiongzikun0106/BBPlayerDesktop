@@ -368,11 +368,6 @@
 					data-testid="login-panel-account"
 				>
 					<div id="login-account" data-testid="login-account"></div>
-					<p
-						class="login-status"
-						id="login-security"
-						data-testid="login-security"
-					></p>
 					<div class="row-actions">
 						<button id="login-logout" data-testid="login-logout">退出登录</button>
 					</div>
@@ -587,8 +582,7 @@
 				>
 					<h3>WebDAV</h3>
 					<p class="muted settings-hint">
-						与移动端共用同一份备份格式（ZIP + SQLite 快照），远端文件名形如
-						<code>backup-&lt;时间戳&gt;.bbplayer</code>。
+						填好后可以「立即备份并上传」，换设备时在下面挑一份恢复回来。
 					</p>
 					<div class="settings-grid">
 						<label for="settings-webdav-url">地址</label>
@@ -627,35 +621,43 @@
 						<button id="settings-webdav-save" data-testid="settings-webdav-save">
 							保存
 						</button>
-						<button id="settings-webdav-test" data-testid="settings-webdav-test">
+						<button
+						id="settings-webdav-test"
+						data-testid="settings-webdav-test"
+						class="btn--outlined"
+					>
 							测试连接
 						</button>
 						<button
 							id="settings-webdav-upload"
 							data-testid="settings-webdav-upload"
+							class="btn--filled"
 						>
 							立即备份并上传
 						</button>
 						<button
 							id="settings-webdav-refresh"
 							data-testid="settings-webdav-refresh"
+							class="btn--text"
 						>
 							刷新远端列表
 						</button>
 					</div>
-					<p
-						class="settings-status"
-						id="settings-backup-security"
-						data-testid="settings-backup-security"
-					></p>
 
 					<h3>本地导出</h3>
-					<div class="settings-row">
+					<div class="settings-row settings-row--wrap">
 						<button
 							id="settings-backup-export"
 							data-testid="settings-backup-export"
 						>
-							导出一份到本地
+							导出到本地
+						</button>
+						<button
+							id="settings-backup-open-folder"
+							data-testid="settings-backup-open-folder"
+							class="btn--outlined"
+						>
+							打开所在文件夹
 						</button>
 					</div>
 
@@ -666,6 +668,59 @@
 						id="settings-backup-status"
 						data-testid="settings-backup-status"
 					></p>
+					<!--
+						恢复备份之后数据库连接已关闭、数据文件已替换，必须重启才能继续用。
+						与其让用户自己去关掉再打开，不如把「下一步做什么」直接做成一个按钮。
+						默认隐藏，只有恢复成功后才出现。
+					-->
+					<div class="settings-row">
+						<button
+							id="settings-restart"
+							data-testid="settings-restart"
+							class="btn--filled"
+							hidden
+						>
+							立即重启应用
+						</button>
+					</div>
+
+					<!--
+						「诊断信息」是**实现细节唯一的去处**。
+						主流程里不出现密钥环 / 明文 / 格式 / 绝对路径这些东西：
+						用户不需要在保存密码的同一屏里读到「未加密存储」，
+						但他确实有权在自己想看的时候查到。默认折叠。
+					-->
+					<details class="settings-diagnostics" data-testid="settings-diagnostics">
+						<summary>诊断信息</summary>
+						<dl class="settings-diagnostics__list">
+							<dt>凭据存储</dt>
+							<dd
+								id="settings-credential-storage"
+								data-testid="settings-credential-storage"
+							>
+								—
+							</dd>
+							<dt>WebDAV 密码存储</dt>
+							<dd
+								id="settings-backup-security"
+								data-testid="settings-backup-security"
+							>
+								—
+							</dd>
+							<dt>后端地址</dt>
+							<dd>
+								<input
+									id="settings-share-base-url"
+									data-testid="settings-share-base-url"
+									type="text"
+									spellcheck="false"
+									placeholder="https://be.bbplayer.roitium.com"
+								/>
+							</dd>
+							<dt>数据目录</dt>
+							<dd id="settings-data-dir" data-testid="settings-data-dir">—</dd>
+						</dl>
+					</details>
 				</section>
 			</div>
 		</aside>

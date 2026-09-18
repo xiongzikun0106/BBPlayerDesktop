@@ -40,7 +40,6 @@
 
 		account: document.getElementById('login-account'),
 		logout: document.getElementById('login-logout'),
-		security: document.getElementById('login-security'),
 	}
 
 	const setStatus = (node, text, kind) => {
@@ -121,19 +120,15 @@
 		els.account.appendChild(list)
 	}
 
-	/** 登录态存储方式提示（加密 / 仅混淆） */
-	function renderSecurity(status) {
-		if (!els.security) return
-		if (status?.encrypted) {
-			setStatus(els.security, '凭据已由系统密钥环加密存储', 'ok')
-		} else {
-			setStatus(
-				els.security,
-				'⚠️ 系统密钥环不可用，凭据仅做混淆存储（等同明文）—— 共享账号的机器上请注意',
-				'warn',
-			)
-		}
-	}
+	// 凭据的落盘方式**不在这里显示**。
+	//
+	// 原来这里会写「凭据已由系统密钥环加密存储」，系统没有密钥环时还会写
+	// 「⚠️ …仅做混淆存储（等同明文）—— 共享账号的机器上请注意」。那是把
+	// 安全审计的结论摆在了登录面板正中：用户在扫码登录时不需要被教育这件事，
+	// 而且一句「等同明文」只会让人以为出事了。
+	//
+	// 事实仍然**可查**，只是换了地方：设置 › 备份 › 诊断信息 › 凭据存储。
+	// 见 `settings-panel.js` 的 `refreshDiagnostics()`。
 
 	// ---------------------------------------------------------------
 	// 扫码
@@ -306,11 +301,9 @@
 		try {
 			const status = unwrap(await window.bbplayer.loginStatus(), '读取登录态')
 			renderAccount(status)
-			renderSecurity(status)
 			return status
 		} catch (error) {
 			renderAccount({ loggedIn: false })
-			renderSecurity(null)
 			return { loggedIn: false, error: error.message }
 		}
 	}

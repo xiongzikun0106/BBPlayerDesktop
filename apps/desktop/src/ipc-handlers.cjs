@@ -779,6 +779,79 @@ function registerIpcHandlers() {
 		}
 	})
 
+	/**
+	 * 在文件管理器里打开「本地导出」的目录。
+	 *
+	 * 为什么需要它：导出成功后**不应该**把绝对路径贴在界面上
+	 * （`已导出 … → C:\Users\…\AppData\Local\Temp\…` 那是调试信息，
+	 * 而且长到会把面板撑破）。给用户一个动作比给一串路径有用。
+	 */
+	ipcMain.handle('backup:openFolder', async () => {
+		try {
+			const { shell } = require('electron')
+			const config = await getBackupManager().describe()
+			const dir = config.defaultExportDir
+			const error = await shell.openPath(dir)
+			if (error) throw new Error(error)
+			return { ok: true, data: { dir } }
+		} catch (error) {
+			return { ok: false, error: error.message }
+		}
+	})
+
+	/**
+	 * 重启应用。
+	 *
+	 * 恢复备份会**关闭数据库连接并替换数据文件**，之后必须重启才能继续用。
+	 * 与其让用户自己去关掉再打开，不如直接给一个按钮 —— 这也是「界面只说
+	 * 下一步做什么」的一个具体例子。
+	 */
+	ipcMain.handle('app:relaunch', () => {
+		const { app } = require('electron')
+		app.relaunch()
+		app.exit(0)
+		return { ok: true, data: { relaunching: true } }
+	})
+
+	/**
+	 * 诊断信息：**实现细节唯一的去处**。
+	 *
+	 * 主流程里不出现「密钥环 / 明文 / 格式 / 绝对路径」，但用户有权在自己想看的
+	 * 时候查。渲染进程只读地展示，不做任何判断。
+	 */
+	ipcMain.handle('diagnostics:info', async () => {
+		try {
+			const ports = describePorts()
+			const shared = getShared()
+			const account = shared.accountStatus()
+			const versions = process.versions
+			return {
+				ok: true,
+				data: {
+					dataDir: ports.dataDir,
+					dbFile: ports.dbFile,
+					logFile: ports.logFile,
+					// B 站凭据的落盘方式（`describePorts()` 已经报过，不重复查一次）
+					bilibiliCredentialEncrypted: ports.login?.encrypted ?? null,
+					// BBPlayer 账号（共享歌单用）的后端与令牌存储
+					shareBaseUrl: account.baseUrl,
+					shareBaseUrlIsDefault: account.baseUrl === account.defaultBaseUrl,
+					shareTokenEncrypted: account.encrypted,
+					shareLoggedIn: account.loggedIn,
+					versions: {
+						app: require('../package.json').version,
+						electron: versions.electron,
+						chrome: versions.chrome,
+						node: versions.node,
+						platform: `${process.platform} ${process.arch}`,
+					},
+				},
+			}
+		} catch (error) {
+			return { ok: false, error: error.message }
+		}
+	})
+
 	ipcMain.handle('backup:downloadRemote', async (_event, remotePath) => {
 		try {
 			const buffer = await getBackupManager().downloadRemote(remotePath)
