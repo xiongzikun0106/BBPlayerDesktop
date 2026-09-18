@@ -140,22 +140,39 @@
 
 ### 阶段 1 · 令牌管线 + 亮色 + 组件词汇表
 
+**1a ✅ 已完成**（`20e11161`）：
+
 - `build/tokens.cjs`：构建期 esbuild 打包 `packages/design-tokens`（与
-  `build-core.mjs` 同一手法），主进程据此生成 CSS 变量并注入渲染进程。
-  **不再手抄**。
-- 补全 MD3 全量角色：`primaryContainer` / `onPrimaryContainer` /
-  `secondaryContainer` / `tertiary` / `surfaceVariant` / `outlineVariant` /
-  `inverseSurface` / `scrim` …
-- 显示模式：**浅色 / 深色 / 跟随系统**，默认**跟随系统**。
-- 字阶按令牌归位：正文 14 / 列表主标题 16 / 页面大标题 24。
+  `build-core.mjs` 同一手法），主进程据此生成 CSS 变量并下发。**不再手抄**。
+- 补全 MD3 全量角色：`surfaceContainer` 五级 / `surfaceTint` /
+  `errorContainer` / `tertiaryContainer` / `onErrorContainer` / `shadow`，
+  外加应用级的 `statusColors`（ok / warn 不属于 MD3，单独放）。
+- 显示模式：**浅色 / 深色 / 跟随系统**，默认**跟随系统**；`system` 的解析
+  在主进程做（`nativeTheme.shouldUseDarkColors`），变化时推送。
+- 字阶归位：43 条 `font-size` 全部令牌化并**按语义调大**
+  （页面标题 18→22、区块标题 13→16、表单标签与副标题 13→14、徽标 11→12）。
+- **统一选中态**：nav / tab / segmented 三处原本是三套视觉（硬编码紫胶囊 /
+  **下划线** / 主色实心），现在共用一组选择器，取
+  `secondary-container` / `on-secondary-container` 令牌。
+- 顺带修掉 `.settings-row label` **缺闭合花括号**导致紧随其后的
+  `.settings-row button` 被当成嵌套规则、整块样式被解析器静默丢弃的 bug
+  —— 那才是用户抱怨"很多小输入框都是默认的 HTML 样式"的**根因**。
+
+**1b 待做**：
+
 - 图标：**Material Symbols 子集 woff2**（只保留实际用到的字形），
-  与移动端同一套图标语言。
-- 组件词汇表：列表行、四种胶囊按钮（filled / tonal / outlined / text）、
-  M3 开关、浮动标签输入框、分段控件、空状态、骨架屏、toast。
+  与移动端同一套图标语言。现在 7 个导航项用的是 unicode 字形
+  （♪ ⌕ ↧ ⟳ ★ ☰ ⇄），跨平台渲染不一致、粗细不齐。
 - **材质层**（借鉴 Salt Player 的「材质」页）：一层 `backdrop-filter` 封装，
   强度三档 **无 / 遮罩模糊 / 渐变模糊**，用一个 CSS 变量切换。
   用处：顶栏、悬浮播放条、正在播放面板、对话框背景。
   Chromium 原生支持，成本很低但质感提升最大的一处。
+
+**1c 待做**：
+
+- 组件词汇表：列表行（封面/首字方块 + 主标题 + 副标题 + 尾部动作）、
+  四种胶囊按钮（filled / tonal / outlined / text，阶段 0 已有三档）、
+  M3 开关、浮动标签输入框、分段控件（已有雏形）、空状态、骨架屏、toast。
 
 ### 阶段 2 · 换壳
 
