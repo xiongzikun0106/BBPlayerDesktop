@@ -1998,17 +1998,16 @@ input[type='range']:focus-visible {
 	padding: var(--sp-md);
 }
 
+/*
+ * 共享面板的头部只放**账号摘要**（标题已经由外壳的 #page-title 负责，
+ * 视图再渲染一个就会出现两个一模一样的标题）。
+ * 所以这里不再 `space-between`，摘要直接靠左。
+ */
 .share-head {
 	display: flex;
 	align-items: baseline;
-	justify-content: space-between;
 	gap: var(--sp-sm);
 	margin-bottom: var(--sp-xs);
-}
-
-.share-head h2 {
-	margin: 0;
-	font-size: var(--fs-title-large);
 }
 
 .share-status {

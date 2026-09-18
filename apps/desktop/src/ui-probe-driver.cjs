@@ -1452,6 +1452,42 @@ async function run(window) {
 			})()`,
 		),
 	)
+	// **标题只有一处**。
+	//
+	// ⚠️ 这条在设置页和共享面板上各踩过一次：标题由外壳的 #page-title
+	// 统一负责（阶段 2b 定的），视图自己再渲染一个同名标题就会出现
+	// 两个一模一样的标题 —— 截图里一眼可见，但当时的断言都是绿的。
+	const titleAudit = JSON.parse(
+		await evaluate(
+			window,
+			`(() => {
+				const pageTitle = (document.getElementById('page-title')?.textContent ?? '').trim()
+				const views = [
+					['share', document.getElementById('view-share')],
+					['settings', document.getElementById('view-settings')],
+					['content', document.getElementById('content')],
+				]
+				const duplicates = []
+				for (const [name, root] of views) {
+					if (!root || !pageTitle) continue
+					for (const h of root.querySelectorAll('h1, h2')) {
+						if ((h.textContent ?? '').trim() === pageTitle) {
+							duplicates.push(name + ':' + h.tagName)
+						}
+					}
+				}
+				return JSON.stringify({ pageTitle, duplicates })
+			})()`,
+		),
+	)
+	check(
+		'页面标题在视图内部没有重复（标题只有一处）',
+		titleAudit.duplicates.length === 0,
+		titleAudit.duplicates.length > 0
+			? `重复：${titleAudit.duplicates.join('、')}`
+			: `页面标题「${titleAudit.pageTitle}」只有一处`,
+	)
+
 	check(
 		'设置页在 .main 里（跑到 body 下就会画在屏幕外）',
 		settingsNesting.viewInsideMain && settingsNesting.viewParent === 'main',

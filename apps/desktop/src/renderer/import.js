@@ -156,8 +156,10 @@
 
 		const hint = document.createElement('p')
 		hint.className = 'muted settings-hint'
+		// ⚠️ 只说用户能观察到的事（"逐首、要几分钟"），
+		// 不说我们的请求策略（串行 / 限流）—— 那是实现细节。
 		hint.textContent =
-			'匹配用 B 站搜索逐首进行（串行，避免被限流）。' +
+			'会逐首在 B 站搜索匹配，可能要几分钟。' +
 			'「待确认」的条目会列出候选让你选；「未匹配」的可以手工填 BV 号。'
 		form.appendChild(hint)
 

@@ -114,17 +114,71 @@ apps/desktop/
     bbplayer-account.cjs      BBPlayer 账号（共享歌单的后端身份；独立于 B 站登录）
     shared-playlist.cjs       共享歌单：分享 / 订阅 / outbox 增量同步 / 成员 / 邀请码
     ipc-handlers.cjs          全部 IPC handler
-    探针：probe-driver / ui-probe-driver / compare-driver /
+    theme.cjs                 设计令牌 → CSS 变量（含材质强度与种子色派生）
+    探针：probe-driver / ui-probe-driver / ui-tour-driver / compare-driver /
           login-probe-driver / media-probe-driver / settings-probe-driver /
           lyrics-window-probe-driver / history-probe-driver / import-probe-driver /
           share-probe-driver
     renderer/
-      index.html  style.css  state.js  player.js  library.js
+      index.html  style.css  components.css
+      theme.js  components.js  status.js  state.js  player.js  library.js
       keyboard.js  lyrics-panel.js  media-session.js
       lyrics-window.html  lyrics-window.css  lyrics-window.js
       desktop-features.js  settings-panel.js
       auth.js  favorites.js  history.js  import.js  share.js  renderer.js
+    renderer/assets/
+      material-symbols-rounded.woff2   Material Symbols **子集**（65 个图标，10.6 KB）
+      material-symbols.css  material-symbols.json
+      ↑ 由 scripts/build-icon-font.mjs 生成，**随源码提交**（见下）
 ```
+
+## 界面（阶段 0–5 重做）
+
+完整施工图见 `docs/DESKTOP_UI_PLAN.md`。几条**会导致返工**的约定：
+
+- **信息架构**：左栏只有 4 个**目的地**（主页 / 音乐库 / 搜索 / 设置）。
+  「导入」「共享」是页内动作，不是一级入口。音乐库内部有 4 个页签
+  （播放列表 / 收藏夹 / 合集 / 导入）。
+- **中栏是互斥的多页面**：`#content` / `#view-share` / `#view-settings` /
+  `#view-nowplaying` 四选一，由 `renderer.js` 的 `showMainPane()` **统一**决定
+  谁可见。分散在各自模块里决定迟早会漏一个，而漏掉的表现是"某两个页面同时
+  出现在屏幕上"。
+- **标题只有一处**：外壳的 `#page-title`。视图内部**不要**再渲染同名标题
+  （设置页与共享面板各踩过一次：出现两个一模一样的标题，而断言全绿）。
+- **选中态只有一种**：填充胶囊，取 `secondary-container` / `on-secondary-container`。
+  导航项、页签、分段控件共用同一组选择器。
+- **封面统一圆角正方形**（用户明确要求），不用圆形。
+- **`[hidden]` 必须真的隐藏**：`style.css` 顶部有一条全局
+  `[hidden] { display: none !important }`。UA 的 `[hidden]` 优先级极低，
+  任何 `display: flex` 都会盖掉它 —— 这个仓库为此绕过两次。
+- **队列只有一份 DOM**（`#queue-list`），在右栏与正在播放面板之间搬运
+  （`placeQueue()`）。渲染两份会让 `data-queue-index` 重复。
+
+### 验证：断言证明不了"好不好看"
+
+- `pnpm verify:desktop:ui` —— 114 条断言（设计系统级：字阶、选中态一致性、
+  图标合字、封面形状、`[hidden]` 审计、DOM 嵌套、配色对比度…）。
+- `pnpm verify:desktop:tour` —— **截图巡检**：每个视图 / 弹窗 / 空状态都截图
+  （浅色 + 深色各 33 张），并写一份"体检表"（关键容器的尺寸、display、
+  opacity、**祖先链**）。断言全绿但界面空白的那几次，全是靠体检表定位的。
+- `pnpm check:probes` —— 探针脚本静态检查（已接 pre-commit）。
+  探针驱动跑在主进程里，**加载失败 = 整个应用起不来**；而
+  "在模板字符串内部的注释里写反引号"这个坑踩过**五次**（反引号会当场结束
+  模板，且全局数量仍然配平，数奇偶看不出来）。
+
+### 图标字体为什么随源码提交
+
+`renderer/assets/material-symbols-rounded.woff2` 由
+`pnpm --filter @bbplayer/desktop build:icon-font` 生成，**不是**构建产物：
+
+- CI / 别人 clone 之后不该需要联网才能构建；
+- 上游改了图标集不该让历史提交的产物变样；
+- `build/` 是 gitignore 的，放那里等于"每次都要重新下"。
+
+两个实测有效的细节：变量轴**只留 FILL 可变**能把体积从 69 KB 压到 10 KB；
+且 Google Fonts 对**不存在的图标名不报错**，只是把图标从子集里悄悄去掉 ——
+于是合字不生效、界面渲染出字面的图标名（实测一条 144px 宽的 `play_next`
+压在时长列上）。所以构建脚本会**逐个校验名字**。
 
 ### 为什么数据库 schema 与移动端同源
 

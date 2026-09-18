@@ -369,11 +369,16 @@
 	}
 
 	function renderHead() {
+		/*
+		 * ⚠️ 这里**不再**渲染「共享歌单」标题。
+		 *
+		 * 标题由外壳的 `#page-title` 统一负责（阶段 2b 定的规矩：
+		 * 标题只有一处）。视图自己再来一个 h2 就会出现两个一模一样的标题 ——
+		 * 设置页踩过同一个坑（截图里一眼可见）。
+		 *
+		 * 这一行只留右侧的账号摘要。
+		 */
 		const head = el('div', 'share-head')
-		const h2 = document.createElement('h2')
-		h2.textContent = '共享歌单'
-		head.appendChild(h2)
-
 		const summary = el('span', 'muted', 'share-account-status')
 		summary.textContent = describeAccountSummary()
 		head.appendChild(summary)
@@ -416,9 +421,11 @@
 	function renderLoggedOut(section, account) {
 		section.appendChild(
 			hint(
-				`共享歌单用的是 BBPlayer 后端账号（与 B 站登录无关）。` +
-					`本地先行校验：用户名 ≥ ${USERNAME_MIN} 位、密码 ≥ ${PASSWORD_MIN} 位；` +
-					`校验不通过不会发出网络请求。`,
+				`共享歌单用的是 BBPlayer 账号（与 B 站登录无关）。` +
+					// ⚠️ 只说用户要遵守的规则（几位），
+					// 不说我们怎么校验（"本地先行校验""不发出网络请求"）——
+					// 那是实现细节，用户照做就行。
+					`用户名至少 ${USERNAME_MIN} 位，密码至少 ${PASSWORD_MIN} 位。`,
 			),
 		)
 
@@ -521,7 +528,9 @@
 
 		section.appendChild(
 			hint(
-				'粘贴分享链接或歌单 ID（形如 8-4-4-4-12 的十六进制）。' +
+				// 不说"形如 8-4-4-4-12 的十六进制"——那是 ID 的格式细节，
+				// 用户手上拿到的是别人给的链接，粘贴进来就行。
+				'粘贴别人给你的分享链接或歌单 ID。' +
 					'「预览」不需要登录；点「订阅」才需要 BBPlayer 账号。',
 			),
 		)
@@ -872,11 +881,14 @@
 			membersBox.appendChild(list)
 
 			if (info.canSeeSubscribers === false) {
-				// 不能静默地给一份更短的名单 —— 必须说明为什么少了订阅者
+				// 不能静默地给一份更短的名单 —— 必须说明为什么少了订阅者。
+				//
+				// ⚠️ 但**不写"服务端 403"**：那是实现细节。用户要知道的是
+				// "为什么名单短了"，而不是我们调了哪个接口、它回了什么状态码。
 				const note = el('p', 'muted share-note')
 				note.textContent =
-					'订阅者列表对当前角色不可见（服务端 403）：' +
-					`下面${info.membersFrom === 'cache' ? '是最近一次同步缓存里的协作者' : '只有协作者'}，不含订阅者。`
+					'你的角色看不到订阅者：' +
+					`下面${info.membersFrom === 'cache' ? '是上次同步时记录到的协作者' : '只有协作者'}，不含订阅者。`
 				membersBox.appendChild(note)
 			}
 			box.appendChild(membersBox)
