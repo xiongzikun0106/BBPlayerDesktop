@@ -179,6 +179,28 @@ async function run(window, { app }) {
 					theme: document.documentElement.getAttribute('data-theme'),
 					title: document.title,
 					bodyLength: document.body.innerHTML.length,
+					/*
+					 * 图标字体是**新引入的资源类型**（本地 @font-face），
+					 * 打包漏掉它、或 CSP 拦了它，都会让**每一个图标变成字面的
+					 * 单词**（实测过一次：一个九字母的图标名被渲染成
+					 * 144px 宽的文本，压在别的列上）。
+					 * 所以要在打包产物里真的确认它加载了。
+					 */
+					iconFontLoaded: document.fonts.check(
+						'24px "Material Symbols Rounded"',
+					),
+					iconGlyphs: (() => {
+						// 一个图标元素应当接近 1em 宽；远大于 1 说明合字没生效
+						const icon = document.querySelector('.icon')
+						if (!icon) return null
+						const size = Number.parseFloat(
+							getComputedStyle(icon).fontSize,
+						)
+						if (!Number.isFinite(size) || size === 0) return null
+						return Math.round(
+							(icon.getBoundingClientRect().width / size) * 100,
+						)
+					})(),
 				}))()`,
 				true,
 			)
@@ -212,6 +234,19 @@ async function run(window, { app }) {
 				'主题已应用',
 				renderer.theme === 'dark' || renderer.theme === 'light',
 				renderer.theme,
+			)
+			// 图标字体在**打包产物**里也必须真的加载 ——
+			// 它是新引入的资源类型（本地 @font-face），漏打包或被 CSP 拦掉
+			// 的表现是"每个图标变成字面的英文单词"，而其余断言全绿。
+			record(
+				'图标字体已加载（打包后仍生效）',
+				renderer.iconFontLoaded === true,
+				`document.fonts.check = ${renderer.iconFontLoaded}`,
+			)
+			record(
+				'图标渲染成单个字形（合字生效）',
+				typeof renderer.iconGlyphs === 'number' && renderer.iconGlyphs <= 180,
+				`宽度/字号 = ${renderer.iconGlyphs}%（≤180 视为单个字形）`,
 			)
 			// 自检模式本身属于探针模式，所以 bbProbe **应该**存在
 			record(
