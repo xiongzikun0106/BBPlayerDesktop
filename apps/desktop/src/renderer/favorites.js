@@ -48,6 +48,21 @@
 	/** 折叠/展开的曲目预览缓存：mediaId -> items */
 	const resourceCache = new Map()
 
+	/*
+	 * 关于 UID 工具条（`#favorite-bar`）的位置：
+	 *
+	 * 它原本是 `#content` 的**兄弟节点**、排在内容区下面，于是提示写着
+	 * "填入任意 B 站用户的 UID" 而输入框在整屏之外的底边 ——
+	 * 这是截图巡检时**看**出来的（布局体检抓不到：不越界也不塌陷，
+	 * 只是位置不合理）。
+	 *
+	 * 修法是在 **index.html 里把它挪到「页签条」与「内容区」之间**：
+	 *   * 位置对了（就在收藏夹标题与提示的上方几像素处）；
+	 *   * 它是**永久节点**，不会被 `#content` 的每次重渲染清掉 ——
+	 *     一开始试过"在渲染时把它 append 进 #content"，结果点一次
+	 *     文件夹预览就把 `#favorite-status` 连带清掉了，状态文案写不进去
+	 *     （由 login 探针的「收藏夹导入为本地歌单成功」抓到）。
+	 */
 	function renderFolders(folders, mid) {
 		const content = els.content
 		if (!content) return
@@ -308,6 +323,19 @@
 		intro.textContent =
 			'填入任意 B 站用户的 UID 即可读取其公开收藏夹（无需登录）。登录后还能读到自己的私密收藏夹。'
 		content.appendChild(intro)
+
+		/*
+		 * ⚠️ UID 工具条要**紧贴提示**，不能留在页面最底部。
+		 *
+		 * `#favorite-bar` 原本是 `#content` 的**兄弟节点**（历史结构），
+		 * 于是提示写着"填入任意 B 站用户的 UID"，而输入框在整屏之外的底边 ——
+		 * 用户得自己去找。这是截图巡检时**看**出来的：
+		 * 布局体检抓不到它（不越界、不塌陷，只是位置不合理）。
+		 *
+		 * 现在把它搬进 `#content`。用**搬运**而不是复制 —— `#favorite-bar`
+		 * 只有一份，探针按 id 找不会找到两个。别的视图渲染时会
+		 * `clear(#content)` 把它一起带走，切回本页签时这里会重新挂上。
+		 */
 
 		const actions = document.createElement('div')
 		actions.className = 'row-actions'

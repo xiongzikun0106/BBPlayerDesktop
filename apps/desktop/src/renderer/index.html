@@ -226,11 +226,14 @@
 					</div>
 				</div>
 
-				<section class="content" id="content" data-testid="content">
-					<!-- 由 renderer.js 按视图渲染 -->
-				</section>
-
-				<!-- 收藏夹工具条：仅在收藏夹视图显示 -->
+				<!--
+					收藏夹工具条：仅在「音乐库 › 收藏夹」页签显示。
+					⚠️ 放在**内容区上方**：提示写着"填入任意 B 站用户的 UID"，
+					工具条就应当在它旁边几像素处；放到内容区下面等于让用户
+					去屏幕底部找输入框（截图巡检发现的）。
+					也**不要**在渲染时把它 append 进 #content —— 那样任何一次
+					重渲染（比如展开一个文件夹预览）都会把它连同状态行一起清掉。
+				-->
 				<div
 					class="favorite-bar"
 					id="favorite-bar"
@@ -252,6 +255,11 @@
 					<button id="favorite-load" data-testid="favorite-load">读取收藏夹</button>
 					<span class="muted" id="favorite-status" data-testid="favorite-status"></span>
 				</div>
+
+				<section class="content" id="content" data-testid="content">
+					<!-- 由 renderer.js 按视图渲染 -->
+				</section>
+
 
 				<!--
 					共享歌单视图（Phase 3.4）。

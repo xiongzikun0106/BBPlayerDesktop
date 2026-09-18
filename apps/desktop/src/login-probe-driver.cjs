@@ -593,10 +593,19 @@ async function run(window) {
 		if (!geometry.ok) {
 			check('收藏夹工具条与内容区不重叠', false, geometry.reason)
 		} else {
+			/*
+			 * ⚠️ 断言从「工具条在内容区**下方**」改成「两者**不重叠**」。
+			 *
+			 * 工具条原本挂在 `#content` 下面（页面最底部），而它的提示写着
+			 * "填入任意 B 站用户的 UID" —— 输入框离提示整屏远。
+			 * 现在它挪到了内容区**上方**（紧邻标题与那行提示），
+			 * 所以"在下方"这个方向不再成立；真正要守的是**不重叠**。
+			 */
 			check(
-				'收藏夹工具条在内容区下方（不重叠）',
-				geometry.barTop >= geometry.contentBottom - 1,
-				`工具条 top=${geometry.barTop}, 内容区 bottom=${geometry.contentBottom}（差 ${geometry.barTop - geometry.contentBottom}px）`,
+				'收藏夹工具条与内容区不重叠（无论在上还是在下）',
+				geometry.barBottom <= geometry.contentTop + 1 ||
+					geometry.barTop >= geometry.contentBottom - 1,
+				`工具条 [${geometry.barTop}, ${geometry.barBottom}]，内容区 [${geometry.contentTop}, ${geometry.contentBottom}]`,
 			)
 			check(
 				'工具条在 .main 容器内（未被裁掉）',
