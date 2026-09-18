@@ -158,15 +158,20 @@
   `.settings-row button` 被当成嵌套规则、整块样式被解析器静默丢弃的 bug
   —— 那才是用户抱怨"很多小输入框都是默认的 HTML 样式"的**根因**。
 
-**1b 待做**：
+**1b ✅ 已完成**（`3cb9543d`）：
 
-- 图标：**Material Symbols 子集 woff2**（只保留实际用到的字形），
-  与移动端同一套图标语言。现在 7 个导航项用的是 unicode 字形
-  （♪ ⌕ ↧ ⟳ ★ ☰ ⇄），跨平台渲染不一致、粗细不齐。
-- **材质层**（借鉴 Salt Player 的「材质」页）：一层 `backdrop-filter` 封装，
-  强度三档 **无 / 遮罩模糊 / 渐变模糊**，用一个 CSS 变量切换。
-  用处：顶栏、悬浮播放条、正在播放面板、对话框背景。
-  Chromium 原生支持，成本很低但质感提升最大的一处。
+- 图标：**Material Symbols Rounded 子集字体**（57 个图标，**9.3 KB**，
+  随源码提交）。`scripts/build-icon-font.mjs` + `scripts/icons.txt` 一次取全，
+  以后加图标不用重建字体。用合字渲染，HTML 里写的是语义名字
+  （`<span class="icon">library_music</span>`）。
+  - 变量轴**只留 FILL 可变**：全轴 69.3 KB → 只留 FILL 9.3 KB。
+  - 播放模式从文字改成图标（repeat / repeat_one / shuffle）。
+- **材质层**：顶栏 / 弹窗 / 设置抽屉一层 `backdrop-filter`，
+  三档 **无 / 模糊 / 渐变模糊**（`<html data-material>` 切换）。
+  三档不是"越来越模糊"而是三种表面处理：`none` 必须不透明。
+- 修掉两个真问题：图标**不在控件正中**（inline-block 坐在文字基线 + 上下
+  padding 不等）；以及第一版 `:has(> .icon:only-child)` **误伤左栏导航**
+  导致文字竖排（`only-child` 数不到裸文本节点）。
 
 **1c 待做**：
 
