@@ -15,10 +15,26 @@
 	'use strict'
 
 	const els = {
-		drawer: document.getElementById('settings-drawer'),
+		/**
+		 * 设置现在是**一级页面**（阶段 3），不再是右侧抽屉。
+		 * 导航模型是「分类列表 → 子页」，与移动端一致。
+		 */
+		view: document.getElementById('view-settings'),
 		open: document.getElementById('settings-open'),
-		close: document.getElementById('settings-close'),
-		tabs: document.querySelectorAll('[data-settings-tab]'),
+		categories: document.getElementById('settings-categories'),
+		panelsBox: document.getElementById('settings-panels'),
+		categoryButtons: document.querySelectorAll('[data-settings-category]'),
+		back: document.getElementById('settings-back'),
+		back2: document.getElementById('settings-close'),
+		/**
+		 * 分类名列表（用于校验 `switchCategory` 收到的是个真分类）。
+		 *
+		 * 刻意不叫 `tabs`：那会把"页签"的心智留在代码里，
+		 * 而现在的模型是"分类列表 → 子页"。
+		 */
+		categoryKeys: [...document.querySelectorAll('[data-settings-panel]')].map(
+			(el) => el.dataset.settingsPanel,
+		),
 		panels: document.querySelectorAll('[data-settings-panel]'),
 
 		// 下载
@@ -174,6 +190,12 @@
 			}
 			if (els.downloadParallel && currentSettings.downloadMaxParallel != null) {
 				els.downloadParallel.value = String(currentSettings.downloadMaxParallel)
+			}
+			// 歌词：自动匹配（默认开 —— 用 `!== false` 而不是真值判断，
+			// 这样旧版本设置里没有这个键时也能得到"开"）
+			const lyricsAuto = document.getElementById('settings-lyrics-auto')
+			if (lyricsAuto) {
+				lyricsAuto.checked = currentSettings.lyricsAutoMatch !== false
 			}
 		} catch (error) {
 			setStatus(els.backupStatus, error.message, 'bad')
@@ -829,14 +851,173 @@
 	// 开关 / 页签
 	// ---------------------------------------------------------------
 
-	function switchTab(tab) {
-		for (const button of els.tabs) {
-			button.classList.toggle('is-active', button.dataset.settingsTab === tab)
+	// ---------------------------------------------------------------
+	// 账号 / 通用 / 关于（阶段 3 新增的分类）
+	// ---------------------------------------------------------------
+
+	/**
+	 * Bilibili 账号：**只显示头像 + 昵称**（用户明确要求）。
+	 *
+	 * 账号页要回答的是"我现在是谁"，不是"你的凭据存在哪"——
+	 * 后者属于「关于 › 诊断信息」。所以这里没有 mid、没有登录时间、
+	 * 没有加密方式，只有一张脸和一个名字。
+	 */
+	async function refreshAccountSummary() {
+		const avatar = document.getElementById('settings-bili-avatar')
+		const name = document.getElementById('settings-bili-name')
+		const sub = document.getElementById('settings-bili-sub')
+		const login = document.getElementById('settings-bili-login')
+		const logout = document.getElementById('settings-bili-logout')
+		if (!name) return
+
+		let status = null
+		try {
+			status = await window.bbplayer.loginStatus()
+		} catch {
+			// 拿不到就当未登录，不打断设置页
 		}
+		const user = status?.user ?? null
+		const loggedIn = Boolean(status?.loggedIn)
+
+		if (name) name.textContent = loggedIn ? (user?.uname ?? '已登录') : '未登录'
+		if (sub)
+			sub.textContent = loggedIn
+				? (user?.vipLabel ?? '')
+				: '登录后可读私密收藏夹'
+		if (login) login.hidden = loggedIn
+		if (logout) logout.hidden = !loggedIn
+
+		if (avatar) {
+			avatar.textContent = ''
+			if (loggedIn && user?.face) {
+				const img = document.createElement('img')
+				img.src = user.face
+				img.alt = ''
+				// 头像加载失败就退回图标，不留破图
+				img.addEventListener('error', () => {
+					avatar.textContent = ''
+					const span = document.createElement('span')
+					span.className = 'icon icon--lg'
+					span.textContent = 'person'
+					avatar.appendChild(span)
+				})
+				avatar.appendChild(img)
+			} else {
+				const span = document.createElement('span')
+				span.className = `icon icon--lg${loggedIn ? '' : ''}`
+				span.textContent = loggedIn ? 'account_circle' : 'person'
+				avatar.appendChild(span)
+			}
+		}
+
+		// 分类列表上的副标题也要跟着更新（列表里就能看出登录状态）
+		const rowSub = document.getElementById('settings-cat-bili-sub')
+		if (rowSub)
+			rowSub.textContent = loggedIn ? (user?.uname ?? '已登录') : '未登录'
+	}
+
+	/**
+	 * BBPlayer 账号：共享歌单用的账号。
+	 *
+	 * 与 B 站账号是**两回事** —— 写清楚这一点，用户才不会以为登了一个就够。
+	 * 这里只做展示 + 一个去共享面板的入口（注册/登录的完整流程在那儿）。
+	 */
+	async function refreshBbplayerSummary() {
+		const name = document.getElementById('settings-bbplayer-name')
+		const sub = document.getElementById('settings-bbplayer-sub')
+		const rowSub = document.getElementById('settings-cat-bbplayer-sub')
+		if (!name) return
+
+		let account = null
+		try {
+			// `describe()` 是共享面板给自动化用的摘要，正好也是这里需要的
+			account = window.bbShare?.describe?.() ?? null
+		} catch {
+			// 共享面板不可用就当未登录
+		}
+
+		const loggedIn = Boolean(account?.loggedIn)
+		const display = account?.account?.name ?? account?.account?.username ?? null
+		name.textContent = loggedIn ? (display ?? '已登录') : '未登录'
+		if (sub) {
+			sub.textContent = loggedIn ? '共享歌单已开启同步' : '去共享面板注册或登录'
+		}
+		if (rowSub) {
+			rowSub.textContent = loggedIn ? (display ?? '已登录') : '共享歌单用的账号'
+		}
+	}
+
+	/**
+	 * 通用：数据目录 + 快捷键。
+	 *
+	 * ⚠️ 数据目录是**实现细节**，但它在「通用」里是有用的（用户要备份/迁移），
+	 * 所以给的是"打开所在文件夹"这个**动作**，路径本身只在诊断信息里露出。
+	 */
+	async function refreshGeneral() {
+		const dir = document.getElementById('settings-general-dir')
+		if (!dir) return
+		try {
+			const info = await window.bbplayer.diagnostics?.()
+			dir.textContent = info?.ok ? (info.data?.dataDir ?? '—') : '—'
+		} catch {
+			dir.textContent = '—'
+		}
+	}
+
+	/** 关于：版本号 + 诊断信息 */
+	async function refreshAbout() {
+		const version = document.getElementById('settings-about-version')
+		try {
+			const info = await window.bbplayer.diagnostics?.()
+			if (version) {
+				version.textContent = info?.ok ? (info.data?.versions?.app ?? '—') : '—'
+			}
+		} catch {
+			if (version) version.textContent = '—'
+		}
+		await refreshDiagnostics()
+	}
+
+	/** 分类名 → 子页标题（内容由各分类的渲染函数填） */
+	const CATEGORY_TITLES = {
+		theme: '主题',
+		appearance: '外观',
+		playback: '播放',
+		lyrics: '歌词',
+		download: '下载',
+		'account-bili': 'Bilibili 账号',
+		'account-bbplayer': 'BBPlayer 账号',
+		backup: '备份与恢复',
+		general: '通用',
+		about: '关于',
+	}
+
+	/**
+	 * 打开某个分类的子页。
+	 *
+	 * 与旧的「页签」相比多了一件事：**隐藏分类列表、显示子页、露出返回按钮**。
+	 * 这是"分类列表 → 子页"这个导航模型的核心（移动端就是这样）。
+	 *
+	 * @param {string} tab 分类名
+	 */
+	function switchCategory(tab) {
+		if (!els.categoryKeys.includes(tab)) return
 		for (const panel of els.panels) {
 			panel.classList.toggle('is-active', panel.dataset.settingsPanel === tab)
 		}
+		if (els.categories) els.categories.hidden = true
+		if (els.panelsBox) els.panelsBox.hidden = false
+		if (els.back) els.back.hidden = false
+		// 标题用**外壳**的 #page-title（页面里只有这一处标题）
+		const title = document.getElementById('page-title')
+		if (title) title.textContent = CATEGORY_TITLES[tab] ?? '设置'
+		window.bbState?.set?.({ settingsCategory: tab })
+
 		if (tab === 'download') void refreshDownloads()
+		if (tab === 'account-bili') void refreshAccountSummary()
+		if (tab === 'account-bbplayer') void refreshBbplayerSummary()
+		if (tab === 'general') void refreshGeneral()
+		if (tab === 'about') void refreshAbout()
 		if (tab === 'backup') {
 			// ⚠️ 必须**同时**加载远端列表。
 			// 第一版只调 refreshBackupConfig()，于是打开备份页签时列表区是空白的，
@@ -850,23 +1031,39 @@
 		if (tab === 'appearance') void refreshSettings()
 	}
 
-	for (const button of els.tabs) {
+	for (const button of els.categoryButtons) {
 		button.addEventListener('click', () =>
-			switchTab(button.dataset.settingsTab),
+			switchCategory(button.dataset.settingsCategory),
 		)
 	}
+	els.back?.addEventListener('click', () => showCategories())
 
-	function open(tab) {
-		if (!els.drawer) return
-		els.drawer.hidden = false
-		els.drawer.classList.add('is-open')
-		switchTab(tab ?? 'appearance')
+	/** 回到分类列表（返回按钮，或再次点左栏的「设置」） */
+	function showCategories() {
+		if (els.categories) els.categories.hidden = false
+		if (els.panelsBox) els.panelsBox.hidden = true
+		if (els.back) els.back.hidden = true
+		const title = document.getElementById('page-title')
+		if (title) title.textContent = '设置'
+		for (const panel of els.panels) panel.classList.remove('is-active')
+		window.bbState?.set?.({ settingsCategory: null })
+	}
+
+	/**
+	 * 打开设置（左栏的一个目的地）。
+	 *
+	 * @param {string} [category] 直接进某一类；不传就停在分类列表
+	 */
+	function open(category) {
+		if (!els.view) return
+		els.view.hidden = false
+		if (category) switchCategory(category)
+		else showCategories()
 	}
 
 	function close() {
-		if (!els.drawer) return
-		els.drawer.hidden = true
-		els.drawer.classList.remove('is-open')
+		if (!els.view) return
+		els.view.hidden = true
 		if (downloadTicker) {
 			clearInterval(downloadTicker)
 			downloadTicker = null
@@ -874,14 +1071,60 @@
 	}
 
 	els.open?.addEventListener('click', () => open())
-	els.close?.addEventListener('click', close)
-	// 遮罩点击关闭
-	els.drawer?.addEventListener('click', (event) => {
-		if (event.target === els.drawer) close()
-	})
+
+	// —— 账号 / 通用 分类里的动作 ——
+	//
+	// 每个动作都只是**转发**到既有的实现（登录弹窗、共享面板、歌词窗口），
+	// 不在这里复制一份逻辑 —— 复制出来的第二份必然会与第一份漂移。
+	document
+		.getElementById('settings-bili-login')
+		?.addEventListener('click', () => window.bbAuth?.open?.('qr'))
+	document
+		.getElementById('settings-bili-logout')
+		?.addEventListener('click', () => {
+			void (async () => {
+				await window.bbAuth?.logout?.()
+				await refreshAccountSummary()
+			})()
+		})
+	document
+		.getElementById('settings-bbplayer-open')
+		?.addEventListener('click', () => {
+			// 共享面板是页内动作；从设置里跳过去要同时把它显示出来
+			void window.bbShare?.show?.()
+			window.bbUI?.setActiveNav?.('share')
+		})
+	document
+		.getElementById('settings-general-open-folder')
+		?.addEventListener('click', () => void window.bbplayer.backupOpenFolder?.())
+	document
+		.getElementById('settings-general-shortcuts')
+		?.addEventListener('click', () => {
+			// 快捷键说明住在顶栏的弹层里，这里把它打开给用户看
+			window.bbShortcuts?.open?.()
+		})
+	document
+		.getElementById('settings-lyrics-window')
+		?.addEventListener(
+			'click',
+			() => void window.bbplayer.lyricsWindow?.toggle?.(),
+		)
+	document
+		.getElementById('settings-lyrics-auto')
+		?.addEventListener('change', (event) => {
+			void (async () => {
+				await features?.writeSettings?.({
+					lyricsAutoMatch: Boolean(event.target.checked),
+				})
+				await refreshSettings()
+			})()
+		})
+	// ⚠️ 设置不再是浮层，所以**没有"点遮罩关闭"**这回事 ——
+	// 它是一个页面，离开靠点左栏的别的目的地。
+	els.back2?.addEventListener('click', close)
 
 	/**
-	 * 面板打开时轮询下载进度。
+	 * 分类子页打开时轮询下载进度。
 	 *
 	 * 用轮询而不是主进程推送：桌面端是本地磁盘写入，500ms 一次的开销可忽略，
 	 * 而少一条推送通道就少一处状态同步 bug（与 preload 里的注释一致）。
@@ -889,8 +1132,8 @@
 	function startDownloadPolling() {
 		if (downloadTicker) return
 		downloadTicker = setInterval(() => {
-			if (els.drawer?.hidden) return
-			const active = els.drawer?.querySelector(
+			if (els.view?.hidden) return
+			const active = els.view?.querySelector(
 				'[data-settings-panel="download"].is-active',
 			)
 			if (active) void refreshDownloads()
@@ -901,7 +1144,10 @@
 		init,
 		open,
 		close,
-		switchTab,
+		showCategories,
+		switchCategory,
+		/** @deprecated 旧名字，保留一个版本以免外部调用点漏改 */
+		switchTab: switchCategory,
 		refreshSettings,
 		refreshDownloads,
 		refreshRemoteBackups,
@@ -909,10 +1155,12 @@
 		/** 供自动化断言 */
 		describe: () => ({
 			currentSettings,
-			drawerHidden: els.drawer?.hidden ?? true,
-			activeTab:
-				document.querySelector('[data-settings-tab].is-active')?.dataset
-					.settingsTab ?? null,
+			viewHidden: els.view?.hidden ?? true,
+			categoryListVisible: !els.categories?.hidden,
+			activeCategory:
+				document.querySelector('[data-settings-panel].is-active')?.dataset
+					.settingsPanel ?? null,
+			categories: els.categoryKeys,
 		}),
 	}
 })()

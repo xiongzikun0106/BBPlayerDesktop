@@ -152,22 +152,29 @@ async function run(window) {
 	// ---------- 2. 打开抽屉 ----------
 	check(
 		'设置抽屉初始隐藏',
-		await evaluate(window, `document.getElementById('settings-drawer').hidden`),
+		await evaluate(window, `document.getElementById('view-settings').hidden`),
 	)
-	await click(window, '#settings-open')
+	await click(window, '[data-testid="nav-settings"]')
 	await sleep(400)
 	check(
-		'点击齿轮后抽屉可见',
+		'点左栏「设置」后设置页可见',
 		(await evaluate(
 			window,
-			`document.getElementById('settings-drawer').hidden`,
+			`document.getElementById('view-settings').hidden`,
 		)) === false,
 	)
+	// ⚠️ 阶段 3 起设置是「分类列表 → 子页」。**进来先看到分类列表**，
+	// 而不是直接停在某一类 —— 用户点「设置」的意图是找某一项设置，
+	// 直接把他丢进「外观」会让另外 9 类无处可寻。
 	check(
-		'默认停在外观页签',
+		'进来先看到分类列表（不是直接进某个子页）',
 		(await evaluate(
 			window,
-			`document.querySelector('[data-settings-panel="appearance"]').classList.contains('is-active')`,
+			`(() => {
+				const list = document.getElementById('settings-categories')
+				const panels = document.getElementById('settings-panels')
+				return Boolean(list && !list.hidden) && Boolean(panels?.hidden)
+			})()`,
 		)) === true,
 	)
 
@@ -395,7 +402,7 @@ async function run(window) {
 	await sleep(600)
 
 	// ---------- 4. 定时关闭：预设与倒计时 ----------
-	await click(window, '[data-settings-tab="playback"]')
+	await click(window, '[data-testid="settings-cat-playback"]')
 	await sleep(300)
 	check(
 		'切到播放页签',
@@ -627,7 +634,7 @@ async function run(window) {
 	check('可以关闭响度均衡', loudnessOff.ok)
 
 	// ---------- 7. 下载面板 ----------
-	await click(window, '[data-settings-tab="download"]')
+	await click(window, '[data-testid="settings-cat-download"]')
 	await sleep(500)
 	check(
 		'切到下载页签',
@@ -740,7 +747,7 @@ async function run(window) {
 	await shot(window, 'settings-05-download')
 
 	// ---------- 8. 备份面板 ----------
-	await click(window, '[data-settings-tab="backup"]')
+	await click(window, '[data-testid="settings-cat-backup"]')
 	await sleep(600)
 	check(
 		'切到备份页签',
@@ -754,7 +761,7 @@ async function run(window) {
 		(await textOf(window, '#settings-backup-security')).length > 0,
 		await textOf(window, '#settings-backup-security'),
 	)
-	// 远端列表的空态文案里含「远端」；但 `switchTab` 里 `refreshRemoteBackups`
+	// 远端列表的空态文案里含「远端」；但 switchCategory 里 refreshRemoteBackups
 	// 是异步的，所以要**等**它渲染出来，不能立刻读。
 	const remoteList = await waitFor(
 		window,
@@ -947,18 +954,18 @@ async function run(window) {
 	)
 
 	// ---------- 9. 关闭 ----------
-	await click(window, '#settings-close')
+	await click(window, '[data-testid="nav-library"]')
 	await sleep(300)
 	check(
 		'关闭按钮隐藏抽屉',
-		await evaluate(window, `document.getElementById('settings-drawer').hidden`),
+		await evaluate(window, `document.getElementById('view-settings').hidden`),
 	)
 
 	// 快捷键 Ctrl+, 打开
 	await evaluate(window, `window.bbUI.press('ctrl+,')`)
 	const shortcutOpen = await waitFor(
 		window,
-		`document.getElementById('settings-drawer').hidden === false ? { ok: true } : false`,
+		`document.getElementById('view-settings').hidden === false ? { ok: true } : false`,
 		5000,
 		'shortcut',
 	)

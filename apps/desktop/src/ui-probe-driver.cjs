@@ -1350,6 +1350,220 @@ async function run(window) {
 		`${listFeatureUi.queueRowsDraggable}/${listFeatureUi.queueRows} 行可拖`,
 	)
 
+	// ---------------------------------------------------------------
+	// 2.7 设置：一级页面（分类列表 → 子页）
+	// ---------------------------------------------------------------
+	//
+	// ⚠️ 原来是右侧抽屉 + 4 个页签。阶段 3 改成一级页面：左栏点「设置」进来
+	// 看到 **10 类**（移动端 9+1），点一类进子页，子页左上角有返回。
+	//
+	// 这一节同时是「页面真的渲染出来了」的断言 —— 截图巡检里第一版
+	// **分类列表是空白**（标题有、列表没有），而当时的断言只看了标题。
+	console.log('\n[ui] 2.7) 设置页')
+	await click(window, '[data-testid="nav-settings"]')
+	await sleep(900)
+
+	const settingsState = JSON.parse(
+		await evaluate(
+			window,
+			`(() => {
+				const view = document.getElementById('view-settings')
+				const list = document.getElementById('settings-categories')
+				const buttons = [...document.querySelectorAll('[data-settings-category]')]
+				const visible = buttons.filter((b) => {
+					const r = b.getBoundingClientRect()
+					return r.width > 40 && r.height > 20
+				})
+				return JSON.stringify({
+					viewVisible: Boolean(view && !view.hidden),
+					listVisible: Boolean(list && !list.hidden),
+					total: buttons.length,
+					visible: visible.length,
+					keys: buttons.map((b) => b.dataset.settingsCategory),
+					firstRect: buttons[0]
+						? {
+								w: Math.round(buttons[0].getBoundingClientRect().width),
+								h: Math.round(buttons[0].getBoundingClientRect().height),
+							}
+						: null,
+					contentHidden: Boolean(document.getElementById('content')?.hidden),
+					title: document.getElementById('page-title')?.textContent,
+				})
+			})()`,
+		),
+	)
+	check(
+		'点左栏「设置」进入设置页（中栏切过去，内容区让位）',
+		settingsState.viewVisible && settingsState.contentHidden,
+		`view=${settingsState.viewVisible} contentHidden=${settingsState.contentHidden}`,
+	)
+	check(
+		'设置页有 10 个分类（移动端 9+1）',
+		settingsState.total === 10,
+		`${settingsState.total} 个：${settingsState.keys.join(' / ')}`,
+	)
+	check(
+		'分类列表**真的渲染出来了**（每个都有实际尺寸，不是空白）',
+		settingsState.listVisible &&
+			settingsState.visible === settingsState.total &&
+			(settingsState.firstRect?.h ?? 0) > 20,
+		`可见 ${settingsState.visible}/${settingsState.total}，第一个 ${JSON.stringify(settingsState.firstRect)}`,
+	)
+	check(
+		'分类顺序与移动端一致（主题/外观/播放/歌词/下载/账号/备份/通用/关于）',
+		settingsState.keys.join(',') ===
+			'theme,appearance,playback,lyrics,download,account-bili,account-bbplayer,backup,general,about',
+		settingsState.keys.join(','),
+	)
+
+	// DOM **嵌套**必须正确。
+	//
+	// ⚠️ 这条是事故复盘换来的。一次性的 HTML 拼接脚本用
+	// indexOf('</section>') 找设置块的结尾，结果匹配到了**第一个子面板**
+	// 的闭合标签，把设置块从中间截断 —— 后 9 个面板被留在 </main> 之后。
+	//
+	// 浏览器解析器把孤立的面板挂到了 <body> 下：它们**量得出尺寸**
+	// （1426×877，整个视口宽）、display / visibility / opacity 全正常、
+	// 断言全绿 —— 但**画不出来**，因为它们在 .main 之外。
+	// 是靠截图巡检打印「祖先链」才定位到的。
+	//
+	// 所以这里直接断言嵌套关系：元素"存在且有尺寸"远远不够，
+	// **它得在正确的地方**。
+	const settingsNesting = JSON.parse(
+		await evaluate(
+			window,
+			`(() => {
+				const main = document.querySelector('[data-testid="main"]')
+				const view = document.getElementById('view-settings')
+				const panelsBox = document.getElementById('settings-panels')
+				const panels = [...document.querySelectorAll('[data-settings-panel]')]
+				const outside = panels
+					.filter((el) => el.parentElement !== panelsBox)
+					.map((el) => el.dataset.settingsPanel)
+				return JSON.stringify({
+					viewInsideMain: Boolean(main && view && main.contains(view)),
+					panelsBoxInsideView: Boolean(
+						view && panelsBox && view.contains(panelsBox),
+					),
+					panelCount: panels.length,
+					outsidePanels: outside,
+					viewParent: view?.parentElement?.tagName?.toLowerCase() ?? null,
+				})
+			})()`,
+		),
+	)
+	check(
+		'设置页在 .main 里（跑到 body 下就会画在屏幕外）',
+		settingsNesting.viewInsideMain && settingsNesting.viewParent === 'main',
+		`父元素=${settingsNesting.viewParent}`,
+	)
+	check(
+		'10 个分类面板都在 #settings-panels 里（一个都不能被解析器挪走）',
+		settingsNesting.panelsBoxInsideView &&
+			settingsNesting.panelCount === 10 &&
+			settingsNesting.outsidePanels.length === 0,
+		settingsNesting.outsidePanels.length > 0
+			? `被挪走：${settingsNesting.outsidePanels.join('、')}`
+			: `${settingsNesting.panelCount} 个都在位`,
+	)
+
+	// 进一个子页：分类列表让位、子页出现、返回按钮露出、标题换成分类名
+	await click(window, '[data-testid="settings-cat-playback"]')
+	await sleep(600)
+	const subPage = JSON.parse(
+		await evaluate(
+			window,
+			`(() => {
+				const list = document.getElementById('settings-categories')
+				const panel = document.querySelector('[data-settings-panel="playback"]')
+				const back = document.getElementById('settings-back')
+				return JSON.stringify({
+					listHidden: Boolean(list?.hidden),
+					panelVisible: Boolean(panel && panel.classList.contains('is-active')),
+					panelHeight: panel ? Math.round(panel.getBoundingClientRect().height) : 0,
+					backVisible: Boolean(back && !back.hidden),
+					title: document.getElementById('page-title')?.textContent,
+					othersActive: [...document.querySelectorAll('[data-settings-panel]')]
+						.filter((el) => el.classList.contains('is-active')).length,
+				})
+			})()`,
+		),
+	)
+	check(
+		'点子页后：分类列表收起、子页显示、返回按钮露出',
+		subPage.listHidden && subPage.panelVisible && subPage.backVisible,
+		JSON.stringify(subPage),
+	)
+	check(
+		'子页标题换成分类名（用的是外壳的 #page-title，页面里只有一处标题）',
+		subPage.title === '播放',
+		String(subPage.title),
+	)
+	check(
+		'一次只显示一个分类的子页',
+		subPage.othersActive === 1,
+		`同时激活 ${subPage.othersActive} 个`,
+	)
+	check(
+		'子页真的有内容（不是空壳）',
+		subPage.panelHeight > 100,
+		`面板高 ${subPage.panelHeight}px`,
+	)
+
+	// 返回
+	await click(window, '[data-testid="settings-back"]')
+	await sleep(500)
+	const backState = JSON.parse(
+		await evaluate(
+			window,
+			`(() => ({
+				listVisible: !document.getElementById('settings-categories')?.hidden,
+				panelsHidden: Boolean(document.getElementById('settings-panels')?.hidden),
+				title: document.getElementById('page-title')?.textContent,
+			}))()`,
+		),
+	)
+	check(
+		'点返回回到分类列表',
+		backState.listVisible &&
+			backState.panelsHidden &&
+			backState.title === '设置',
+		JSON.stringify(backState),
+	)
+
+	// 账号子页只显示头像 + 昵称（用户明确要求）
+	await click(window, '[data-testid="settings-cat-account-bili"]')
+	await sleep(800)
+	const accountPanel = JSON.parse(
+		await evaluate(
+			window,
+			`(() => {
+				const panel = document.querySelector('[data-settings-panel="account-bili"]')
+				const text = (panel?.innerText ?? '').replace(/\\s+/g, ' ')
+				return JSON.stringify({
+					hasAvatar: Boolean(panel?.querySelector('.account-summary__avatar')),
+					hasName: Boolean(document.getElementById('settings-bili-name')),
+					leaksJargon: /密钥环|明文|加密存储|混淆|mid=|token/i.test(text),
+					text: text.slice(0, 120),
+				})
+			})()`,
+		),
+	)
+	check(
+		'账号子页有头像 + 昵称',
+		accountPanel.hasAvatar && accountPanel.hasName,
+		accountPanel.text,
+	)
+	check(
+		'账号子页不泄露凭据实现细节（那是诊断信息的事）',
+		accountPanel.leaksJargon === false,
+		accountPanel.leaksJargon ? accountPanel.text : '干净',
+	)
+
+	// 回到音乐库，免得影响后面的断言
+	await click(window, '[data-testid="nav-library"]')
+	await sleep(500)
+
 	// Toast：出现、可点掉、会自动消失
 	const toastProbe = JSON.parse(
 		await evaluate(

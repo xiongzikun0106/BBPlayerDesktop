@@ -88,12 +88,25 @@
 	color: var(--on-surface-variant);
 }
 
+/*
+ * ⚠️ 用 flex 而不是依赖块级流。
+ *
+ * 这些类既被 `<div>` 用（JS 生成的行），也被 `<span>` 用（index.html 里手写的
+ * 设置分类行 —— 因为 `.list-row` 在那里是 `<button>`，里面不能放 `<div>`）。
+ * `span` 默认是 inline，`overflow: hidden` 与 `text-overflow` 在 inline 上不生效，
+ * 标题与副标题也不会各占一行。显式 flex + `display: block` 让两种标签都对。
+ */
 .list-row__main {
 	flex: 1;
 	min-width: 0;
+	display: flex;
+	flex-direction: column;
+	align-items: flex-start;
 }
 
 .list-row__title {
+	display: block;
+	max-width: 100%;
 	font-size: var(--fs-body-large);
 	font-weight: 600;
 	line-height: var(--lh-body-large);
@@ -103,6 +116,8 @@
 }
 
 .list-row__sub {
+	display: block;
+	max-width: 100%;
 	margin-top: 2px;
 	font-size: var(--fs-body-medium);
 	line-height: var(--lh-body-medium);
@@ -156,6 +171,148 @@
 	align-items: center;
 	gap: var(--sp-xxs);
 	padding-bottom: var(--sp-xs);
+}
+
+/* ── 设置页（一级页面：分类列表 → 子页）───────────────── */
+/*
+ * ⚠️ 设置原来是**右侧抽屉**（浮层 + 遮罩 + 4 个页签）。
+ * 阶段 3 改成一级页面：左栏点「设置」进来是分类列表，点一类进子页。
+ *
+ * 与 `#content` / `#view-share` 互斥显示（见 renderer.js 的 showMainPane）——
+ * 三个都是 `.main` 的 flex 子项，同时可见会把中栏挤成上下两半。
+ */
+.settings-view {
+	flex: 1 1 auto;
+	min-height: 0;
+	overflow-y: auto;
+	display: flex;
+	flex-direction: column;
+}
+
+/* 返回按钮在页面的标题区里（`.page-head`），与标题同一行 */
+.page-head__back {
+	flex: none;
+}
+
+.settings-categories {
+	display: flex;
+	flex-direction: column;
+	gap: 2px;
+	padding: 0 var(--sp-sm) var(--sp-lg);
+}
+
+/*
+ * 分类行复用组件层的 `.list-row`，但它是 `<button>` 而不是 `<div>`。
+ * `button` 的默认 `text-align: center` 会把标题居中，而且 `font: inherit`
+ * 之外的按钮基线规则会让图标方块跑偏 —— 这里显式拉回左对齐。
+ */
+.settings-categories .list-row {
+	text-align: left;
+	align-items: center;
+}
+
+.settings-categories__chevron {
+	color: var(--outline);
+	flex: none;
+	margin-left: var(--sp-xs);
+}
+
+.settings-panels {
+	padding: 0 var(--sp-md) var(--sp-lg);
+}
+
+.settings-panels[hidden] {
+	display: none;
+}
+
+/* 一次只显示一个分类。
+ *
+ * ⚠️ 这是 `.settings-panel` **唯一**的定义处。
+ * style.css 里曾经还有一份（属于旧的抽屉），两条同特异性的规则
+ * 谁后加载谁赢 —— 结果是子页里的元素横着摊开、行与行互相重叠。
+ * 死规则比没有规则更糟：它不报错，只是静默改掉布局。 */
+.settings-panel {
+	display: none;
+	flex-direction: column;
+	gap: var(--sp-xs);
+}
+
+.settings-panel.is-active {
+	display: flex;
+}
+
+/*
+ * ⚠️ 设置页现在是**宽页面**（800+px），而抽屉时代是按 460px 设计的。
+ *
+ * 不加约束的话：
+ *   * 分段控件（`.segmented button { flex: 1 1 auto }`）会横着摊满整行，
+ *     三个选项之间隔半屏 —— 看起来像散开的标签，不像一组可选项；
+ *   * 滑块（`.settings-row` 里的 range）会拉成一条横贯整屏的线，
+ *     读数跑到屏幕最右边，和目标电平的标签隔着半屏。
+ *
+ * 所以在这里给它们**最大宽度**：选项与滑块保持"一簇"，
+ * 而不是跟着容器无限拉伸。
+ */
+.settings-panel .segmented {
+	justify-content: flex-start;
+}
+
+.settings-panel .segmented button {
+	flex: 0 1 auto;
+}
+
+.settings-panel .settings-row input[type='range'] {
+	flex: 0 1 320px;
+}
+
+/* 分段控件的未选中态要有**描边**。
+ *
+ * M3 的分段按钮未选中时是"透明底 + 1px 描边"。
+ * 我们的统一选中态把未选中做成了纯透明 —— 在窄抽屉里还看得出是一组，
+ * 在宽页面上就变成一行裸文字，用户不知道它可点。 */
+.segmented button {
+	border: 1px solid var(--outline-variant);
+}
+
+.segmented button.is-active {
+	border-color: transparent;
+}
+
+/* 账号摘要：头像 + 昵称（用户明确要求：只显示这两样） */
+.account-summary {
+	display: flex;
+	align-items: center;
+	gap: var(--sp-md);
+	padding: var(--sp-sm) 0 var(--sp-md);
+}
+
+.account-summary__avatar {
+	width: 64px;
+	height: 64px;
+	flex: none;
+	border-radius: var(--r-full);
+	overflow: hidden;
+	display: grid;
+	place-items: center;
+	background: var(--surface-container-highest);
+	color: var(--on-surface-variant);
+}
+
+.account-summary__avatar img {
+	width: 100%;
+	height: 100%;
+	object-fit: cover;
+	display: block;
+}
+
+.account-summary__name {
+	font-size: var(--fs-title-medium);
+	font-weight: 600;
+}
+
+.account-summary__sub {
+	font-size: var(--fs-body-medium);
+	margin-top: 2px;
 }
 
 /* ── 空状态 ────────────────────────────────────────────── */

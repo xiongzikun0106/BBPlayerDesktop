@@ -151,6 +151,21 @@
 					这类次级标题（歌单名、搜索词）。
 				-->
 				<div class="page-head">
+					<!--
+						返回按钮：只在「设置 › 某个分类」这样的**子页**里出现。
+						放在标题区而不是让子页自己造一个 header —— 只有一处标题，
+						避免出现两个「设置」（第一版就是那样，截图里一眼可见）。
+					-->
+					<button
+						class="icon-only page-head__back"
+						id="settings-back"
+						data-testid="settings-back"
+						title="返回设置"
+						aria-label="返回设置"
+						hidden
+					>
+						<span class="icon icon--md">arrow_back</span>
+					</button>
 					<h1 class="page-head__title" id="page-title" data-testid="page-title">
 						音乐库
 					</h1>
@@ -251,6 +266,686 @@
 					hidden
 					aria-label="共享歌单"
 				></section>
+			<!--
+				── 设置（一级页面，阶段 3）──────────────────────────────
+				⚠️ 原来是右侧的一个**抽屉**，顶部四个页签（外观 / 播放 / 下载 / 备份）。
+				两个问题：
+				  1. 抽屉只有 4 类，而移动端有 9+1 类 —— 账号、歌词、通用、关于
+				     这些"没有地方放"的内容被塞进了别的页签或干脆不存在；
+				  2. 抽屉是"浮层"的心智，而设置是**目的地**（左栏就有入口）。
+
+				现在是一级页面：**分类列表 → 子页**（与移动端一致）。
+				左栏点「设置」进来看到分类列表，点一类进子页，子页左上角有返回。
+
+				`#view-settings` 与 `#content` / `#view-share` 互斥（同一个 flex 容器）。
+			-->
+			<section class="settings-view" id="view-settings" data-testid="view-settings" hidden>
+
+				<!--
+					分类列表（移动端的设置首页）。
+					用组件层的 .list-row：图标方块 + 名称 + 一句说明 + 右箭头，
+					与音乐库的歌单行是同一套视觉语言。
+				-->
+				<div
+					class="settings-categories"
+					id="settings-categories"
+					data-testid="settings-categories"
+				>
+					<button
+						class="list-row"
+						data-settings-category="theme"
+						data-testid="settings-cat-theme"
+					>
+						<span class="list-row__art list-row__art--plain"
+							><span class="icon icon--md">contrast</span></span
+						>
+						<span class="list-row__main">
+							<span class="list-row__title">主题</span>
+							<span class="list-row__sub">跟随系统 / 浅色 / 深色</span>
+						</span>
+						<span class="icon icon--md settings-categories__chevron">chevron_right</span>
+					</button>
+
+					<button
+						class="list-row"
+						data-settings-category="appearance"
+						data-testid="settings-cat-appearance"
+					>
+						<span class="list-row__art list-row__art--plain"
+							><span class="icon icon--md">blur_on</span></span
+						>
+						<span class="list-row__main">
+							<span class="list-row__title">外观</span>
+							<span class="list-row__sub">材质与模糊强度</span>
+						</span>
+						<span class="icon icon--md settings-categories__chevron">chevron_right</span>
+					</button>
+
+					<button
+						class="list-row"
+						data-settings-category="playback"
+						data-testid="settings-cat-playback"
+					>
+						<span class="list-row__art list-row__art--plain"
+							><span class="icon icon--md">graphic_eq</span></span
+						>
+						<span class="list-row__main">
+							<span class="list-row__title">播放</span>
+							<span class="list-row__sub">定时关闭与响度均衡</span>
+						</span>
+						<span class="icon icon--md settings-categories__chevron">chevron_right</span>
+					</button>
+
+					<button
+						class="list-row"
+						data-settings-category="lyrics"
+						data-testid="settings-cat-lyrics"
+					>
+						<span class="list-row__art list-row__art--plain"
+							><span class="icon icon--md">lyrics</span></span
+						>
+						<span class="list-row__main">
+							<span class="list-row__title">歌词</span>
+							<span class="list-row__sub">自动匹配</span>
+						</span>
+						<span class="icon icon--md settings-categories__chevron">chevron_right</span>
+					</button>
+
+					<button
+						class="list-row"
+						data-settings-category="download"
+						data-testid="settings-cat-download"
+					>
+						<span class="list-row__art list-row__art--plain"
+							><span class="icon icon--md">download</span></span
+						>
+						<span class="list-row__main">
+							<span class="list-row__title">下载</span>
+							<span class="list-row__sub">目录、并发与已下载</span>
+						</span>
+						<span class="icon icon--md settings-categories__chevron">chevron_right</span>
+					</button>
+
+					<button
+						class="list-row"
+						data-settings-category="account-bili"
+						data-testid="settings-cat-account-bili"
+					>
+						<span class="list-row__art list-row__art--plain"
+							><span class="icon icon--md">person</span></span
+						>
+						<span class="list-row__main">
+							<span class="list-row__title">Bilibili 账号</span>
+							<span class="list-row__sub" id="settings-cat-bili-sub"
+								>未登录</span
+							>
+						</span>
+						<span class="icon icon--md settings-categories__chevron">chevron_right</span>
+					</button>
+
+					<button
+						class="list-row"
+						data-settings-category="account-bbplayer"
+						data-testid="settings-cat-account-bbplayer"
+					>
+						<span class="list-row__art list-row__art--plain"
+							><span class="icon icon--md">group</span></span
+						>
+						<span class="list-row__main">
+							<span class="list-row__title">BBPlayer 账号</span>
+							<span class="list-row__sub" id="settings-cat-bbplayer-sub"
+								>共享歌单用的账号</span
+							>
+						</span>
+						<span class="icon icon--md settings-categories__chevron">chevron_right</span>
+					</button>
+
+					<button
+						class="list-row"
+						data-settings-category="backup"
+						data-testid="settings-cat-backup"
+					>
+						<span class="list-row__art list-row__art--plain"
+							><span class="icon icon--md">upload</span></span
+						>
+						<span class="list-row__main">
+							<span class="list-row__title">备份与恢复</span>
+							<span class="list-row__sub">WebDAV 与本地导出</span>
+						</span>
+						<span class="icon icon--md settings-categories__chevron">chevron_right</span>
+					</button>
+
+					<button
+						class="list-row"
+						data-settings-category="general"
+						data-testid="settings-cat-general"
+					>
+						<span class="list-row__art list-row__art--plain"
+							><span class="icon icon--md">folder_open</span></span
+						>
+						<span class="list-row__main">
+							<span class="list-row__title">通用</span>
+							<span class="list-row__sub">数据目录与快捷键</span>
+						</span>
+						<span class="icon icon--md settings-categories__chevron">chevron_right</span>
+					</button>
+
+					<button
+						class="list-row"
+						data-settings-category="about"
+						data-testid="settings-cat-about"
+					>
+						<span class="list-row__art list-row__art--plain"
+							><span class="icon icon--md">info</span></span
+						>
+						<span class="list-row__main">
+							<span class="list-row__title">关于</span>
+							<span class="list-row__sub" id="settings-cat-about-sub"
+								>版本与诊断信息</span
+							>
+						</span>
+						<span class="icon icon--md settings-categories__chevron">chevron_right</span>
+					</button>
+				</div>
+
+				<!-- 分类内容：一次只显示一个 -->
+				<div class="settings-panels" id="settings-panels" data-testid="settings-panels" hidden>
+					<!-- 主题 -->
+					<section
+						class="settings-panel"
+						data-settings-panel="theme"
+						data-testid="settings-panel-theme"
+					>
+						<h3>显示模式</h3>
+						<p class="muted settings-hint">默认跟随系统的深浅色设置。</p>
+						<div class="segmented" data-testid="settings-theme">
+							<button data-theme-choice="system" data-testid="theme-system">
+								跟随系统
+							</button>
+							<button data-theme-choice="light" data-testid="theme-light">
+								浅色
+							</button>
+							<button data-theme-choice="dark" data-testid="theme-dark">
+								深色
+							</button>
+						</div>
+					</section>
+				<!-- 外观 -->
+				<section
+					class="settings-panel"
+					data-settings-panel="appearance"
+					data-testid="settings-panel-appearance"
+				>
+					<h3>材质</h3>
+					<p class="muted settings-hint">
+						顶栏、弹窗与设置面板的模糊强度。
+					</p>
+					<div class="segmented" data-testid="settings-material">
+						<button data-material-choice="none" data-testid="material-none">
+							无
+						</button>
+						<button data-material-choice="blur" data-testid="material-blur">
+							模糊
+						</button>
+						<button
+							data-material-choice="gradient"
+							data-testid="material-gradient"
+						>
+							渐变模糊
+						</button>
+					</div>
+				</section>
+
+				<!-- 播放 -->
+				<section
+					class="settings-panel"
+					data-settings-panel="playback"
+					data-testid="settings-panel-playback"
+				>
+					<h3>定时关闭</h3>
+					<p class="muted settings-hint">
+						到点前 5 秒开始淡出，然后暂停播放并还原音量。
+					</p>
+					<div
+						class="segmented segmented--wrap"
+						id="settings-sleep-presets"
+						data-testid="settings-sleep-presets"
+					></div>
+					<div class="settings-row">
+						<input
+							id="settings-sleep-custom"
+							data-testid="settings-sleep-custom"
+							type="number"
+							min="1"
+							placeholder="自定义分钟"
+						/>
+						<button id="settings-sleep-set" data-testid="settings-sleep-set">
+							设置
+						</button>
+						<button
+							id="settings-sleep-cancel"
+							data-testid="settings-sleep-cancel"
+						>
+							取消
+						</button>
+					</div>
+					<p
+						class="settings-status"
+						id="settings-sleep-status"
+						data-testid="settings-sleep-status"
+					></p>
+
+					<h3>响度均衡</h3>
+					<!--
+						M3 开关。原生 checkbox 在设置里被当成开关用，是「默认 HTML 样式」
+						最明显的一处；组件层的 .switch 提供 52×32 轨道 + 圆形滑块。
+						label 包住 input，所以点文字也能切换（原生行为，不需要额外 JS）。
+					-->
+					<label class="settings-toggle">
+						<input
+							id="settings-loudness"
+							data-testid="settings-loudness"
+							class="switch"
+							type="checkbox"
+						/>
+						<span>启用响度均衡</span>
+					</label>
+					<div class="settings-row">
+						<label for="settings-loudness-target">目标电平</label>
+						<input
+							id="settings-loudness-target"
+							data-testid="settings-loudness-target"
+							type="range"
+							min="5"
+							max="30"
+							step="1"
+							value="14"
+						/>
+						<span
+							class="mono"
+							id="settings-loudness-target-value"
+							data-testid="settings-loudness-target-value"
+							>-14 dB</span
+						>
+					</div>
+					<p
+						class="settings-status"
+						id="settings-loudness-status"
+						data-testid="settings-loudness-status"
+					></p>
+				</section>
+
+				<!-- 歌词 -->
+				<section
+					class="settings-panel"
+					data-settings-panel="lyrics"
+					data-testid="settings-panel-lyrics"
+				>
+					<h3>歌词来源</h3>
+					<p class="muted settings-hint">
+						关掉之后不会自动为每首歌去找歌词；需要时可以在歌词面板里手动匹配。
+					</p>
+					<label class="settings-toggle">
+						<input
+							id="settings-lyrics-auto"
+							data-testid="settings-lyrics-auto"
+							class="switch"
+							type="checkbox"
+						/>
+						<span>自动匹配歌词</span>
+					</label>
+					<div class="settings-row">
+						<button
+							id="settings-lyrics-window"
+							data-testid="settings-lyrics-window"
+							class="btn--outlined"
+						>
+							打开独立歌词窗口
+						</button>
+					</div>
+				</section>
+
+				<!-- 下载 -->
+				<section
+					class="settings-panel"
+					data-settings-panel="download"
+					data-testid="settings-panel-download"
+				>
+					<h3>下载目录</h3>
+					<p class="muted mono settings-path" id="settings-download-dir"></p>
+					<div class="settings-row">
+						<button
+							id="settings-download-open"
+							data-testid="settings-download-open"
+						>
+							在文件管理器中打开
+						</button>
+						<label for="settings-download-parallel">并发</label>
+						<input
+							id="settings-download-parallel"
+							data-testid="settings-download-parallel"
+							type="number"
+							min="1"
+							max="6"
+							value="2"
+						/>
+					</div>
+
+					<h3>进行中的下载</h3>
+					<div
+						id="settings-download-tasks"
+						data-testid="settings-download-tasks"
+					></div>
+
+					<h3>已下载</h3>
+					<div class="settings-row">
+						<button
+							id="settings-download-refresh"
+							data-testid="settings-download-refresh"
+						>
+							刷新
+						</button>
+					</div>
+					<div
+						id="settings-download-list"
+						data-testid="settings-download-list"
+					></div>
+					<p
+						class="settings-status"
+						id="settings-download-status"
+						data-testid="settings-download-status"
+					></p>
+				</section>
+
+				<!-- Bilibili 账号 -->
+				<section
+					class="settings-panel"
+					data-settings-panel="account-bili"
+					data-testid="settings-panel-account-bili"
+				>
+					<!--
+						⚠️ 只显示**头像 + 昵称**（用户明确要求）。
+						账号页要回答的是"我现在是谁"，不是"你的凭据存在哪"——
+						后者属于「关于 › 诊断信息」。
+					-->
+					<div class="account-summary" data-testid="settings-bili-summary">
+						<div class="account-summary__avatar" data-testid="settings-bili-avatar">
+							<span class="icon icon--lg">person</span>
+						</div>
+						<div class="account-summary__main">
+							<div
+								class="account-summary__name"
+								id="settings-bili-name"
+								data-testid="settings-bili-name"
+							>
+								未登录
+							</div>
+							<div
+								class="account-summary__sub muted"
+								id="settings-bili-sub"
+								data-testid="settings-bili-sub"
+							></div>
+						</div>
+					</div>
+					<div class="settings-row settings-row--wrap">
+						<button
+							id="settings-bili-login"
+							data-testid="settings-bili-login"
+							class="btn--filled"
+						>
+							登录 B 站
+						</button>
+						<button
+							id="settings-bili-logout"
+							data-testid="settings-bili-logout"
+							class="btn--outlined"
+							hidden
+						>
+							退出登录
+						</button>
+					</div>
+					<p
+						class="settings-status"
+						id="settings-bili-status"
+						data-testid="settings-bili-status"
+					></p>
+				</section>
+
+				<!-- BBPlayer 账号 -->
+				<section
+					class="settings-panel"
+					data-settings-panel="account-bbplayer"
+					data-testid="settings-panel-account-bbplayer"
+				>
+					<p class="muted settings-hint">
+						共享歌单用的账号。与 B 站账号是两回事 —— 它只用来把歌单同步给协作者。
+					</p>
+					<div class="account-summary" data-testid="settings-bbplayer-summary">
+						<div
+							class="account-summary__avatar"
+							data-testid="settings-bbplayer-avatar"
+						>
+							<span class="icon icon--lg">group</span>
+						</div>
+						<div class="account-summary__main">
+							<div
+								class="account-summary__name"
+								id="settings-bbplayer-name"
+								data-testid="settings-bbplayer-name"
+							>
+								未登录
+							</div>
+							<div
+								class="account-summary__sub muted"
+								id="settings-bbplayer-sub"
+								data-testid="settings-bbplayer-sub"
+							></div>
+						</div>
+					</div>
+					<div class="settings-row">
+						<button
+							id="settings-bbplayer-open"
+							data-testid="settings-bbplayer-open"
+							class="btn--tonal"
+						>
+							去共享面板管理
+						</button>
+					</div>
+				</section>
+
+				<!-- 备份与恢复 -->
+				<section
+					class="settings-panel"
+					data-settings-panel="backup"
+					data-testid="settings-panel-backup"
+				>
+					<h3>WebDAV</h3>
+					<p class="muted settings-hint">
+						填好后可以「立即备份并上传」，换设备时在下面挑一份恢复回来。
+					</p>
+					<div class="settings-grid">
+						<label for="settings-webdav-url">地址</label>
+						<input
+							id="settings-webdav-url"
+							data-testid="settings-webdav-url"
+							type="text"
+							placeholder="https://dav.example.com/dav"
+							spellcheck="false"
+						/>
+						<label for="settings-webdav-user">用户名</label>
+						<input
+							id="settings-webdav-user"
+							data-testid="settings-webdav-user"
+							type="text"
+							spellcheck="false"
+							autocomplete="off"
+						/>
+						<label for="settings-webdav-password">密码</label>
+						<input
+							id="settings-webdav-password"
+							data-testid="settings-webdav-password"
+							type="password"
+							autocomplete="off"
+						/>
+						<label for="settings-webdav-directory">远端目录</label>
+						<input
+							id="settings-webdav-directory"
+							data-testid="settings-webdav-directory"
+							type="text"
+							placeholder="/BBPlayer"
+							spellcheck="false"
+						/>
+					</div>
+					<div class="settings-row settings-row--wrap">
+						<button id="settings-webdav-save" data-testid="settings-webdav-save">
+							保存
+						</button>
+						<button
+							id="settings-webdav-test"
+							data-testid="settings-webdav-test"
+							class="btn--outlined"
+						>
+							测试连接
+						</button>
+						<button
+							id="settings-webdav-upload"
+							data-testid="settings-webdav-upload"
+							class="btn--filled"
+						>
+							立即备份并上传
+						</button>
+						<button
+							id="settings-webdav-refresh"
+							data-testid="settings-webdav-refresh"
+							class="btn--text"
+						>
+							刷新远端列表
+						</button>
+					</div>
+
+					<h3>本地导出</h3>
+					<div class="settings-row settings-row--wrap">
+						<button
+							id="settings-backup-export"
+							data-testid="settings-backup-export"
+						>
+							导出到本地
+						</button>
+						<button
+							id="settings-backup-open-folder"
+							data-testid="settings-backup-open-folder"
+							class="btn--outlined"
+						>
+							打开所在文件夹
+						</button>
+					</div>
+
+					<h3>远端备份</h3>
+					<div id="settings-backup-list" data-testid="settings-backup-list"></div>
+					<p
+						class="settings-status"
+						id="settings-backup-status"
+						data-testid="settings-backup-status"
+					></p>
+					<!--
+						恢复备份之后数据库连接已关闭、数据文件已替换，必须重启才能继续用。
+						与其让用户自己去关掉再打开，不如把「下一步做什么」直接做成一个按钮。
+						默认隐藏，只有恢复成功后才出现。
+					-->
+					<div class="settings-row">
+						<button
+							id="settings-restart"
+							data-testid="settings-restart"
+							class="btn--filled"
+							hidden
+						>
+							立即重启应用
+						</button>
+					</div>
+				</section>
+
+				<!-- 通用 -->
+				<section
+					class="settings-panel"
+					data-settings-panel="general"
+					data-testid="settings-panel-general"
+				>
+					<h3>数据目录</h3>
+					<p class="muted mono settings-path" id="settings-general-dir"></p>
+					<div class="settings-row">
+						<button
+							id="settings-general-open-folder"
+							data-testid="settings-general-open-folder"
+							class="btn--outlined"
+						>
+							打开所在文件夹
+						</button>
+					</div>
+
+					<h3>快捷键</h3>
+					<div class="settings-row">
+						<button
+							id="settings-general-shortcuts"
+							data-testid="settings-general-shortcuts"
+							class="btn--outlined"
+						>
+							查看全部快捷键
+						</button>
+					</div>
+				</section>
+
+				<!-- 关于 -->
+				<section
+					class="settings-panel"
+					data-settings-panel="about"
+					data-testid="settings-panel-about"
+				>
+					<h3>关于 BBPlayer</h3>
+					<p class="muted settings-hint">
+						桌面端 <span class="mono" id="settings-about-version" data-testid="settings-about-version">—</span>
+					</p>
+
+					<!--
+						「诊断信息」是**实现细节唯一的去处**（阶段 0 定下的规矩）。
+						主流程里不出现密钥环 / 明文 / 格式 / 绝对路径这些东西：
+						用户不需要在保存密码的同一屏里读到「未加密存储」，
+						但他确实有权在自己想看的时候查到。
+					-->
+					<details class="settings-diagnostics" data-testid="settings-diagnostics">
+						<summary>诊断信息</summary>
+						<dl class="settings-diagnostics__list">
+							<dt>凭据存储</dt>
+							<dd
+								id="settings-credential-storage"
+								data-testid="settings-credential-storage"
+							>
+								—
+							</dd>
+							<dt>WebDAV 密码存储</dt>
+							<dd
+								id="settings-backup-security"
+								data-testid="settings-backup-security"
+							>
+								—
+							</dd>
+							<dt>后端地址</dt>
+							<dd>
+								<input
+									id="settings-share-base-url"
+									data-testid="settings-share-base-url"
+									type="text"
+									spellcheck="false"
+									placeholder="https://be.bbplayer.roitium.com"
+								/>
+							</dd>
+							<dt>数据目录</dt>
+							<dd id="settings-data-dir" data-testid="settings-data-dir">—</dd>
+						</dl>
+					</details>
+				</section>
+			</div>
+		</section>
+
 			</main>
 
 			<!-- ── 右栏：播放队列 / 歌词 ─────────────────────────── -->
@@ -547,384 +1242,6 @@
 				</section>
 			</div>
 		</div>
-
-		<!-- ── 设置抽屉（Phase 4 收尾）────────────────────────── -->
-		<aside
-			class="settings-drawer material"
-			id="settings-drawer"
-			data-testid="settings-drawer"
-			hidden
-			role="dialog"
-			aria-modal="false"
-			aria-label="设置"
-		>
-			<div class="settings-card">
-				<header class="modal__head">
-					<h2>设置</h2>
-					<button
-						class="modal__close icon-only"
-						id="settings-close"
-						data-testid="settings-close"
-						title="关闭"
-					>
-						<span class="icon icon--sm">close</span>
-					</button>
-				</header>
-
-				<div class="tabs tabs--inline" data-testid="settings-tabs">
-					<button
-						class="tab is-active"
-						data-settings-tab="appearance"
-						data-testid="settings-tab-appearance"
-					>
-						外观
-					</button>
-					<button
-						class="tab"
-						data-settings-tab="playback"
-						data-testid="settings-tab-playback"
-					>
-						播放
-					</button>
-					<button
-						class="tab"
-						data-settings-tab="download"
-						data-testid="settings-tab-download"
-					>
-						下载
-					</button>
-					<button
-						class="tab"
-						data-settings-tab="backup"
-						data-testid="settings-tab-backup"
-					>
-						备份
-					</button>
-				</div>
-
-				<!-- 外观 -->
-				<section
-					class="settings-panel is-active"
-					data-settings-panel="appearance"
-					data-testid="settings-panel-appearance"
-				>
-					<h3>主题</h3>
-					<p class="muted settings-hint">
-						默认跟随系统的深浅色设置。
-					</p>
-					<div class="segmented" data-testid="settings-theme">
-						<button data-theme-choice="system" data-testid="theme-system">
-							跟随系统
-						</button>
-						<button data-theme-choice="light" data-testid="theme-light">
-							浅色
-						</button>
-						<button data-theme-choice="dark" data-testid="theme-dark">
-							深色
-						</button>
-					</div>
-
-					<h3>材质</h3>
-					<p class="muted settings-hint">
-						顶栏、弹窗与设置面板的模糊强度。
-					</p>
-					<div class="segmented" data-testid="settings-material">
-						<button data-material-choice="none" data-testid="material-none">
-							无
-						</button>
-						<button data-material-choice="blur" data-testid="material-blur">
-							模糊
-						</button>
-						<button
-							data-material-choice="gradient"
-							data-testid="material-gradient"
-						>
-							渐变模糊
-						</button>
-					</div>
-				</section>
-
-				<!-- 播放 -->
-				<section
-					class="settings-panel"
-					data-settings-panel="playback"
-					data-testid="settings-panel-playback"
-				>
-					<h3>定时关闭</h3>
-					<p class="muted settings-hint">
-						到点前 5 秒开始淡出，然后暂停播放并还原音量。
-					</p>
-					<div
-						class="segmented segmented--wrap"
-						id="settings-sleep-presets"
-						data-testid="settings-sleep-presets"
-					></div>
-					<div class="settings-row">
-						<input
-							id="settings-sleep-custom"
-							data-testid="settings-sleep-custom"
-							type="number"
-							min="1"
-							placeholder="自定义分钟"
-						/>
-						<button id="settings-sleep-set" data-testid="settings-sleep-set">
-							设置
-						</button>
-						<button
-							id="settings-sleep-cancel"
-							data-testid="settings-sleep-cancel"
-						>
-							取消
-						</button>
-					</div>
-					<p
-						class="settings-status"
-						id="settings-sleep-status"
-						data-testid="settings-sleep-status"
-					></p>
-
-					<h3>响度均衡</h3>
-					<!--
-						M3 开关。原生 checkbox 在设置里被当成开关用，是「默认 HTML 样式」
-						最明显的一处；组件层的 .switch 提供 52×32 轨道 + 圆形滑块。
-						label 包住 input，所以点文字也能切换（原生行为，不需要额外 JS）。
-					-->
-					<label class="settings-toggle">
-						<input
-							id="settings-loudness"
-							data-testid="settings-loudness"
-							class="switch"
-							type="checkbox"
-						/>
-						<span>启用响度均衡</span>
-					</label>
-					<div class="settings-row">
-						<label for="settings-loudness-target">目标电平</label>
-						<input
-							id="settings-loudness-target"
-							data-testid="settings-loudness-target"
-							type="range"
-							min="5"
-							max="30"
-							step="1"
-							value="14"
-						/>
-						<span
-							class="mono"
-							id="settings-loudness-target-value"
-							data-testid="settings-loudness-target-value"
-							>-14 dB</span
-						>
-					</div>
-					<p
-						class="settings-status"
-						id="settings-loudness-status"
-						data-testid="settings-loudness-status"
-					></p>
-				</section>
-
-				<!-- 下载 -->
-				<section
-					class="settings-panel"
-					data-settings-panel="download"
-					data-testid="settings-panel-download"
-				>
-					<h3>下载目录</h3>
-					<p class="muted mono settings-path" id="settings-download-dir"></p>
-					<div class="settings-row">
-						<button
-							id="settings-download-open"
-							data-testid="settings-download-open"
-						>
-							在文件管理器中打开
-						</button>
-						<label for="settings-download-parallel">并发</label>
-						<input
-							id="settings-download-parallel"
-							data-testid="settings-download-parallel"
-							type="number"
-							min="1"
-							max="6"
-							value="2"
-						/>
-					</div>
-
-					<h3>进行中的下载</h3>
-					<div
-						id="settings-download-tasks"
-						data-testid="settings-download-tasks"
-					></div>
-
-					<h3>已下载</h3>
-					<div class="settings-row">
-						<button
-							id="settings-download-refresh"
-							data-testid="settings-download-refresh"
-						>
-							刷新
-						</button>
-					</div>
-					<div
-						id="settings-download-list"
-						data-testid="settings-download-list"
-					></div>
-					<p
-						class="settings-status"
-						id="settings-download-status"
-						data-testid="settings-download-status"
-					></p>
-				</section>
-
-				<!-- 备份 -->
-				<section
-					class="settings-panel"
-					data-settings-panel="backup"
-					data-testid="settings-panel-backup"
-				>
-					<h3>WebDAV</h3>
-					<p class="muted settings-hint">
-						填好后可以「立即备份并上传」，换设备时在下面挑一份恢复回来。
-					</p>
-					<div class="settings-grid">
-						<label for="settings-webdav-url">地址</label>
-						<input
-							id="settings-webdav-url"
-							data-testid="settings-webdav-url"
-							type="text"
-							placeholder="https://dav.example.com/dav"
-							spellcheck="false"
-						/>
-						<label for="settings-webdav-user">用户名</label>
-						<input
-							id="settings-webdav-user"
-							data-testid="settings-webdav-user"
-							type="text"
-							spellcheck="false"
-							autocomplete="off"
-						/>
-						<label for="settings-webdav-password">密码</label>
-						<input
-							id="settings-webdav-password"
-							data-testid="settings-webdav-password"
-							type="password"
-							autocomplete="off"
-						/>
-						<label for="settings-webdav-directory">远端目录</label>
-						<input
-							id="settings-webdav-directory"
-							data-testid="settings-webdav-directory"
-							type="text"
-							placeholder="/BBPlayer"
-							spellcheck="false"
-						/>
-					</div>
-					<div class="settings-row settings-row--wrap">
-						<button id="settings-webdav-save" data-testid="settings-webdav-save">
-							保存
-						</button>
-						<button
-						id="settings-webdav-test"
-						data-testid="settings-webdav-test"
-						class="btn--outlined"
-					>
-							测试连接
-						</button>
-						<button
-							id="settings-webdav-upload"
-							data-testid="settings-webdav-upload"
-							class="btn--filled"
-						>
-							立即备份并上传
-						</button>
-						<button
-							id="settings-webdav-refresh"
-							data-testid="settings-webdav-refresh"
-							class="btn--text"
-						>
-							刷新远端列表
-						</button>
-					</div>
-
-					<h3>本地导出</h3>
-					<div class="settings-row settings-row--wrap">
-						<button
-							id="settings-backup-export"
-							data-testid="settings-backup-export"
-						>
-							导出到本地
-						</button>
-						<button
-							id="settings-backup-open-folder"
-							data-testid="settings-backup-open-folder"
-							class="btn--outlined"
-						>
-							打开所在文件夹
-						</button>
-					</div>
-
-					<h3>远端备份</h3>
-					<div id="settings-backup-list" data-testid="settings-backup-list"></div>
-					<p
-						class="settings-status"
-						id="settings-backup-status"
-						data-testid="settings-backup-status"
-					></p>
-					<!--
-						恢复备份之后数据库连接已关闭、数据文件已替换，必须重启才能继续用。
-						与其让用户自己去关掉再打开，不如把「下一步做什么」直接做成一个按钮。
-						默认隐藏，只有恢复成功后才出现。
-					-->
-					<div class="settings-row">
-						<button
-							id="settings-restart"
-							data-testid="settings-restart"
-							class="btn--filled"
-							hidden
-						>
-							立即重启应用
-						</button>
-					</div>
-
-					<!--
-						「诊断信息」是**实现细节唯一的去处**。
-						主流程里不出现密钥环 / 明文 / 格式 / 绝对路径这些东西：
-						用户不需要在保存密码的同一屏里读到「未加密存储」，
-						但他确实有权在自己想看的时候查到。默认折叠。
-					-->
-					<details class="settings-diagnostics" data-testid="settings-diagnostics">
-						<summary>诊断信息</summary>
-						<dl class="settings-diagnostics__list">
-							<dt>凭据存储</dt>
-							<dd
-								id="settings-credential-storage"
-								data-testid="settings-credential-storage"
-							>
-								—
-							</dd>
-							<dt>WebDAV 密码存储</dt>
-							<dd
-								id="settings-backup-security"
-								data-testid="settings-backup-security"
-							>
-								—
-							</dd>
-							<dt>后端地址</dt>
-							<dd>
-								<input
-									id="settings-share-base-url"
-									data-testid="settings-share-base-url"
-									type="text"
-									spellcheck="false"
-									placeholder="https://be.bbplayer.roitium.com"
-								/>
-							</dd>
-							<dt>数据目录</dt>
-							<dd id="settings-data-dir" data-testid="settings-data-dir">—</dd>
-						</dl>
-					</details>
-				</section>
-			</div>
-		</aside>
 
 		<pre id="log" data-testid="log" class="log" hidden></pre>
 

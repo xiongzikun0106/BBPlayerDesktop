@@ -577,9 +577,21 @@ body {
 .page-head {
 	display: flex;
 	align-items: baseline;
-	justify-content: space-between;
-	gap: var(--sp-md);
+	/*
+	 * ⚠️ 用 `flex-start` + 给 meta 加 `margin-left: auto`，不要用 `space-between`。
+	 * `space-between` 在「返回按钮 + 标题 + meta」三个子元素时会把标题推到**中间**，
+	 * 表现成"子页标题居中"（截图里一眼可见）。左对齐才是标题该在的位置。
+	 */
+	justify-content: flex-start;
+	gap: var(--sp-sm);
 	padding: var(--sp-lg) var(--sp-md) var(--sp-xs);
+}
+
+/* 返回按钮在标题区里，与标题同一行 */
+.page-head__back {
+	flex: none;
+	/* 图标按钮没有文字，baseline 对齐会把它顶偏 */
+	align-self: center;
 }
 
 .page-head__title {
@@ -590,7 +602,9 @@ body {
 	color: var(--on-surface);
 }
 
+/* 右侧信息推到最右，标题因此始终紧贴左侧 */
 .page-head__meta {
+	margin-left: auto;
 	font-size: var(--fs-body-medium);
 	color: var(--on-surface-variant);
 }
@@ -1624,39 +1638,17 @@ input[type='range']:focus-visible {
 	color: var(--on-surface);
 }
 
-/* ── 设置抽屉 ─────────────────────────────────────────── */
-.settings-drawer {
-	position: fixed;
-	inset: 0;
-	background: rgb(0 0 0 / 40%);
-	display: flex;
-	justify-content: flex-end;
-	z-index: 90;
-}
-
-.settings-card {
-	background: var(--surface);
-	border-left: 1px solid var(--outline-variant);
-	width: 460px;
-	max-width: 92vw;
-	height: 100%;
-	display: flex;
-	flex-direction: column;
-	overflow: hidden;
-	box-shadow: -8px 0 32px rgb(0 0 0 / 35%);
-}
-
-.settings-panel {
-	display: none;
-	flex-direction: column;
-	gap: var(--sp-xs);
-	padding: var(--sp-md);
-	overflow-y: auto;
-}
-
-.settings-panel.is-active {
-	display: flex;
-}
+/* ── 设置（阶段 3 起是一级页面，不再是抽屉）──────────────── */
+/*
+ * ⚠️ 这里原来有 `.settings-drawer`（`position: fixed` 的浮层）与
+ * `.settings-card`（460px 宽的侧滑卡片）。设置改成一级页面之后它们
+ * **已经没有任何元素在用了** —— 而 `.settings-panel` 这条留在原地的
+ * `display: flex` 却会和新页面的规则打架（同一个选择器、同样的特异性，
+ * 谁后加载谁赢），把子页里的元素横着摊开。
+ *
+ * 死规则比没有规则更糟：它不会报错，只会在某天静默改掉布局。
+ * 所以直接删掉，子页的布局统一由 components.css 里的设置页那一节负责。
+ */
 
 .settings-panel h3 {
 	margin: var(--sp-sm) 0 var(--sp-xxs);

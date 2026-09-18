@@ -143,24 +143,35 @@
 		// 音乐库的页签条只在音乐库目的地显示
 		const tabs = document.getElementById('library-tabs')
 		if (tabs) tabs.hidden = view !== 'library'
-		// 共享视图的根节点常驻在 index.html 里（探针要能直接 `#view-share` 找到它），
-		// 所以这里手动与 #content 互斥：否则两个 flex 子项会把中栏挤成上下两半
-		toggleShareView(view === 'share')
+		showMainPane(view)
 	}
 
 	/**
-	 * 在「共享视图」与「#content 里的其它视图」之间切换（两者互斥）。
+	 * 中栏是**三个互斥的页面**：常规内容、共享面板、设置。
 	 *
-	 * `#content` 是音乐库 / 搜索 / 共享共用的容器，它们渲染时都会清空它 ——
-	 * 而共享视图是**常驻**的兄弟节点，不会被清掉。所以从任何路径切回 #content
-	 * 时都要显式把共享视图藏起来（`bbLibrary.renderTrackTable` 这类不经过
-	 * 导航的渲染也要走 `showContent`）。
+	 * ⚠️ 它们都是 `.main` 的 flex 子项。同时可见会把中栏挤成上下两半
+	 * （历史上真出现过：共享视图与 `#content` 都显示，两个 flex 项各分一半）。
+	 * 所以要**集中在一处**决定谁可见 —— 分散在各自的模块里迟早会漏掉一个，
+	 * 而漏掉的表现是"某两个页面同时出现在屏幕上"，很难往这个方向想。
+	 */
+	function showMainPane(view) {
+		const content = document.getElementById('content')
+		const shareRoot = document.getElementById('view-share')
+		const settingsRoot = document.getElementById('view-settings')
+		const showShare = view === 'share'
+		const showSettings = view === 'settings'
+		if (shareRoot) shareRoot.hidden = !showShare
+		if (settingsRoot) settingsRoot.hidden = !showSettings
+		if (content) content.hidden = showShare || showSettings
+		if (showSettings) window.bbSettings?.open?.()
+	}
+
+	/**
+	 * @deprecated 兼容旧调用点（`bbUI.showContent` / `bbLibrary` 里在用）。
+	 * 等价于 `showMainPane('share' | 'library')`。
 	 */
 	function toggleShareView(showShare) {
-		const shareRoot = document.getElementById('view-share')
-		const content = document.getElementById('content')
-		if (shareRoot) shareRoot.hidden = !showShare
-		if (content) content.hidden = showShare
+		showMainPane(showShare ? 'share' : 'library')
 	}
 
 	/** 打开一个目的地 */
@@ -179,9 +190,10 @@
 			}
 			window.bbLibrary.renderWelcomeOrLast?.()
 		} else if (view === 'settings') {
-			// 阶段 3 会把设置升为一级**页面**；这一版先沿用抽屉，
-			// 但入口已经归位到左栏（不再是标题栏上的齿轮）
-			window.bbSettings?.open?.()
+			// 设置是一级页面（阶段 3）。可见性由 `showMainPane` 统一决定；
+			// 这里只需要**回到分类列表** —— 用户从别的页面点「设置」进来时，
+			// 期待看到设置首页，而不是上次进去的那个子页。
+			window.bbSettings?.showCategories?.()
 		} else if (view === 'share') {
 			// 页内动作：共享面板由音乐库的按钮打开，不是左栏目的地
 			// ⚠️ `show()` 只读本地状态（`share.status()` 不发网络请求），
@@ -369,8 +381,23 @@
 	let lyricsWindowLines = []
 
 	/** 当前曲目变化时自动匹配歌词 */
-	async function loadLyricsFor(track) {
+	async function loadLyricsFor(track, options = {}) {
 		if (!lyricsPanel || !track) return
+
+		// 「设置 › 歌词 › 自动匹配」关掉后不再自动请求。
+		// 手动入口（歌词面板的「重新匹配」）走的是同一个函数，所以用一个参数
+		// 区分"自动触发"与"用户主动要求"—— 否则关掉之后连手动都点不动。
+		if (!options?.manual) {
+			const settings = await desktopFeatures?.readSettings?.().catch(() => null)
+			if (settings && settings.lyricsAutoMatch === false) {
+				setLyricsStatus('已关闭自动匹配歌词')
+				lyricsPanel.setLyrics([])
+				lyricsWindowLines = []
+				pushLyricsWindowState()
+				return
+			}
+		}
+
 		// 并发的加载用序号作废，避免慢请求覆盖新曲目的歌词
 		const seq = ++lyricsRequestSeq
 		setLyricsStatus('正在匹配歌词…')
@@ -767,7 +794,8 @@
 		/** 歌词面板（供自动化断言）；未初始化时为 null */
 		lyricsPanel: () => lyricsPanel,
 		/** 手动触发当前曲目的歌词匹配 */
-		reloadLyrics: () => loadLyricsFor(player.getCurrent()),
+		// 手动匹配：显式绕过「自动匹配歌词」开关（用户都点按钮了，就是想要）
+		reloadLyrics: () => loadLyricsFor(player.getCurrent(), { manual: true }),
 		/** 认证面板（Phase 3） */
 		auth: () => window.bbAuth,
 		/** 收藏夹视图（Phase 3） */
