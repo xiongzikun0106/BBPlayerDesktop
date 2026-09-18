@@ -974,6 +974,72 @@
 			</div>
 		</section>
 
+			<!--
+				── 正在播放（阶段 4b）────────────────────────────────
+				⚠️ 与 `#content` / `#view-share` / `#view-settings` **互斥**
+				（见 renderer.js 的 showMainPane）。点播放条的封面/标题进来，
+				左上角返回。
+
+				布局：**艺术背景 + 大封面 + 队列**。封面是**圆角正方形**
+				（用户明确要求过：封面缩略图与曲绘封面都用圆角方形，不用圆形）。
+
+				队列不复制：`#queue-list` 会被搬进 `#nowplaying-queue-slot`
+				（见 placeQueue 的注释）。
+			-->
+			<section
+				class="nowplaying"
+				id="view-nowplaying"
+				data-testid="view-nowplaying"
+				hidden
+			>
+				<!-- 从封面派生的模糊背景；没有封面时用主色的柔和渐变 -->
+				<div class="nowplaying__bg" id="nowplaying-bg" data-testid="nowplaying-bg"></div>
+
+				<div class="nowplaying__inner">
+					<button
+						class="icon-only nowplaying__back"
+						id="nowplaying-close"
+						data-testid="nowplaying-close"
+						title="返回"
+						aria-label="返回"
+					>
+						<span class="icon icon--md">expand_more</span>
+					</button>
+
+					<div class="nowplaying__art" data-testid="nowplaying-art">
+						<img id="nowplaying-cover" data-testid="nowplaying-cover" alt="" hidden />
+						<span class="icon icon--xl" id="nowplaying-placeholder">music_note</span>
+					</div>
+
+					<h2
+						class="nowplaying__title"
+						id="nowplaying-title"
+						data-testid="nowplaying-title"
+					>
+						未在播放
+					</h2>
+					<p
+						class="nowplaying__artist muted"
+						id="nowplaying-artist"
+						data-testid="nowplaying-artist"
+					>
+						—
+					</p>
+
+					<div class="nowplaying__queue-head">
+						<span>播放队列</span>
+						<span class="muted mono" id="nowplaying-count" data-testid="nowplaying-count"
+							>0</span
+						>
+					</div>
+					<div
+						class="nowplaying__queue"
+						id="nowplaying-queue-slot"
+						data-testid="nowplaying-queue-slot"
+					></div>
+				</div>
+			</section>
+
 			</main>
 
 			<!-- ── 右栏：播放队列 / 歌词 ─────────────────────────── -->
@@ -985,8 +1051,26 @@
 					<button class="tab" data-panel="lyrics" data-testid="tab-lyrics">歌词</button>
 				</div>
 
+				<!--
+					队列的**归属槽位**（阶段 4b）。
+					⚠️ `#queue-list` 只有**一份**：它会在"右栏"与"正在播放面板"
+					之间被搬来搬去（renderer.js 的 placeQueue()）。
+
+					为什么不各渲染一份：同一份数据渲染两棵树，
+					两边的 `data-queue-index` 会重复 —— 探针的
+					`querySelectorAll('[data-queue-index]')` 会数出两倍，
+					拖拽/点击也会落到错误的那一棵上。
+				-->
 				<div class="panel is-active" data-panel="queue" data-testid="panel-queue">
-					<ol class="queue-list" id="queue-list" data-testid="queue-list"></ol>
+					<!--
+						⚠️ 列表本身要**留在 HTML 里**（而不是由 JS 创建）：
+						`renderer.js` 的 placeQueue() 只是把它在两个槽位之间搬动，
+						元素必须一开始就存在。第一版把这段换成了空的槽位 div，
+						结果 `#queue-list` 根本不存在 —— 队列永远是空的。
+					-->
+					<div id="queue-slot" data-testid="queue-slot">
+						<ol class="queue-list" id="queue-list" data-testid="queue-list"></ol>
+					</div>
 					<p class="empty muted" id="queue-empty" data-testid="queue-empty">
 						队列为空
 					</p>

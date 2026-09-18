@@ -139,6 +139,38 @@ async function auditVisibility(window) {
 						panelsBoxHidden: Boolean(panelsBox?.hidden),
 						activePanelRect: visibleBox(activePanel),
 						activePanelName: activePanel?.dataset.settingsPanel ?? null,
+						// 「正在播放」面板的内部状态 —— 标题 / 封面 / 占位图标。
+						// 截图里"元素不该缺却看不见"时，这几个字段能直接定位，
+						// 不用靠盯着 PNG 猜。
+						nowPlaying: (() => {
+							const root = document.getElementById('view-nowplaying')
+							if (!root || root.hidden) return null
+							const title = document.getElementById('nowplaying-title')
+							const artist = document.getElementById('nowplaying-artist')
+							const cover = document.getElementById('nowplaying-cover')
+							const placeholder = document.getElementById('nowplaying-placeholder')
+							const art = document.querySelector('.nowplaying__art')
+							const describe = (el) => {
+								if (!el) return null
+								const s = getComputedStyle(el)
+								return {
+									text: (el.textContent || '').slice(0, 40),
+									hidden: Boolean(el.hidden),
+									display: s.display,
+									color: s.color,
+									fontSize: s.fontSize,
+									box: visibleBox(el),
+								}
+							}
+							return {
+								title: describe(title),
+								artist: describe(artist),
+								coverHidden: cover?.hidden ?? null,
+								coverSrc: cover?.getAttribute('src') ?? null,
+								placeholder: describe(placeholder),
+								artBg: art ? getComputedStyle(art).backgroundColor : null,
+							}
+						})(),
 						// 从激活的子页往上走到 body，记下每一层的 display / position。
 						// 这一条是"元素量得出尺寸但画不出来"的**决定性证据**：
 						// 一眼看出它挂在谁下面、有没有脱离文档流。
@@ -382,12 +414,24 @@ async function run(window) {
 	await click(window, '[data-testid="login-close"]')
 	await sleep(600)
 
+	console.log('\n=== 8b) 正在播放面板（阶段 4b）===')
+	// 先让队列有内容：回到音乐库点「播放全部」
+	await click(window, '[data-testid="nav-library"]')
+	await sleep(700)
+	await click(window, '[data-testid="btn-play-all"]')
+	await sleep(2000)
+	await click(window, '[data-testid="playbar-cover"]')
+	await sleep(1200)
+	await shot(window, '31-nowplaying', '正在播放（大封面 + 模糊背景 + 队列）')
+	await click(window, '[data-testid="nowplaying-close"]')
+	await sleep(600)
+
 	console.log('\n=== 9) 共享面板（页内动作）===')
 	await click(window, '[data-testid="nav-library"]')
 	await sleep(600)
 	await click(window, '[data-testid="library-share"]')
 	await sleep(1500)
-	await shot(window, '30-share', '共享歌单面板')
+	await shot(window, '32-share', '共享歌单面板')
 
 	console.log('\n=== 10) 搜索无结果 / 空状态 ===')
 	await click(window, '[data-testid="nav-search"]')
@@ -403,14 +447,14 @@ async function run(window) {
 	)
 	await click(window, '[data-testid="search-button"]')
 	await sleep(4500)
-	await shot(window, '31-search-empty-result', '搜索无结果（空状态）')
+	await shot(window, '33-search-empty-result', '搜索无结果（空状态）')
 
 	console.log('\n=== 11) 窄窗口（看会不会挤坏）===')
 	window.setSize(1040, 800)
 	await sleep(700)
 	await click(window, '[data-testid="nav-library"]')
 	await sleep(1200)
-	await shot(window, '32-narrow-library', '窄窗口（1040x800）')
+	await shot(window, '34-narrow-library', '窄窗口（1040x800）')
 
 	// 亮色 / 深色都跑一遍后，把设置改回跟随系统
 	await evaluate(window, `window.bbplayer.settings.update({ theme: 'system' })`)

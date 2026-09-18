@@ -1513,15 +1513,20 @@ async function run(window) {
 	// 返回
 	await click(window, '[data-testid="settings-back"]')
 	await sleep(500)
-	const backState = JSON.parse(
-		await evaluate(
-			window,
-			`(() => ({
-				listVisible: !document.getElementById('settings-categories')?.hidden,
-				panelsHidden: Boolean(document.getElementById('settings-panels')?.hidden),
-				title: document.getElementById('page-title')?.textContent,
-			}))()`,
-		),
+	// ⚠️ 这一处**不要** JSON.parse。
+	//
+	// `executeJavaScript(expr, true)` 会把结果**反序列化**再给回来：
+	// 表达式返回字符串时拿到字符串（所以别处要 JSON.parse），
+	// 返回对象时直接拿到对象。对对象再 JSON.parse 会报
+	// `"[object Object]" is not valid JSON`，而且异常被上层 catch 之后
+	// 只留一行日志、断言照样全绿 —— 很难注意到。
+	const backState = await evaluate(
+		window,
+		`(() => ({
+			listVisible: !document.getElementById('settings-categories')?.hidden,
+			panelsHidden: Boolean(document.getElementById('settings-panels')?.hidden),
+			title: document.getElementById('page-title')?.textContent,
+		}))()`,
 	)
 	check(
 		'点返回回到分类列表',
@@ -1558,6 +1563,141 @@ async function run(window) {
 		'账号子页不泄露凭据实现细节（那是诊断信息的事）',
 		accountPanel.leaksJargon === false,
 		accountPanel.leaksJargon ? accountPanel.text : '干净',
+	)
+
+	// ---------------------------------------------------------------
+	// 2.8 正在播放面板（阶段 4b）
+	// ---------------------------------------------------------------
+	//
+	// 移动端的"点迷你播放条展开"落到桌面上就是这一屏：
+	// 艺术背景 + 大封面 + 队列。
+	//
+	// ⚠️ 队列是**同一份 DOM** 被搬进来的（不是复制）。
+	// 这条必须断言：复制一份的话 `data-queue-index` 会有两份，
+	// 探针计数翻倍、拖拽落到错误的那棵树上 —— 而且界面看起来完全正常。
+	console.log('\n[ui] 2.8) 正在播放面板')
+
+	// 先让队列里有东西并把当前曲目置上
+	await click(window, '[data-testid="nav-library"]')
+	await sleep(600)
+	await click(window, '[data-testid="btn-play-all"]')
+	await sleep(1800)
+
+	const queueBefore = JSON.parse(
+		await evaluate(
+			window,
+			`(() => JSON.stringify({
+				rows: document.querySelectorAll('[data-queue-index]').length,
+				parent: document.getElementById('queue-list')?.parentElement?.id ?? null,
+			}))()`,
+		),
+	)
+	check(
+		'展开前队列在右栏的槽位里',
+		queueBefore.parent === 'queue-slot',
+		String(queueBefore.parent),
+	)
+
+	// 点播放条的封面展开
+	await click(window, '[data-testid="playbar-cover"]')
+	await sleep(800)
+
+	const nowPlaying = JSON.parse(
+		await evaluate(
+			window,
+			`(() => {
+				const view = document.getElementById('view-nowplaying')
+				const art = document.querySelector('.nowplaying__art')
+				const artRect = art?.getBoundingClientRect()
+				const artStyle = art ? getComputedStyle(art) : null
+				const cover = document.getElementById('nowplaying-cover')
+				const bg = document.getElementById('nowplaying-bg')
+				return JSON.stringify({
+					visible: Boolean(view && !view.hidden),
+					contentHidden: Boolean(document.getElementById('content')?.hidden),
+					title: document.getElementById('nowplaying-title')?.textContent,
+					matchesNowPlaying:
+						document.getElementById('nowplaying-title')?.textContent ===
+						document.getElementById('now-title')?.textContent,
+					artWidth: artRect ? Math.round(artRect.width) : 0,
+					artRatio: artRect ? artRect.width / artRect.height : 0,
+					artRadius: artStyle ? Number.parseFloat(artStyle.borderRadius) : 0,
+					// 用户明确要求：封面是圆角**正方形**，不是圆形
+					artIsRoundedSquare: Boolean(
+						artRect &&
+							Math.abs(artRect.width - artRect.height) < 2 &&
+							Number.parseFloat(artStyle.borderRadius) < artRect.width / 2,
+					),
+					bgHasBlur: /blur\\(/.test(String(bg ? getComputedStyle(bg).filter : '')),
+					bgHasArtAttr: bg?.dataset.hasArt ?? null,
+					coverPresent: Boolean(cover),
+					queueParent:
+						document.getElementById('queue-list')?.parentElement?.id ?? null,
+					queueRows: document.querySelectorAll('[data-queue-index]').length,
+					queueCount: document.getElementById('nowplaying-count')?.textContent,
+				})
+			})()`,
+		),
+	)
+	check(
+		'点播放条封面展开「正在播放」面板',
+		nowPlaying.visible && nowPlaying.contentHidden,
+		JSON.stringify({
+			visible: nowPlaying.visible,
+			contentHidden: nowPlaying.contentHidden,
+		}),
+	)
+	check(
+		'面板显示的曲目与播放条一致（不是两份状态）',
+		nowPlaying.matchesNowPlaying === true && Boolean(nowPlaying.title),
+		`面板=「${nowPlaying.title}」`,
+	)
+	check(
+		'大封面是**圆角正方形**（用户明确要求，不用圆形）',
+		nowPlaying.artIsRoundedSquare && nowPlaying.artWidth >= 160,
+		`${nowPlaying.artWidth}px 宽，圆角 ${nowPlaying.artRadius}px`,
+	)
+	check(
+		'背景是从封面派生的模糊层',
+		nowPlaying.bgHasBlur === true,
+		`data-has-art=${nowPlaying.bgHasArtAttr}`,
+	)
+	check(
+		'队列被**搬进**面板而不是复制一份（data-queue-index 不能翻倍）',
+		nowPlaying.queueParent === 'nowplaying-queue-slot' &&
+			nowPlaying.queueRows === queueBefore.rows,
+		`行数 ${queueBefore.rows} → ${nowPlaying.queueRows}，父节点 ${nowPlaying.queueParent}`,
+	)
+	check(
+		'面板上的队列计数与行数一致',
+		String(nowPlaying.queueCount) === String(nowPlaying.queueRows),
+		`计数=${nowPlaying.queueCount} 行数=${nowPlaying.queueRows}`,
+	)
+
+	// 面板里的队列同样可拖（同一个元素，交互不能丢）
+	const draggableInPanel = await evaluate(
+		window,
+		`[...document.querySelectorAll('[data-queue-index]')].every((el) => el.draggable)`,
+	)
+	check('面板里的队列行仍然可拖拽', draggableInPanel === true)
+
+	// 返回：队列要**搬回**右栏
+	await click(window, '[data-testid="nowplaying-close"]')
+	await sleep(700)
+	const afterClose = JSON.parse(
+		await evaluate(
+			window,
+			`(() => JSON.stringify({
+				viewHidden: Boolean(document.getElementById('view-nowplaying')?.hidden),
+				queueParent: document.getElementById('queue-list')?.parentElement?.id ?? null,
+				rows: document.querySelectorAll('[data-queue-index]').length,
+			}))()`,
+		),
+	)
+	check(
+		'返回后队列搬回右栏（没有丢、也没有留两份）',
+		afterClose.viewHidden && afterClose.queueParent === 'queue-slot',
+		`父节点=${afterClose.queueParent}，行数=${afterClose.rows}`,
 	)
 
 	// 回到音乐库，免得影响后面的断言

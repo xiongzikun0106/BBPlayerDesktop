@@ -444,10 +444,81 @@
 	// 渲染
 	// ---------------------------------------------------------------
 
+	/**
+	 * 刷新「正在播放」面板（阶段 4b）。
+	 *
+	 * 大封面 / 标题 / 歌手 / 从封面派生的模糊背景。
+	 * 面板**不持有**播放状态 —— 它只是把 `state.queue[state.index]`
+	 * 换一种更大的排版显示出来，避免两份状态漂移。
+	 */
+	function refreshNowPlayingView() {
+		const track = state.queue[state.index] ?? null
+		const title = document.getElementById('nowplaying-title')
+		const artist = document.getElementById('nowplaying-artist')
+		const count = document.getElementById('nowplaying-count')
+		const cover = document.getElementById('nowplaying-cover')
+		const placeholder = document.getElementById('nowplaying-placeholder')
+		const background = document.getElementById('nowplaying-bg')
+
+		if (title) title.textContent = track?.title ?? '未在播放'
+		if (artist) artist.textContent = track ? track.artist || '—' : '—'
+		if (count) count.textContent = String(state.queue.length)
+
+		const coverUrl = track?.cover ?? track?.coverUrl ?? track?.cover_url ?? null
+		/*
+		 * ⚠️ 面板封面必须和播放条封面一样接 load / error。
+		 *
+		 * 只设 src 的话：HTML 上那个 hidden 属性永远摘不掉 ——
+		 * 于是"有封面 URL、但封面永远是隐藏的"，只剩一个空方块；
+		 * 而占位图标因为"有封面"也被藏起来了，两头都空。
+		 * 巡检体检表里 coverHidden=true 而 coverSrc 有值，一眼就能看出。
+		 */
+		if (cover && !cover.dataset.wired) {
+			cover.dataset.wired = '1'
+			cover.addEventListener('load', () => {
+				cover.hidden = false
+				if (placeholder) placeholder.hidden = true
+			})
+			cover.addEventListener('error', () => {
+				cover.hidden = true
+				if (placeholder) placeholder.hidden = false
+			})
+		}
+		if (cover) {
+			if (coverUrl) cover.src = coverUrl
+			else {
+				cover.hidden = true
+				cover.removeAttribute('src')
+			}
+		}
+		if (placeholder) placeholder.hidden = Boolean(coverUrl)
+
+		/*
+		 * 背景：把**同一张封面**铺满再重度模糊 + 压暗。
+		 *
+		 * ⚠️ 不走"提取主色"那条路：`packages/image-theme-colors` 在移动端是
+		 * 原生模块，桌面端没有对应实现。直接模糊封面，效果接近且零依赖 ——
+		 * 封面本身的色彩分布就是最好的背景。
+		 *
+		 * 没有封面时退回主色渐变（见 CSS 的 `[data-has-art='false']`），
+		 * 不留一片死白。
+		 */
+		if (background) {
+			if (coverUrl) {
+				background.style.backgroundImage = 'url("' + coverUrl + '")'
+				background.dataset.hasArt = 'true'
+			} else {
+				background.style.backgroundImage = ''
+				background.dataset.hasArt = 'false'
+			}
+		}
+	}
+
 	function updateNowPlaying() {
 		const track = state.queue[state.index]
 		if (els.title) els.title.textContent = track ? track.title : '未在播放'
 		if (els.artist) els.artist.textContent = track ? track.artist || '—' : '—'
+		refreshNowPlayingView()
 
 		// 封面缩略图：有就显示，加载失败就退回占位图标。
 		// ⚠️ 不能只设 `src` 不管失败 —— 封面域名偶尔会 403，
@@ -488,6 +559,9 @@
 		if (!els.queueList) return
 		els.queueList.textContent = ''
 		if (els.queueEmpty) els.queueEmpty.hidden = state.queue.length > 0
+		// 面板上的计数也跟着走（队列只有一份数据，两个地方显示）
+		const count = document.getElementById('nowplaying-count')
+		if (count) count.textContent = String(state.queue.length)
 
 		state.queue.forEach((track, index) => {
 			const li = document.createElement('li')
@@ -669,6 +743,8 @@
 		/** 随机播放的洗牌顺序（供自动化断言"每首恰好播一次"） */
 		getShuffleOrder: () => state.shuffleOrder.slice(),
 		getShufflePos: () => state.shufflePos,
+		/** 刷新「正在播放」面板（阶段 4b） */
+		refreshNowPlayingView,
 		getQueue: () => state.queue.slice(),
 		getIndex: () => state.index,
 		getCurrent: () => state.queue[state.index] || null,

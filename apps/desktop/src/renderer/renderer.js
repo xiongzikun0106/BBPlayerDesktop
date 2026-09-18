@@ -118,6 +118,9 @@
 
 	let currentLibraryTab = 'playlists'
 
+	/** 当前目的地。关闭「正在播放」时要回到它 */
+	let currentView = 'library'
+
 	function setLibraryTab(tab, { focusNav = true } = {}) {
 		if (!LIBRARY_TABS[tab]) return
 		currentLibraryTab = tab
@@ -132,6 +135,7 @@
 	}
 
 	function setActiveNav(view) {
+		currentView = view
 		for (const item of document.querySelectorAll('.nav__item')) {
 			item.classList.toggle('is-active', item.dataset.view === view)
 		}
@@ -143,6 +147,11 @@
 		// 音乐库的页签条只在音乐库目的地显示
 		const tabs = document.getElementById('library-tabs')
 		if (tabs) tabs.hidden = view !== 'library'
+		// ⚠️ 设置子页的返回按钮只属于设置。不显式关掉的话，
+		// 从「设置 › 某个分类」切到别的页面它会一直挂着 ——
+		// 正在播放面板里就出现了**两个返回按钮**（外壳的 + 面板自己的）。
+		const settingsBack = document.getElementById('settings-back')
+		if (settingsBack && view !== 'settings') settingsBack.hidden = true
 		showMainPane(view)
 	}
 
@@ -158,12 +167,40 @@
 		const content = document.getElementById('content')
 		const shareRoot = document.getElementById('view-share')
 		const settingsRoot = document.getElementById('view-settings')
+		const nowRoot = document.getElementById('view-nowplaying')
 		const showShare = view === 'share'
 		const showSettings = view === 'settings'
+		const showNow = view === 'nowplaying'
 		if (shareRoot) shareRoot.hidden = !showShare
 		if (settingsRoot) settingsRoot.hidden = !showSettings
-		if (content) content.hidden = showShare || showSettings
+		if (nowRoot) nowRoot.hidden = !showNow
+		if (content) content.hidden = showShare || showSettings || showNow
+		// ⚠️ 正在播放面板**自带标题**（大封面 + 曲名），外壳的页面标题区
+		// 在它上面就是重复的一行 —— 而且会把封面往下挤。
+		const pageHead = document.querySelector('.page-head')
+		if (pageHead) pageHead.hidden = showNow
 		if (showSettings) window.bbSettings?.open?.()
+		// 队列只有一份：它跟着"哪一个面板在前台"搬家（见 placeQueue）
+		placeQueue(showNow)
+	}
+
+	/**
+	 * 把**唯一那份**队列列表放到正确的位置（阶段 4b）。
+	 *
+	 * ⚠️ 队列在"右栏"和"正在播放面板"里都要出现，但**不能渲染两份**：
+	 * 两棵树会让 `data-queue-index` 重复 —— 探针的计数翻倍、
+	 * 拖拽与点击落到错误的那一棵上。
+	 *
+	 * 所以队列是一个 DOM 节点，在需要时被搬到对应的槽位里。
+	 * 这个函数是它**唯一**的搬运点。
+	 */
+	function placeQueue(intoNowPlaying) {
+		const list = document.getElementById('queue-list')
+		if (!list) return
+		const slot = document.getElementById(
+			intoNowPlaying ? 'nowplaying-queue-slot' : 'queue-slot',
+		)
+		if (slot && list.parentElement !== slot) slot.appendChild(list)
 	}
 
 	/**
@@ -209,6 +246,49 @@
 	for (const button of document.querySelectorAll('[data-lib-tab]')) {
 		button.addEventListener('click', () => setLibraryTab(button.dataset.libTab))
 	}
+
+	/**
+	 * 打开 / 关闭「正在播放」面板（阶段 4b）。
+	 *
+	 * 入口是**播放条的封面与标题区** —— 与移动端"点迷你播放条展开"
+	 * 是同一个手势心智。返回按钮在面板左上角。
+	 *
+	 * ⚠️ 要记住**进入前的目的地**。第一版直接用 `currentView` 返回，
+	 * 但 `setActiveNav('nowplaying')` 已经把它改成 `nowplaying` 了，
+	 * 于是"返回"又回到正在播放 —— 面板关不掉，队列也搬不回右栏。
+	 */
+	let viewBeforeNowPlaying = 'library'
+
+	function setNowPlaying(open) {
+		if (open) {
+			if (currentView !== 'nowplaying') viewBeforeNowPlaying = currentView
+			setActiveNav('nowplaying')
+			window.bbPlayer?.refreshNowPlayingView?.()
+		} else {
+			openView(viewBeforeNowPlaying)
+		}
+	}
+
+	/**
+	 * 播放条的封面 / 标题区可点，展开「正在播放」（阶段 4b）。
+	 *
+	 * ⚠️ 用 `querySelector('[data-testid=…]')` 而不是 `getElementById`：
+	 * 封面只有 `data-testid="playbar-cover"`、**没有 id**
+	 * （第一版按 id 找，拿到 null，于是"点封面没反应"）。
+	 */
+	const nowPlayingEntryPoints = [
+		document.querySelector('[data-testid="playbar-cover"]'),
+		document.getElementById('now-title'),
+		document.getElementById('now-artist'),
+	]
+	for (const node of nowPlayingEntryPoints) {
+		if (!node) continue
+		node.classList.add('is-clickable')
+		node.addEventListener('click', () => setNowPlaying(true))
+	}
+	document
+		.getElementById('nowplaying-close')
+		?.addEventListener('click', () => setNowPlaying(false))
 
 	// 页内动作：共享歌单面板
 	document.getElementById('library-share')?.addEventListener('click', () => {
