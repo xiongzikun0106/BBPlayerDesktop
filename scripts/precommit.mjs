@@ -129,6 +129,34 @@ function resolveWorkspaceTool(name) {
  * 运行 workspace 内工具（oxfmt / oxlint）。不经 shell，因此路径中的
  * 括号、方括号、空格都不会引发解析问题。
  */
+/**
+ * 与 `runTool` 相同，但**接住输出**而不是直接继承 stdio。
+ *
+ * 有些工具的"没有可检查的文件"是通过 stdout 文案加退出码 1 表达的，
+ * 必须读输出才能区分"真的失败"与"无事可做"。
+ */
+function runToolCaptured(tool, label, args) {
+	const entry = resolveWorkspaceTool(tool)
+	if (!entry) {
+		return {
+			status: 1,
+			stdout: '',
+			stderr: `在 node_modules 中找不到 ${tool}`,
+		}
+	}
+	const result = spawnSync(process.execPath, [entry, ...args], {
+		cwd: ROOT,
+		encoding: 'utf8',
+		shell: false,
+	})
+	void label
+	return {
+		status: result.status ?? 1,
+		stdout: result.stdout ?? '',
+		stderr: result.stderr ?? '',
+	}
+}
+
 function runTool(label, tool, args) {
 	const entry = resolveWorkspaceTool(tool)
 	if (!entry) {
@@ -249,7 +277,36 @@ function main() {
 
 	if (lintTargets.length > 0) {
 		console.log(`\n▸ oxlint（${lintTargets.length} 个文件）`)
-		if (!runTool('oxlint', 'oxlint', ['--type-aware', ...lintTargets])) return 1
+		/*
+		 * ⚠️ oxlint 在"传进来的文件**全被 ignorePatterns 排除**"时会打印
+		 * 「No files found to lint」并**退出码 1**，钩子于是判失败。
+		 *
+		 * 但"没有可检查的文件"不是失败。本仓库的 oxlint.config.mts 把
+		 * 所有 .js 文件都排除了（移动端有大量生成的 JS），于是**整个桌面端
+		 * 渲染进程（renderer 下的 .js）都在忽略范围里** ——
+		 * 只改这类文件的提交永远过不了钩子。实测撞到过一次（只暂存 share.js）。
+		 *
+		 * 所以把输出接住：只有"确实没有文件可查"才放行，真有 lint 错误照常失败。
+		 *
+		 * 另注：写这段注释时踩了个坑 —— 在块注释里写 glob（星号加斜杠）
+		 * 会把注释**提前结束**掉。所以这里用文字描述，不写那个模式。
+		 */
+		const lint = runToolCaptured('oxlint', 'oxlint', [
+			'--type-aware',
+			...lintTargets,
+		])
+		const output = `${lint.stdout}${lint.stderr}`
+		const nothingToLint = /No files found to lint/.test(output)
+		if (lint.status !== 0 && !nothingToLint) {
+			process.stdout.write(output)
+			console.error('✗ oxlint 失败')
+			return 1
+		}
+		if (nothingToLint) {
+			console.log(`  （${lintTargets.length} 个文件都在忽略范围内，跳过）`)
+		} else {
+			process.stdout.write(output)
+		}
 	}
 
 	console.log('\n✅ pre-commit 检查通过')

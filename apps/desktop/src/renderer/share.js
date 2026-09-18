@@ -1368,12 +1368,21 @@
 			if (seq !== refreshSeq) return null
 			state.account = data
 			render()
-			report(
-				data.loggedIn
-					? `已加载 ${data.sharedPlaylists?.length ?? 0} 个共享歌单`
-					: '未登录：可以预览与订阅共享歌单；分享自己的歌单需要先登录',
-				'ok',
-			)
+			/*
+			 * ⚠️ 未登录时**不写状态行**。
+			 *
+			 * 头部已经有一行账号摘要（`share-account-status`）说了同一件事，
+			 * 再写一遍状态行就是屏幕上出现两句几乎一样的话 ——
+			 * 截图里一眼可见（"未登录（可以预览与订阅…）" + "未登录：可以预览…"）。
+			 *
+			 * 状态行留给**动作的结果**（"已加载 N 个共享歌单" / 报错），
+			 * 而不是复述当前状态。
+			 */
+			if (data.loggedIn) {
+				report(`已加载 ${data.sharedPlaylists?.length ?? 0} 个共享歌单`, 'ok')
+			} else {
+				report('', 'idle')
+			}
 			return data
 		} catch (error) {
 			if (seq !== refreshSeq) return null
