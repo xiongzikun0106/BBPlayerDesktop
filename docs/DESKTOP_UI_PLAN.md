@@ -317,7 +317,14 @@
   登录扫码 / 窄窗口 / 浅色 + 深色主界面。
   **待看**：收藏夹、搜索（空 + 结果 + 无结果）、右栏歌词、
   登录的另外 3 个页签、以及其余视图的深色版本。
-- **待做**：应用图标与 README 截图重拍；开发打包（`pnpm --filter @bbplayer/desktop pack:dir`）验证。
+- **打包验证 ✅**：`pnpm --filter @bbplayer/desktop pack:dir` 的产物里
+  **新增的字体与新模块都在 asar 里**（`material-symbols-rounded.woff2`、
+  `components.css/js`、`theme.js`、`status.js`、`tokens.cjs`）——
+  新增静态资源最容易漏进打包配置，所以逐一核对过。
+  `pnpm verify:packaged`（真跑打包产物）**24/24 全过**：
+  渲染进程就绪、界面渲染出 38 KB 内容、**主题已应用（light）**、
+  core 从 bundle 加载且源码不在包内。
+- **待做**：应用图标与 README 截图重拍。
 
 #### 原始计划（阶段 5）
 
