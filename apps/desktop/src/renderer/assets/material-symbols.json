@@ -1,7 +1,7 @@
 {
-	"generatedAt": "2026-09-18T17:19:06.654Z",
+	"generatedAt": "2026-09-18T17:26:42.396Z",
 	"family": "Material Symbols Rounded",
-	"cssUrl": "https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@24,400,0..1,0&icon_names=account_circle,add,album,arrow_back,blur_on,check,check_circle,chevron_right,close,cloud_off,content_copy,contrast,dark_mode,delete,download,drag_indicator,error,expand_less,expand_more,folder,folder_open,graphic_eq,group,history,home,hourglass_empty,info,key,keyboard,library_music,light_mode,link,lyrics,more_vert,music_note,open_in_new,palette,pause,person,play_arrow,play_circle,play_next,playlist_add,queue_music,refresh,repeat,repeat_one,restart_alt,search,search_off,settings,share,shuffle,skip_next,skip_previous,speed,star,star_border,sync,text_fields,timer,upload,video_library,volume_up,warning&display=block",
+	"cssUrl": "https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@24,400,0..1,0&icon_names=account_circle,add,album,arrow_back,blur_on,check,check_circle,chevron_right,close,cloud_off,content_copy,contrast,dark_mode,delete,download,drag_indicator,error,expand_less,expand_more,folder,folder_open,graphic_eq,group,history,home,hourglass_empty,info,key,keyboard,library_music,light_mode,link,lyrics,more_vert,music_note,open_in_new,palette,pause,person,play_arrow,play_circle,playlist_add,queue_music,queue_play_next,refresh,repeat,repeat_one,restart_alt,search,search_off,settings,share,shuffle,skip_next,skip_previous,speed,star,star_border,sync,text_fields,timer,upload,video_library,volume_up,warning&display=block",
 	"iconCount": 65,
 	"icons": [
 		"account_circle",
@@ -45,9 +45,9 @@
 		"person",
 		"play_arrow",
 		"play_circle",
-		"play_next",
 		"playlist_add",
 		"queue_music",
+		"queue_play_next",
 		"refresh",
 		"repeat",
 		"repeat_one",
@@ -70,5 +70,5 @@
 		"volume_up",
 		"warning"
 	],
-	"bytes": 10200
+	"bytes": 10804
 }

@@ -50,6 +50,44 @@ const CSS_FILES = [
 	'lyrics-window.css',
 ]
 
+/**
+ * 审计界面上所有 .icon 是否真的渲染成了**单个字形**。
+ *
+ * 判据：图标元素的宽度 / 字号应当接近 1。远大于 1 说明合字没生效 ——
+ * 元素里显示的是**字面的图标名**（"library_music" 13 个字符 = 13em 宽）。
+ *
+ * ⚠️ 这个函数会被调用**多次**（首屏一次、内容加载后一次）。
+ * 只在首屏跑会漏掉真实的 bug：`play_next` 这个名字 Material 里并不存在，
+ * 曲目表渲染出来后是 144px 宽的字面文本压在时长列上，
+ * 而首屏那次检查根本看不到曲目表。**断言跑得太早等于没跑。**
+ *
+ * @param {Electron.WebContents} window
+ */
+async function auditIcons(window) {
+	return JSON.parse(
+		await evaluate(
+			window,
+			`(() => {
+				const nodes = [...document.querySelectorAll('.icon')]
+				const fontOk = document.fonts.check('24px "Material Symbols Rounded"')
+				const tooWide = nodes
+					.filter((el) => {
+						const size = Number.parseFloat(getComputedStyle(el).fontSize)
+						if (!Number.isFinite(size) || size === 0) return false
+						return el.getBoundingClientRect().width / size > 1.8
+					})
+					.map((el) => el.textContent.trim())
+				return JSON.stringify({
+					count: nodes.length,
+					fontOk,
+					tooWide,
+					fontStatus: document.fonts.status,
+				})
+			})()`,
+		),
+	)
+}
+
 async function evaluate(window, expression) {
 	return await window.webContents.executeJavaScript(expression, true)
 }
@@ -603,28 +641,12 @@ async function run(window) {
 	// 那时元素会宽得离谱（"library_music" 13 个字符 vs 一个图标）。
 	// 所以同时量**每个图标元素的宽度**：一个图标应当接近 1em。
 	console.log('\n[ui] 1.10) 图标')
-	const iconState = JSON.parse(
-		await evaluate(
-			window,
-			`(() => {
-				const nodes = [...document.querySelectorAll('.icon')]
-				const fontOk = document.fonts.check('24px "Material Symbols Rounded"')
-				const tooWide = nodes
-					.filter((el) => {
-						const size = Number.parseFloat(getComputedStyle(el).fontSize)
-						if (!Number.isFinite(size) || size === 0) return false
-						return el.getBoundingClientRect().width / size > 1.8
-					})
-					.map((el) => el.textContent.trim())
-				return JSON.stringify({
-					count: nodes.length,
-					fontOk,
-					tooWide,
-					fontStatus: document.fonts.status,
-				})
-			})()`,
-		),
-	)
+	// ⚠️ 这段断言在**两个位置**各跑一次（这里 + 内容加载后的 2.6）。
+	// 原因是它曾经漏掉一个真实的 bug：图标名写错时（play_next 不是 Material
+	// 里的名字）合字不生效，界面渲染出**字面的 9 个字母**（144px 宽）压在
+	// 时长列上；而这条断言当时只在首页跑，曲目表还没渲染，所以一路全绿。
+	// **断言跑得太早等于没跑。**
+	const iconState = await auditIcons(window)
 	check('界面里有图标元素', iconState.count > 0, `${iconState.count} 个`)
 	check(
 		'Material Symbols 字体已加载',
@@ -635,7 +657,7 @@ async function run(window) {
 		'每个图标都渲染成单个字形（合字生效，没有退化成字母）',
 		iconState.tooWide.length === 0,
 		iconState.tooWide.length > 0
-			? `过宽：${iconState.tooWide.join('、')}`
+			? `过宽（图标名可能不存在）：${iconState.tooWide.join('、')}`
 			: `${iconState.count} 个都正常`,
 	)
 
@@ -1041,6 +1063,16 @@ async function run(window) {
 	// 用户明确要求的三件事。这三条都属于"逻辑在内存里、界面上看不出来对错"，
 	// 所以必须断言**行为**而不只是"按钮存在"。
 	console.log('\n[ui] 2.6) 播放列表功能')
+	// 内容加载后再审一次图标：曲目表的「下一首播放」按钮是这一阶段新加的，
+	// 而首屏那次检查看不到它（见 auditIcons 的注释）。
+	const iconsAfterContent = await auditIcons(window)
+	check(
+		'曲目表 / 队列渲染后，所有图标仍然渲染成单个字形',
+		iconsAfterContent.tooWide.length === 0,
+		iconsAfterContent.tooWide.length > 0
+			? `过宽（图标名可能不存在）：${iconsAfterContent.tooWide.join('、')}`
+			: `${iconsAfterContent.count} 个都正常`,
+	)
 
 	// 先确保队列里有一批歌（用侧栏那个歌单）
 	await evaluate(

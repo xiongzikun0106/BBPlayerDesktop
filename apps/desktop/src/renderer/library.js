@@ -471,7 +471,12 @@
 			playNextButton.dataset.testid = `track-play-next-${index}`
 			playNextButton.dataset.action = 'play-next'
 			playNextButton.innerHTML = window.bbComponents.iconHtml(
-				'play_next',
+				// ⚠️ 是 `queue_play_next`，**不是** `play_next` —— Material Symbols 里
+				// 没有后者。名字写错时 Google Fonts **不报错**，只是把那个图标从
+				// 子集里悄悄去掉；于是合字不生效，界面渲染出字面的 "play_next"
+				// 九个字母（实测 144px 宽）压在时长列上。
+				// 现在 build-icon-font.mjs 会逐个校验名字，见那里的注释。
+				'queue_play_next',
 				'icon--sm',
 			)
 			playNextButton.title = '下一首播放'

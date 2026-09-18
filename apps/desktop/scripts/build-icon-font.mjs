@@ -83,6 +83,47 @@ function buildCssUrl(iconNames) {
 }
 
 /**
+ * 逐个校验图标名是否真的存在于 Material Symbols。
+ *
+ * ## 为什么需要它
+ *
+ * Google Fonts 对**不存在的图标名不报错**：它只是把那个名字从子集里悄悄去掉，
+ * 返回一份以 `/* fallback *\/` 开头的 CSS。
+ *
+ * 这个"静默失败"很贵 —— 字体少了那个字形，合字就不生效，界面**渲染出字面的
+ * 图标名**。实测把 `queue_play_next` 误写成 `play_next` 时，曲目表里出现了
+ * 一条 **144px 宽**的 "play_next" 九个字母，压在时长列上（9 字符 × 16px）。
+ * 所有断言当时都是绿的，是靠人眼看截图才发现的。
+ *
+ * ## 怎么判
+ *
+ * 有效名字返回的 CSS 里有真的 `@font-face`；
+ * 无效名字返回的以 `/* fallback *\/` 开头。用这个特征区分。
+ *
+ * 先看整批请求：如果**没有** fallback 标记，说明全部有效，直接返回（省掉
+ * N 个请求）。只有可疑时才逐个查 —— 那是失败路径，慢一点无所谓。
+ *
+ * @param {string[]} iconNames
+ * @param {string} batchCss 整批请求返回的 CSS
+ * @returns {Promise<string[]>} 不存在的名字
+ */
+async function findInvalidIconNames(iconNames, batchCss) {
+	if (!batchCss.includes('/* fallback */')) return []
+
+	console.log('  ⚠ 整批请求里出现了 fallback 标记，逐个排查图标名…')
+	const invalid = []
+	for (const name of iconNames) {
+		const url =
+			'https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded' +
+			':opsz,wght,FILL,GRAD@24,400,0..1,0' +
+			`&icon_names=${name}&display=block`
+		const css = await fetchWithRetry(url).then((r) => r.text())
+		if (css.includes('/* fallback */')) invalid.push(name)
+	}
+	return invalid
+}
+
+/**
  * 带重试的 fetch。
  *
  * Google Fonts 偶发 `fetch failed`（实测过一次，重试即成功）。
@@ -124,6 +165,18 @@ async function main() {
 	}
 
 	const css = await fetchWithRetry(cssUrl).then((r) => r.text())
+
+	// ⚠️ **逐个校验图标名**（见 findInvalidIconNames 的注释）。
+	// 这一步在失败路径上会多发几十个请求，但只有名字写错时才会走到。
+	const invalid = await findInvalidIconNames(iconNames, css)
+	if (invalid.length > 0) {
+		throw new Error(
+			`有 ${invalid.length} 个图标名在 Material Symbols 里不存在：${invalid.join(', ')}\n` +
+				'  （名字写错时 Google 不会报错，只会把图标从子集里去掉，' +
+				'结果是界面渲染出字面的图标名 —— 一条很宽的英文压在别的列上）\n' +
+				'  改 scripts/icons.txt 里的名字后重跑。',
+		)
+	}
 
 	// 从返回的 CSS 里挑出 woff2 源。
 	//
@@ -240,7 +293,7 @@ async function main() {
 				family: 'Material Symbols Rounded',
 				cssUrl,
 				iconCount: iconNames.length,
-				icons: [...iconNames].sort(),
+				icons: [...iconNames].sort((a, b) => a.localeCompare(b, 'en')),
 				bytes: buffers[0].length,
 			},
 			null,

@@ -30,7 +30,7 @@ lyrics             # 歌词面板
 
 # 播放控制
 play_arrow         # 播放
-play_next          # 下一首播放
+queue_play_next    # 下一首播放（注意：不叫 play_next，Material 里没有这个名字）
 drag_indicator     # 拖拽把手
 pause              # 暂停
 skip_previous      # 上一首
