@@ -39,6 +39,9 @@ const THEMES = ['system', 'light', 'dark']
  */
 const MATERIAL_LEVELS = ['none', 'blur', 'gradient']
 
+/** 配色种子来源：跟随系统强调色 / 自定义 */
+const ACCENT_MODES = ['system', 'custom']
+
 /** 定时关闭的预设（分钟），与移动端 `PRESET_DURATIONS` 一致 */
 const SLEEP_PRESETS_MINUTES = [15, 30, 45, 60]
 
@@ -72,6 +75,16 @@ const DEFAULT_SETTINGS = {
 	 * 需要时仍然可以在歌词面板里手动匹配。
 	 */
 	lyricsAutoMatch: true,
+	/**
+	 * 配色种子来源（阶段 4）：跟随系统强调色，或用自定义颜色。
+	 *
+	 * 与「显示模式」（浅色 / 深色 / 跟随系统）是**两个维度**：
+	 * 模式决定亮暗，种子决定色相。混在一起的话「跟随系统」既指亮暗又指颜色，
+	 * 用户就没法只改其中一个。
+	 */
+	accentMode: 'system',
+	/** 自定义种子色（`accentMode` 为 `custom` 时使用） */
+	accentColor: '#6750A4',
 }
 
 /**
@@ -116,6 +129,13 @@ function createSettings({ storage, log = () => {} }) {
 		)
 		if (!MATERIAL_LEVELS.includes(cache.materialLevel)) {
 			cache.materialLevel = DEFAULT_SETTINGS.materialLevel
+		}
+		if (!ACCENT_MODES.includes(cache.accentMode)) {
+			cache.accentMode = DEFAULT_SETTINGS.accentMode
+		}
+		// 只接受 #RRGGBB；给不出合法值就退回默认（派生函数也会兜底）
+		if (!/^#[0-9a-fA-F]{6}$/.test(String(cache.accentColor ?? ''))) {
+			cache.accentColor = DEFAULT_SETTINGS.accentColor
 		}
 
 		return cache
@@ -163,12 +183,14 @@ function createSettings({ storage, log = () => {} }) {
 				settings: await load(),
 				themes: THEMES,
 				materialLevels: MATERIAL_LEVELS,
+				accentModes: ACCENT_MODES,
 				sleepPresets: SLEEP_PRESETS_MINUTES,
 				sleepFadeMs: SLEEP_FADE_MS,
 				defaults: DEFAULT_SETTINGS,
 			}
 		},
 		THEMES,
+		ACCENT_MODES,
 		SLEEP_PRESETS_MINUTES,
 		SLEEP_FADE_MS,
 		DEFAULT_SETTINGS,

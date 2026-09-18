@@ -112,6 +112,9 @@ const STYLE_ID = 'bb-theme-vars'
 			materialLevel: state.materialLevel,
 			materialBlur: state.last?.materialBlur ?? null,
 			datasetMaterial: document.documentElement.dataset.material ?? null,
+			// 阶段 4：派生的主色（探针据此断言"换了种子色，界面主色真的变了"）
+			primary: state.colors?.primary ?? null,
+			primaryContainer: state.colors?.secondaryContainer ?? null,
 			hasVars: Boolean(document.getElementById(STYLE_ID)?.textContent),
 			varCount: (document.getElementById(STYLE_ID)?.textContent ?? '').split(
 				';',

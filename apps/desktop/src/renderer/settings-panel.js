@@ -69,6 +69,7 @@
 		// 外观
 		themes: document.querySelectorAll('[data-theme-choice]'),
 		materials: document.querySelectorAll('[data-material-choice]'),
+		accents: document.querySelectorAll('[data-accent-choice]'),
 
 		// 播放
 		sleepPresets: document.getElementById('settings-sleep-presets'),
@@ -182,6 +183,7 @@
 			currentSettings = await features.readSettings()
 			renderTheme(currentSettings.theme)
 			renderMaterial(currentSettings.materialLevel)
+			renderAccent(currentSettings.accentMode, currentSettings.accentColor)
 			renderSleep(currentSettings.sleepEndsAt)
 			renderLoudness(currentSettings.loudnessNormalization)
 			if (els.loudnessTarget && currentSettings.loudnessTargetDb != null) {
@@ -235,6 +237,60 @@
 	 * → `theme.js` 把 `data-material` 标到 `<html>` 上，CSS 靠它切模糊强度。
 	 * 渲染进程这边**不需要**自己拼 CSS —— 强度档位是主进程的单一真相。
 	 */
+	/**
+	 * 配色：系统主题色 / 自定义（阶段 4）。
+	 *
+	 * 与「显示模式」是两个维度：模式决定亮暗，种子决定色相。
+	 */
+	function renderAccent(accentMode, accentColor) {
+		for (const button of els.accents) {
+			button.classList.toggle(
+				'is-active',
+				button.dataset.accentChoice === (accentMode ?? 'system'),
+			)
+		}
+		const row = document.getElementById('settings-accent-row')
+		if (row) row.hidden = (accentMode ?? 'system') !== 'custom'
+		const input = document.getElementById('settings-accent-color')
+		if (input && /^#[0-9a-fA-F]{6}$/.test(String(accentColor ?? ''))) {
+			input.value = String(accentColor)
+		}
+		const label = document.getElementById('settings-accent-hex')
+		if (label && input) label.textContent = input.value
+	}
+
+	for (const button of els.accents) {
+		button.addEventListener('click', () => {
+			void (async () => {
+				if (!ready) {
+					notReady(els.backupStatus)
+					return
+				}
+				await features.writeSettings({
+					accentMode: button.dataset.accentChoice,
+				})
+				await refreshSettings()
+			})()
+		})
+	}
+	document
+		.getElementById('settings-accent-color')
+		?.addEventListener('input', (event) => {
+			const value = event.target.value
+			const label = document.getElementById('settings-accent-hex')
+			if (label) label.textContent = value
+			// `input` 事件在拖动取色器时高频触发 —— 只在 change 时落盘，
+			// 否则每拖一格就写一次设置、推一次主题
+		})
+	document
+		.getElementById('settings-accent-color')
+		?.addEventListener('change', (event) => {
+			void (async () => {
+				await features?.writeSettings?.({ accentColor: event.target.value })
+				await refreshSettings()
+			})()
+		})
+
 	function renderMaterial(level) {
 		for (const button of els.materials) {
 			button.classList.toggle(

@@ -108,18 +108,28 @@ function resolveMode(preference, systemPrefersDark) {
  *   * **旧变量别名**（`--bg` / `--surface-2` / `--ok` …）：`style.css` 有
  *     1600 行、几百处引用，一次性改名风险太大。先加别名让新老并存，
  *     逐块迁移 —— 别名消失的那天就是迁移完成的标志。
+ *
+ * ⚠️ `colors` 必须由调用方传进来（已经过**种子色派生**），不能在这里
+ * 现取 `tokens.colorSchemes[mode]`。第一版就是在这里现取的：
+ * 派生色板进了 `describe` 的返回值、也进了渲染进程的 JS 状态，
+ * 但**没进 CSS 变量** —— 界面主色一点没变，而除了"主色真的变了吗"
+ * 这条断言之外，所有断言都是绿的（半接通的典型症状）。
+ *
+ * @param {string} mode
+ * @param {object} tokens
+ * @param {Record<string, string>} colors 已解析（含派生）的语义色板
  */
-function buildCssVars(mode, tokens) {
-	const colors = tokens.colorSchemes[mode]
+function buildCssVars(mode, tokens, colors) {
+	const resolved = colors ?? tokens.colorSchemes[mode]
 	const status = tokens.statusColors[mode]
 	const lines = []
 
-	for (const [name, value] of Object.entries(colors)) {
+	for (const [name, value] of Object.entries(resolved)) {
 		lines.push(`\t--${kebab(name)}: ${value};`)
 	}
 	lines.push(`\t--ok: ${status.ok};`)
 	lines.push(`\t--warn: ${status.warn};`)
-	lines.push(`\t--bad: ${colors.error};`)
+	lines.push(`\t--bad: ${resolved.error};`)
 
 	for (const [name, value] of Object.entries(tokens.spacing)) {
 		lines.push(`\t--sp-${kebab(name)}: ${value}px;`)
@@ -189,11 +199,15 @@ function normalizeMaterial(value) {
  * @param {boolean} systemPrefersDark
  * @param {string} [material] 材质强度
  */
-function describeTheme(preference, systemPrefersDark, material) {
+function describeTheme(preference, systemPrefersDark, material, accent) {
 	const tokens = loadTokens()
 	const normalized = normalizePreference(preference)
 	const mode = resolveMode(normalized, systemPrefersDark)
 	const materialLevel = normalizeMaterial(material)
+	// 种子色派生：给得出合法种子就用派生的主/次/第三色族，否则用基线调色板
+	const colors = tokens.resolveColors
+		? tokens.resolveColors(mode, accent ?? null)
+		: tokens.colorSchemes[mode]
 
 	return {
 		preference: normalized,
@@ -201,8 +215,11 @@ function describeTheme(preference, systemPrefersDark, material) {
 		systemPrefersDark,
 		materialLevel,
 		materialBlur: MATERIAL_BLUR[materialLevel],
-		css: buildCssVars(mode, tokens),
-		colors: tokens.colorSchemes[mode],
+		// ⚠️ 把**已解析**的 colors 传进去（含种子派生）。
+		// 让 `buildCssVars` 自己现取 `tokens.colorSchemes[mode]` 的话，
+		// 派生色到了 JS 状态却进不了 CSS 变量 —— 界面主色一点没变。
+		css: buildCssVars(mode, tokens, colors),
+		colors,
 		status: tokens.statusColors[mode],
 		typography: tokens.typography,
 		radius: tokens.radius,

@@ -476,6 +476,34 @@
 					data-settings-panel="appearance"
 					data-testid="settings-panel-appearance"
 				>
+					<h3>配色</h3>
+					<p class="muted settings-hint">
+						默认用你系统的强调色生成整套配色；也可以自己挑一个种子色。
+					</p>
+					<div class="segmented" data-testid="settings-accent">
+						<button data-accent-choice="system" data-testid="accent-system">
+							系统主题色
+						</button>
+						<button data-accent-choice="custom" data-testid="accent-custom">
+							自定义
+						</button>
+					</div>
+					<div class="settings-row" id="settings-accent-row" hidden>
+						<label for="settings-accent-color">种子色</label>
+						<input
+							id="settings-accent-color"
+							data-testid="settings-accent-color"
+							type="color"
+							value="#6750A4"
+						/>
+						<span
+							class="muted mono"
+							id="settings-accent-hex"
+							data-testid="settings-accent-hex"
+							>#6750A4</span
+						>
+					</div>
+
 					<h3>材质</h3>
 					<p class="muted settings-hint">
 						顶栏、弹窗与设置面板的模糊强度。

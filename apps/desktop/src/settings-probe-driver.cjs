@@ -389,6 +389,136 @@ async function run(window) {
 			/saturate/.test(String(materialGradient.backdrop)),
 		`blur=${materialDefault.backdrop} → gradient=${materialGradient.backdrop}`,
 	)
+
+	// ---------- 3c. 配色：系统主题色 / 自定义（阶段 4）----------
+	//
+	// 从**一个种子色**派生整套 MD3 色板。断言要落在"界面主色真的变了"上，
+	// 而不是"设置里存下了这个值"—— 后者是很容易假绿的一种断言。
+	console.log('\n[settings] 3c) 配色种子')
+	await click(window, '[data-testid="settings-back"]')
+	await sleep(400)
+	await click(window, '[data-testid="settings-cat-appearance"]')
+	await sleep(700)
+
+	const accentBefore = JSON.parse(
+		await evaluate(
+			window,
+			`(() => JSON.stringify({
+				mode: document.documentElement.dataset.theme,
+				primary: window.bbTheme?.describe?.()?.primary ?? null,
+				cssPrimary: getComputedStyle(document.documentElement)
+					.getPropertyValue('--primary')
+					.trim(),
+				stored: window.bbplayer.settings.get().then((r) => r?.data?.settings?.accentMode),
+			}))()`,
+		),
+	)
+	check(
+		'外观分类里有配色控件（系统主题色 / 自定义）',
+		Boolean(accentBefore.primary),
+	)
+
+	// 切到「自定义」并选一个明显不同的种子色，主色必须真的跟着变
+	await click(window, '[data-testid="accent-custom"]')
+	await sleep(600)
+	const accentRowVisible = await evaluate(
+		window,
+		`!document.getElementById('settings-accent-row').hidden`,
+	)
+	check('选「自定义」后露出取色器', accentRowVisible === true)
+
+	await evaluate(
+		window,
+		`(() => {
+			const input = document.getElementById('settings-accent-color')
+			input.value = '#0078d4'
+			input.dispatchEvent(new Event('change', { bubbles: true }))
+			return true
+		})()`,
+	)
+	await sleep(900)
+
+	const accentAfter = JSON.parse(
+		await evaluate(
+			window,
+			`(() => JSON.stringify({
+				primary: window.bbTheme?.describe?.()?.primary ?? null,
+				cssPrimary: getComputedStyle(document.documentElement)
+					.getPropertyValue('--primary')
+					.trim(),
+				storedMode: document.querySelector('[data-accent-choice].is-active')
+					?.dataset.accentChoice,
+			}))()`,
+		),
+	)
+	check(
+		'换种子色后界面主色**真的变了**（不是只存了个值）',
+		accentAfter.primary !== accentBefore.primary && accentAfter.primary != null,
+		`${accentBefore.primary} → ${accentAfter.primary}`,
+	)
+	check(
+		'派生的主色写进了 CSS 变量（主题是变量驱动的）',
+		accentAfter.cssPrimary !== accentBefore.cssPrimary &&
+			/#|rgb/i.test(String(accentAfter.cssPrimary)),
+		`${accentBefore.cssPrimary} → ${accentAfter.cssPrimary}`,
+	)
+	check(
+		'配色来源已持久化为 custom',
+		accentAfter.storedMode === 'custom',
+		String(accentAfter.storedMode),
+	)
+
+	// 派生色的**对比度**必须达标 —— 配色好不好看没法自动判，但字看不清可以
+	const contrast = JSON.parse(
+		await evaluate(
+			window,
+			`(() => {
+				const d = window.bbTheme?.describe?.() ?? {}
+				const hex = (v) => {
+					const m = String(v).trim().match(/^#?([0-9a-f]{6})$/i)
+					return m ? '#' + m[1] : null
+				}
+				const lum = (h) => {
+					const n = Number.parseInt(h.slice(1), 16)
+					const ch = (v) => {
+						const x = v / 255
+						return x <= 0.03928 ? x / 12.92 : ((x + 0.055) / 1.055) ** 2.4
+					}
+					return (
+						0.2126 * ch((n >> 16) & 255) +
+						0.7152 * ch((n >> 8) & 255) +
+						0.0722 * ch(n & 255)
+					)
+				}
+				const pair = (a, b) => {
+					const ha = hex(a); const hb = hex(b)
+					if (!ha || !hb) return null
+					const la = lum(ha); const lb = lum(hb)
+					return (Math.max(la, lb) + 0.05) / (Math.min(la, lb) + 0.05)
+				}
+				const styles = getComputedStyle(document.documentElement)
+				const get = (name) => styles.getPropertyValue(name).trim()
+				return JSON.stringify({
+					primary: pair(get('--primary'), get('--on-primary')),
+					container: pair(get('--secondary-container'), get('--on-secondary-container')),
+				})
+			})()`,
+		),
+	)
+	check(
+		'派生主色上的文字对比度 ≥ 4.5（WCAG AA）',
+		Number(contrast.primary) >= 4.5,
+		`primary/onPrimary = ${Number(contrast.primary).toFixed(2)}`,
+	)
+	check(
+		'选中胶囊的对比度 ≥ 4.5',
+		Number(contrast.container) >= 4.5,
+		`secondaryContainer/onSecondaryContainer = ${Number(contrast.container).toFixed(2)}`,
+	)
+
+	// 切回系统主题色，后面的截图按默认配色走
+	await click(window, '[data-testid="accent-system"]')
+	await sleep(700)
 	check(
 		'材质档位也持久化到设置',
 		(await evaluate(

@@ -894,10 +894,17 @@ function registerIpcHandlers() {
 		try {
 			const settings = getSettings()
 			await settings.update(patch ?? {})
-			// 主题偏好或材质强度可能刚被改掉，立刻把解析后的变量推给所有窗口，
-			// 不等下一次 `theme:describe`
-			if (patch && ('theme' in patch || 'materialLevel' in patch))
+			// 主题偏好 / 材质强度 / 配色种子可能刚被改掉，立刻把解析后的变量
+			// 推给所有窗口，不等下一次 `theme:describe`
+			if (
+				patch &&
+				('theme' in patch ||
+					'materialLevel' in patch ||
+					'accentMode' in patch ||
+					'accentColor' in patch)
+			) {
 				broadcastTheme()
+			}
 			return { ok: true, data: await settings.describe() }
 		} catch (error) {
 			return { ok: false, error: error.message }
@@ -1175,7 +1182,36 @@ async function describeCurrentTheme() {
 		settings.theme,
 		nativeTheme.shouldUseDarkColors,
 		settings.materialLevel,
+		resolveAccentSeed(settings),
 	)
+}
+
+/**
+ * 解析配色**种子色**（阶段 4）。
+ *
+ * * `accentMode === 'custom'` → 用用户选的颜色；
+ * * 否则 → 用**系统强调色**（Windows 的个性化强调色）。
+ *
+ * ⚠️ `systemPreferences.getAccentColor()` **只在 Windows 上可用**，
+ * 而且返回的是**带 alpha 的 8 位**（例如 `d0bcffff`）。Linux 上这个方法
+ * 不存在或返回空串。所以：
+ *   * 先判方法在不在；
+ *   * 拿不到就返回 null，让 `resolveColors` 用基线调色板 ——
+ *     **不做平台判断**（问能力，不问平台），这样将来别的平台支持了自动生效。
+ */
+function resolveAccentSeed(settings) {
+	if (settings.accentMode === 'custom') {
+		return settings.accentColor ?? null
+	}
+	try {
+		const { systemPreferences } = require('electron')
+		if (typeof systemPreferences?.getAccentColor !== 'function') return null
+		const raw = systemPreferences.getAccentColor()
+		return typeof raw === 'string' && raw.length >= 6 ? raw : null
+	} catch {
+		// 取不到系统强调色不是错误，退回基线
+		return null
+	}
 }
 
 /** 把解析后的主题推给所有窗口（系统切换 / 用户改偏好时调用） */

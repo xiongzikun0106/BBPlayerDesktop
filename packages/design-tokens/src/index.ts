@@ -257,3 +257,40 @@ export const statusColors: Record<ColorScheme, { ok: string; warn: string }> = {
 export type ThemePreference = 'system' | ColorScheme
 
 export const themePreferences: ThemePreference[] = ['system', 'light', 'dark']
+
+// ============================================================
+// 从种子色派生的动态配色
+// ============================================================
+
+// ⚠️ 既要 re-export、又要在这里**本地调用**它。
+// `export { x } from './accent'` 只转发，**不会**引入本地绑定 ——
+// 只写那一行的话 `resolveColors` 里会报 `x is not defined`。
+import { deriveSchemeFromAccent } from './accent'
+
+export {
+	deriveSchemeFromAccent,
+	contrastRatio,
+	relativeLuminance,
+} from './accent'
+
+/**
+ * 取一套色板：基线色板 + 可选的**种子色派生覆盖**。
+ *
+ * ⚠️ 只覆盖"与种子相关"的角色（主 / 次 / 第三色族 + surfaceTint），
+ * **中性色（surface 系列）保持基线**。理由是中性色派生很容易翻车：
+ * 从强调色派生的中性色往往带明显色偏，一整屏看下来发脏。
+ * MD3 官方也是"中性色从种子的极低色度版本派生"，效果接近保持中性。
+ *
+ * @param scheme 深浅模式
+ * @param accent 种子色（`#RRGGBB` 或带 alpha 的 8 位）；给不出就用基线
+ */
+export function resolveColors(
+	scheme: ColorScheme,
+	accent?: string | null,
+): SemanticColors {
+	const base = colorSchemes[scheme]
+	if (!accent) return base
+	const derived = deriveSchemeFromAccent(accent, scheme)
+	if (!derived) return base
+	return { ...base, ...derived }
+}
