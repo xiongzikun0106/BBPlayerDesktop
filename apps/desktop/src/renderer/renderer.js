@@ -77,16 +77,72 @@
 	}
 
 	// ---------------------------------------------------------------
-	// 左栏导航
+	// 左栏导航（目的地）+ 音乐库页签
 	// ---------------------------------------------------------------
+	//
+	// ⚠️ 这里是阶段 2b 的**信息架构分层**。
+	//
+	// 原来是一层：左栏 7 个平铺入口（音乐库 / 搜索 / 导入歌单 / 最近播放 /
+	// 收藏夹 / 合集 / 共享）。问题是"目的地"（音乐库、搜索）与"某个页面里的
+	// 动作/子集"（导入歌单、收藏夹、合集）混在同一层，用户得先猜
+	// 「导入歌单」和「合集」有什么区别。
+	//
+	// 现在两层：
+	//   左栏 = 目的地（主页 / 音乐库 / 搜索 / 设置）
+	//   音乐库页内 = 页签（播放列表 / 收藏夹 / 合集 / 导入）+ 页内动作（共享 / 刷新）
+	//
+	// 视图名与页签名的映射保持稳定：`view` 仍然是
+	// `home | library | search | settings | share`，页签只决定 `#content` 里渲染什么。
+
+	/** 目的地的页面大标题（由外壳渲染，不再让每个视图各写一份） */
+	const VIEW_TITLES = {
+		home: '主页',
+		library: '音乐库',
+		search: '搜索',
+		settings: '设置',
+		share: '共享歌单',
+	}
+
+	function setPageTitle(view) {
+		const el = document.getElementById('page-title')
+		if (el) el.textContent = VIEW_TITLES[view] ?? ''
+	}
+
+	/** 音乐库的页签 → 渲染函数 */
+	const LIBRARY_TABS = {
+		playlists: () => window.bbLibrary.init(),
+		favorites: () => window.bbFavorites.show(),
+		collection: () => window.bbLibrary.showCollectionTab(),
+		import: () => window.bbImport.show(),
+	}
+
+	let currentLibraryTab = 'playlists'
+
+	function setLibraryTab(tab, { focusNav = true } = {}) {
+		if (!LIBRARY_TABS[tab]) return
+		currentLibraryTab = tab
+		for (const button of document.querySelectorAll('[data-lib-tab]')) {
+			button.classList.toggle('is-active', button.dataset.libTab === tab)
+		}
+		window.bbState.set({ libraryTab: tab })
+		if (focusNav) {
+			setActiveNav('library')
+			void LIBRARY_TABS[tab]()
+		}
+	}
 
 	function setActiveNav(view) {
 		for (const item of document.querySelectorAll('.nav__item')) {
 			item.classList.toggle('is-active', item.dataset.view === view)
 		}
-		// 收藏夹工具条只在收藏夹视图显示
+		setPageTitle(view)
+		// 收藏夹的 UID 工具条只在「音乐库 › 收藏夹」页签显示
 		const bar = document.getElementById('favorite-bar')
-		if (bar) bar.hidden = view !== 'favorites'
+		if (bar)
+			bar.hidden = !(view === 'library' && currentLibraryTab === 'favorites')
+		// 音乐库的页签条只在音乐库目的地显示
+		const tabs = document.getElementById('library-tabs')
+		if (tabs) tabs.hidden = view !== 'library'
 		// 共享视图的根节点常驻在 index.html 里（探针要能直接 `#view-share` 找到它），
 		// 所以这里手动与 #content 互斥：否则两个 flex 子项会把中栏挤成上下两半
 		toggleShareView(view === 'share')
@@ -95,10 +151,10 @@
 	/**
 	 * 在「共享视图」与「#content 里的其它视图」之间切换（两者互斥）。
 	 *
-	 * `#content` 是 library / 搜索 / 导入 / 历史 / 收藏夹 / 合集共用的容器，
-	 * 它们渲染时都会清空它 —— 而共享视图是**常驻**的兄弟节点，不会被清掉。
-	 * 所以从任何路径切回 #content 时都要显式把共享视图藏起来
-	 * （`bbLibrary.renderTrackTable` 这类不经过导航的渲染也要走 `showContent`）。
+	 * `#content` 是音乐库 / 搜索 / 共享共用的容器，它们渲染时都会清空它 ——
+	 * 而共享视图是**常驻**的兄弟节点，不会被清掉。所以从任何路径切回 #content
+	 * 时都要显式把共享视图藏起来（`bbLibrary.renderTrackTable` 这类不经过
+	 * 导航的渲染也要走 `showContent`）。
 	 */
 	function toggleShareView(showShare) {
 		const shareRoot = document.getElementById('view-share')
@@ -107,33 +163,54 @@
 		if (content) content.hidden = showShare
 	}
 
-	for (const item of document.querySelectorAll('.nav__item')) {
-		item.addEventListener('click', () => {
-			const view = item.dataset.view
-			setActiveNav(view)
-			if (view === 'library') {
-				void window.bbLibrary.init()
-			} else if (view === 'search') {
-				const input = document.getElementById('search-input')
-				if (input) {
-					input.focus()
-					input.select()
-				}
-			} else if (view === 'import') {
-				void window.bbImport.show()
-			} else if (view === 'history') {
-				void window.bbHistory.show()
-			} else if (view === 'favorites') {
-				void window.bbFavorites.show()
-			} else if (view === 'collection') {
-				window.bbLibrary.renderTrackTable([], { title: '合集' })
-			} else if (view === 'share') {
-				// ⚠️ `show()` 只读本地状态（`share.status()` 不发网络请求），
-				// 所以打开视图不会因为后端不可达而卡住或抛错
-				void window.bbShare?.show?.()
+	/** 打开一个目的地 */
+	function openView(view) {
+		setActiveNav(view)
+		if (view === 'home') {
+			void window.bbHistory.show()
+		} else if (view === 'library') {
+			// 回到音乐库时留在上次的页签（用户的心智是"我刚才在收藏夹"）
+			void LIBRARY_TABS[currentLibraryTab]()
+		} else if (view === 'search') {
+			const input = document.getElementById('search-input')
+			if (input) {
+				input.focus()
+				input.select()
 			}
-		})
+			window.bbLibrary.renderWelcomeOrLast?.()
+		} else if (view === 'settings') {
+			// 阶段 3 会把设置升为一级**页面**；这一版先沿用抽屉，
+			// 但入口已经归位到左栏（不再是标题栏上的齿轮）
+			window.bbSettings?.open?.()
+		} else if (view === 'share') {
+			// 页内动作：共享面板由音乐库的按钮打开，不是左栏目的地
+			// ⚠️ `show()` 只读本地状态（`share.status()` 不发网络请求），
+			// 所以打开视图不会因为后端不可达而卡住或抛错
+			void window.bbShare?.show?.()
+		}
 	}
+
+	for (const item of document.querySelectorAll('.nav__item')) {
+		item.addEventListener('click', () => openView(item.dataset.view))
+	}
+
+	for (const button of document.querySelectorAll('[data-lib-tab]')) {
+		button.addEventListener('click', () => setLibraryTab(button.dataset.libTab))
+	}
+
+	// 页内动作：共享歌单面板
+	document.getElementById('library-share')?.addEventListener('click', () => {
+		void window.bbShare?.show?.()
+		// ⚠️ 共享不是左栏目的地，但页面标题仍然要跟着变 ——
+		// 否则从「音乐库」点进共享面板，大标题还写着"音乐库"。
+		setActiveNav('share')
+		document.querySelector('.page-head')?.classList.add('is-sub-page')
+	})
+
+	// 页内动作：刷新左栏歌单
+	document.getElementById('library-refresh')?.addEventListener('click', () => {
+		void window.bbLibrary.refreshPlaylists()
+	})
 
 	// ---------------------------------------------------------------
 	// 快捷键（plan §3.4）
@@ -748,6 +825,13 @@
 		}
 
 		await window.bbLibrary.init()
+
+		// ⚠️ 首次进入也要走一遍 `setActiveNav`。
+		//
+		// 页签条在 HTML 里是 `hidden` 的（默认不显示），由 `setActiveNav` 按
+		// 当前目的地决定显隐。启动时如果不调，界面停在"音乐库"但**页签条不出现**
+		// —— 代码看着对，界面缺少一整条导航。由探针的「音乐库有 4 个页签」抓到。
+		setActiveNav('library')
 
 		// 右栏默认收起：初次进入时界面只有「导航 + 内容 + 播放条」三块，
 		// 队列/歌词按需展开。这里显式设一次，而不是靠 HTML 上的初始类 ——

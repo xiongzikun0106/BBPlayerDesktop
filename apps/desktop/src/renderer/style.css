@@ -111,6 +111,26 @@ body {
 	overflow: hidden;
 }
 
+/*
+ * ⚠️ `[hidden]` 必须**真的**隐藏。
+ *
+ * 浏览器 UA 样式表里是 `[hidden] { display: none }`，优先级**极低** ——
+ * 任何 `.foo { display: flex }` 都会盖掉它。于是出现这种很难查的现象：
+ * JS 里明明设了 `el.hidden = true`，元素照样显示。
+ *
+ * 这个仓库已经为此绕过**两次**（`.share-view`、`.favorite-bar`），
+ * 每次都是"设了 hidden 但还看得见"，而且只在某些页签下才出现。
+ * 与其在每个组件上补一条 `[hidden]`，不如在这里把不变量一次性定死：
+ * 以后新增组件不用再记得这件事。
+ *
+ * `!important` 在这里是**刻意的**：它保护的是一个全局不变量，
+ * 而不是某个具体样式。有了它，下面那些 `[hidden] { display: none }`
+ * 的逐组件补丁都可以删掉。
+ */
+[hidden] {
+	display: none !important;
+}
+
 /* ══════════════════════════════════════════════════════════
    三栏网格 + 底部播放条 + 状态栏
    ────────────────────────────────────────────────────────── */
@@ -238,10 +258,6 @@ body {
 	height: 100%;
 	object-fit: cover;
 	display: block;
-}
-
-.playbar__cover img[hidden] {
-	display: none;
 }
 
 /* 音频元素不显示，只做播放 */
@@ -546,13 +562,37 @@ body {
 	box-shadow: 0 6px 20px rgb(0 0 0 / 22%);
 }
 
-.topbar__hint[hidden] {
-	display: none;
-}
-
 /* 顶栏本身要成为定位上下文，`top: 100%` 才是"贴着顶栏下沿" */
 .topbar {
 	position: relative;
+}
+
+/*
+ * 页面大标题区（阶段 2b）。
+ *
+ * 移动端每一屏顶部都是「大标题 + 右上角动作」。桌面端原来没有这一层：
+ * 标题是各个视图自己造的（`renderTrackTable` 里的 `.view-head h2`），
+ * 于是空状态没有标题、各视图标题字号也不一致。
+ */
+.page-head {
+	display: flex;
+	align-items: baseline;
+	justify-content: space-between;
+	gap: var(--sp-md);
+	padding: var(--sp-lg) var(--sp-md) var(--sp-xs);
+}
+
+.page-head__title {
+	margin: 0;
+	font-size: var(--fs-title-large);
+	font-weight: 600;
+	line-height: var(--lh-title-large);
+	color: var(--on-surface);
+}
+
+.page-head__meta {
+	font-size: var(--fs-body-medium);
+	color: var(--on-surface-variant);
 }
 
 .content {
@@ -570,9 +610,16 @@ body {
 	margin-bottom: var(--sp-sm);
 }
 
+/*
+ * 视图内部的次级标题字号降一档。
+ *
+ * ⚠️ 原来它也是 `title-large`(22)，与页面标题**同字号** ——
+ * 两级标题一样大就等于没有层级，看不出"我在音乐库里的某个歌单"。
+ * 现在页面标题 22、次级标题 16。
+ */
 .view-head h2 {
 	margin: 0;
-	font-size: var(--fs-title-large);
+	font-size: var(--fs-title-medium);
 }
 
 .muted {
@@ -909,6 +956,24 @@ button.btn--outlined {
 
 button.btn--outlined:hover:not(:disabled) {
 	background: var(--surface-2);
+}
+
+/*
+ * 「中等强调」动作：色调填充（M3 的 tonal button）。
+ *
+ * 组件词汇表里本来就规划了四档（filled / tonal / outlined / text），
+ * 阶段 0 只落了 3 档 —— 于是"列表行尾部的动作"（导入、添加、关注这类）
+ * 只能借用 outlined，和"可选设置项"看起来一模一样。
+ * tonal 填 `secondary-container`：比 filled 弱、比 outlined 明确。
+ */
+button.btn--tonal {
+	background: var(--secondary-container);
+	border-color: transparent;
+	color: var(--on-secondary-container);
+}
+
+button.btn--tonal:hover:not(:disabled) {
+	background: color-mix(in srgb, var(--secondary-container) 82%, var(--on-secondary-container));
 }
 
 /* 纯文字动作 */
@@ -1345,10 +1410,6 @@ input[type='range']:focus-visible {
 }
 
 /* ── 通用弹窗 ─────────────────────────────────────────── */
-.modal[hidden] {
-	display: none;
-}
-
 .modal {
 	position: fixed;
 	inset: 0;
@@ -1547,10 +1608,6 @@ input[type='range']:focus-visible {
 }
 
 /* ── 设置抽屉 ─────────────────────────────────────────── */
-.settings-drawer[hidden] {
-	display: none;
-}
-
 .settings-drawer {
 	position: fixed;
 	inset: 0;
@@ -1878,10 +1935,6 @@ input[type='range']:focus-visible {
  * 互斥显示。`.content` 没有声明 `display`，所以 `[hidden]` 的 UA 规则能生效；
  * 这里自己声明了 `display: flex`，就必须显式写 `[hidden]`（同 modal/drawer）。
  */
-.share-view[hidden] {
-	display: none;
-}
-
 .share-view {
 	flex: 1 1 auto;
 	min-height: 0;
@@ -2055,10 +2108,6 @@ input[type='range']:focus-visible {
 .share-row__actions {
 	margin-bottom: 0;
 	flex-wrap: wrap;
-}
-
-.share-row__info[hidden] {
-	display: none;
 }
 
 .share-row__badges {

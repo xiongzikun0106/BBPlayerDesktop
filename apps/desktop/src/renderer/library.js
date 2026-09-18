@@ -627,42 +627,189 @@
 		clear(els.content)
 		window.bbUI?.showContent?.()
 
-		const head = document.createElement('div')
-		head.className = 'view-head'
-		const h2 = document.createElement('h2')
-		h2.textContent = '欢迎'
-		head.appendChild(h2)
-		els.content.appendChild(head)
-
-		const intro = document.createElement('p')
-		intro.className = 'muted'
-		intro.style.marginBottom = '16px'
-		intro.textContent =
-			'本地库还是空的。可以搜索并播放，或从 B 站的公开合集导入一个歌单。'
-		els.content.appendChild(intro)
-
-		const actions = document.createElement('div')
-		actions.className = 'row-actions'
-
+		// 它本质就是一个**空状态**，所以用组件层的 `.empty`
+		// （淡图标 + 标题 + 一句说明 + 动作），而不是自己拼
+		// 「h2 + 一段灰字 + 一排按钮」—— 后者会在同一个应用里造出第二套空状态样式。
+		//
+		// 文案只说**用户能做什么**，不说"本地库"这类实现词。
 		const seed = document.createElement('button')
+		seed.className = 'btn--filled'
 		seed.dataset.testid = 'btn-seed-demo'
 		seed.textContent = '导入示例合集'
 		seed.addEventListener('click', () => void importDemoCollection(seed))
-		actions.appendChild(seed)
 
 		const toSearch = document.createElement('button')
+		toSearch.className = 'btn--tonal'
 		toSearch.dataset.testid = 'btn-goto-search'
 		toSearch.textContent = '去搜索'
 		toSearch.addEventListener('click', () => {
 			document.querySelector('[data-view="search"]')?.click()
 		})
-		actions.appendChild(toSearch)
 
-		els.content.appendChild(actions)
+		els.content.appendChild(
+			window.bbComponents.empty({
+				testid: 'welcome',
+				iconName: 'library_music',
+				title: '这里还没有歌',
+				hint: '搜索 B 站的视频直接播放，或者从任意 UP 的公开合集导入一整个歌单。',
+				actions: [seed, toSearch],
+			}),
+		)
 	}
 
 	/** 示例合集：B 站官方 UP 的公开合集（无需登录即可拉取） */
 	const DEMO_MID = 8047632
+
+	/**
+	 * 音乐库 › 合集 页签（阶段 2b）。
+	 *
+	 * 读某个 UP 的公开合集列表，一行一个，点「导入」变成本地歌单。
+	 * 默认读**登录用户自己**的合集（登录了就用自己的，否则用示例 UP）——
+	 * 这是"合集"这个页签最自然的默认值。
+	 */
+	async function showCollectionTab() {
+		clear(els.content)
+		window.bbUI?.showContent?.()
+
+		// ⚠️ 这里**不再**自己渲染一个「合集」标题：页面大标题写的是目的地
+		//（音乐库），页签写的是「合集」，再来一个同名 h2 就是三重重复。
+		// 直接进工具条。
+
+		// 工具条：UP 的 UID + 读取
+		const bar = document.createElement('div')
+		bar.className = 'row-actions'
+
+		const label = document.createElement('label')
+		label.className = 'visually-hidden'
+		label.setAttribute('for', 'collection-mid')
+		label.textContent = 'UP 的 UID'
+		bar.appendChild(label)
+
+		const midInput = document.createElement('input')
+		midInput.id = 'collection-mid'
+		midInput.dataset.testid = 'collection-mid'
+		midInput.type = 'text'
+		midInput.inputMode = 'numeric'
+		midInput.placeholder = 'UP 的 UID'
+		midInput.spellcheck = false
+		bar.appendChild(midInput)
+
+		const load = document.createElement('button')
+		load.id = 'collection-load'
+		load.dataset.testid = 'collection-load'
+		load.className = 'btn--filled'
+		load.textContent = '读取合集'
+		bar.appendChild(load)
+
+		const list = document.createElement('div')
+		list.dataset.testid = 'collection-list'
+
+		/** 拉取并渲染某个 UP 的合集 */
+		async function loadSeasons(mid) {
+			clear(list)
+			list.appendChild(
+				window.bbComponents.empty({
+					iconName: 'hourglass_empty',
+					title: '正在读取合集…',
+				}),
+			)
+			try {
+				const seasons = unwrap(
+					await window.bbplayer.userSeasons(mid),
+					'读取合集',
+				)
+				clear(list)
+				if (seasons.length === 0) {
+					list.appendChild(
+						window.bbComponents.empty({
+							iconName: 'video_library',
+							title: '这个 UP 没有公开合集',
+							hint: '换个 UID 试试，或者用「导入」页签从别处导入歌单。',
+						}),
+					)
+					return
+				}
+				for (const season of seasons) {
+					const importButton = document.createElement('button')
+					importButton.className = 'btn--tonal'
+					importButton.dataset.testid = `season-import-${season.seasonId}`
+					importButton.textContent = '导入'
+					importButton.addEventListener('click', () => {
+						void importSeason(mid, season, importButton)
+					})
+					list.appendChild(
+						window.bbComponents.listRow({
+							title: season.title,
+							sub: `${season.total ?? 0} 个视频`,
+							coverUrl: season.cover ?? null,
+							trailing: [importButton],
+							testid: `season-${season.seasonId}`,
+						}),
+					)
+				}
+				setStatus(`读到 ${seasons.length} 个合集`, 'ok')
+			} catch (error) {
+				clear(list)
+				list.appendChild(
+					window.bbComponents.empty({
+						iconName: 'error',
+						title: '读取失败',
+						hint: error.message,
+					}),
+				)
+				setStatus(error.message, 'bad')
+			}
+		}
+
+		async function importSeason(mid, season, button) {
+			button.disabled = true
+			button.textContent = '导入中…'
+			setStatus(`正在导入「${season.title}」…`, 'busy')
+			try {
+				const result = unwrap(
+					await window.bbplayer.importSeasonToPlaylist({
+						mid,
+						seasonId: season.seasonId,
+						title: season.title,
+					}),
+					'导入合集',
+				)
+				await refreshPlaylists()
+				setStatus(
+					`已导入 ${result.added}/${result.total} 首`,
+					result.failures.length > 0 ? 'busy' : 'ok',
+				)
+			} catch (error) {
+				setStatus(error.message, 'bad')
+			} finally {
+				button.disabled = false
+				button.textContent = '导入'
+			}
+		}
+
+		load.addEventListener('click', () => {
+			const mid = midInput.value.trim()
+			if (!/^\d+$/.test(mid)) {
+				setStatus('UID 应该是纯数字', 'bad')
+				return
+			}
+			void loadSeasons(mid)
+		})
+
+		els.content.appendChild(bar)
+		els.content.appendChild(list)
+
+		// 默认值：登录用户自己的 UID（拿不到就用示例 UP，保证页签不是空的）
+		let mid = String(DEMO_MID)
+		try {
+			const status = unwrap(await window.bbplayer.loginStatus(), '读取登录状态')
+			if (status?.user?.mid) mid = String(status.user.mid)
+		} catch {
+			// 读不到登录状态不影响用示例 UP
+		}
+		midInput.value = mid
+		await loadSeasons(mid)
+	}
 
 	async function importDemoCollection(button) {
 		button.disabled = true
@@ -733,11 +880,42 @@
 	window.bbLibrary = {
 		init,
 		refreshPlaylists,
+		/**
+		 * 音乐库的「合集」页签（阶段 2b）。
+		 *
+		 * ⚠️ 原来「合集」是一个**一级导航目的地**，点开却只是一张空表格
+		 * （`renderTrackTable([], { title: '合集' })`）—— 用户点进去什么都看不到，
+		 * 而真正能用的"导入公开合集"藏在空库的欢迎视图里。
+		 *
+		 * 现在它是一张**真的能用的页面**：读某个 UP 的公开合集列表，
+		 * 一行一个（组件层的 .list-row），点「导入」把它变成一个本地歌单。
+		 * 默认读登录用户自己的合集，没登录就退回示例 UP。
+		 */
+		showCollectionTab,
 		openPlaylist,
 		runSearch,
 		renderTrackTable,
 		renderPlaylists,
 		renderWelcome,
+		/**
+		 * 切到「搜索」目的地时渲染什么。
+		 *
+		 * 搜索页要有"还没搜"的状态（而不是留着上一个视图的残影），
+		 * 同时不能把已经搜出来的结果擦掉 —— 用户点左栏再点回来时
+		 * 期待结果还在。
+		 */
+		renderWelcomeOrLast() {
+			const tracks = window.bbState.get().tracks ?? []
+			const lastQuery = window.bbState.get().lastQuery
+			if (lastQuery && tracks.length > 0) {
+				renderTrackTable(tracks, {
+					title: `搜索：${lastQuery}`,
+					query: lastQuery,
+				})
+				return
+			}
+			renderWelcome()
+		},
 		importDemoCollection,
 		/** 共享：左栏歌单行的「分享 / 同步」（Phase 3.4） */
 		sharePlaylist,

@@ -195,6 +195,33 @@ function main() {
 
 	if (!runGitleaks()) return 1
 
+	/*
+	 * 探针脚本的静态检查。
+	 *
+	 * 探针驱动跑在 Electron 主进程里，**加载失败 = 整个应用起不来**
+	 * （弹 "A JavaScript error occurred in the main process"），
+	 * 而不是"某条断言失败"。我在这个仓库里踩过**四次**同一个坑：
+	 * 在模板字符串内部的注释里写反引号 —— 它会当场结束模板，
+	 * 后面的内容变成代码。最阴的是全局反引号数量仍然配平，
+	 * 所以"数奇偶"的校验看不出来。
+	 *
+	 * 只在暂存里含 `.cjs` / `.mjs` / `.js` 时才跑（否则是白等一次进程启动）。
+	 */
+	if (files.some((file) => hasExtension(file, ['.cjs', '.mjs', '.js']))) {
+		console.log('\n▸ 探针脚本静态检查（语法 + 模板/反引号）')
+		// 这是仓库自己的脚本，不经过 `runTool`（那个是给 node_modules 里的
+		// 工具用的，会去找同名包，对本地脚本找不到）
+		const result = spawnSync(
+			process.execPath,
+			['scripts/check-probe-syntax.mjs'],
+			{ cwd: ROOT, stdio: 'inherit', shell: false },
+		)
+		if (result.status !== 0) {
+			console.error('✗ 探针脚本静态检查未通过')
+			return 1
+		}
+	}
+
 	const formatTargets = existingOnly(
 		files.filter((file) => hasExtension(file, FORMAT_EXTENSIONS)),
 	)

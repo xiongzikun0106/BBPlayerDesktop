@@ -50,27 +50,34 @@
 					</div>
 				</div>
 
+				<!--
+					左栏按**目的地**分组（阶段 2b）。
+					⚠️ 原来是 7 个平铺入口：音乐库 / 搜索 / 导入歌单 / 最近播放 /
+					收藏夹 / 合集 / 共享 —— 把"目的地"和"某个页面里的动作"混在一起，
+					用户得先猜"导入歌单"和"合集"有什么区别。
+
+					现在只留 4 个真正的目的地；「导入」「共享」降级为音乐库页内的动作。
+					* 主页   ← 原「最近播放」（含 最近 / 最常 / 继续收听 三个子页签）
+					* 音乐库 ← 播放列表 / 收藏夹 / 合集 / 导入 四个页签
+					* 搜索
+					* 设置
+				-->
 				<nav class="nav" data-testid="nav">
-					<button class="nav__item is-active" data-view="library" data-testid="nav-library">
+					<button class="nav__item" data-view="home" data-testid="nav-home">
+						<span class="nav__icon icon">home</span> 主页
+					</button>
+					<button
+						class="nav__item is-active"
+						data-view="library"
+						data-testid="nav-library"
+					>
 						<span class="nav__icon icon">library_music</span> 音乐库
 					</button>
 					<button class="nav__item" data-view="search" data-testid="nav-search">
 						<span class="nav__icon icon">search</span> 搜索
 					</button>
-					<button class="nav__item" data-view="import" data-testid="nav-import">
-						<span class="nav__icon icon">playlist_add</span> 导入歌单
-					</button>
-					<button class="nav__item" data-view="history" data-testid="nav-history">
-						<span class="nav__icon icon">history</span> 最近播放
-					</button>
-					<button class="nav__item" data-view="favorites" data-testid="nav-favorites">
-						<span class="nav__icon icon">star</span> 收藏夹
-					</button>
-					<button class="nav__item" data-view="collection" data-testid="nav-collection">
-						<span class="nav__icon icon">video_library</span> 合集
-					</button>
-					<button class="nav__item" data-view="share" data-testid="nav-share">
-						<span class="nav__icon icon">group</span> 共享
+					<button class="nav__item" data-view="settings" data-testid="nav-settings">
+						<span class="nav__icon icon">settings</span> 设置
 					</button>
 				</nav>
 
@@ -132,6 +139,77 @@
 						Ctrl+Q 切换队列/歌词 · Ctrl+Alt+L 独立歌词窗口
 					</div>
 				</header>
+
+				<!--
+					页面大标题区（阶段 2b）。
+					⚠️ 原来标题是**每个视图自己渲染**的（`renderTrackTable` 里造一个
+					`.view-head h2`），于是：空状态没有标题、各视图标题字号不一致、
+					切视图时标题会闪一下重建。
+
+					现在由**外壳**拥有标题：目的地名（主页 / 音乐库 / 搜索 / 设置）
+					永远在同一个位置、同一个字号。视图内部只保留"具体是哪一项"
+					这类次级标题（歌单名、搜索词）。
+				-->
+				<div class="page-head">
+					<h1 class="page-head__title" id="page-title" data-testid="page-title">
+						音乐库
+					</h1>
+					<div class="page-head__meta" id="page-meta" data-testid="page-meta"></div>
+				</div>
+
+				<!--
+					音乐库的页签条（阶段 2b）。
+					⚠️ 原来「音乐库 / 导入歌单 / 收藏夹 / 合集」是**四个平铺的左栏入口**，
+					用户得先猜它们之间的区别。现在它们是同一个目的地「音乐库」下的页签，
+					区别一眼可见，左栏也只剩 4 个真正的目的地。
+
+					⚠️ 移动端音乐库的第四个页签是「分p」（单个视频的分P列表），
+					但桌面端**没有这个功能的实现**（核心只有 `videoInfo` 返回分p数量，
+					没有列出各分p的接口）。这里换成桌面端真实存在的「导入」
+					（网易云歌单 → 匹配 B 站视频）。详见 docs/DESKTOP_UI_PLAN.md。
+				-->
+				<div class="view-tabs" id="library-tabs" data-testid="library-tabs" hidden>
+					<button
+						class="tab is-active"
+						data-lib-tab="playlists"
+						data-testid="lib-tab-playlists"
+					>
+						播放列表
+					</button>
+					<button class="tab" data-lib-tab="favorites" data-testid="lib-tab-favorites">
+						收藏夹
+					</button>
+					<button class="tab" data-lib-tab="collection" data-testid="lib-tab-collection">
+						合集
+					</button>
+					<button class="tab" data-lib-tab="import" data-testid="lib-tab-import">
+						导入
+					</button>
+					<!--
+						页内动作（原来是一级入口）：
+						* 共享歌单：打开共享面板（每个歌单行上也有「分享」按钮）
+					-->
+					<div class="view-tabs__actions">
+						<button
+							class="icon-button icon-only"
+							id="library-share"
+							data-testid="library-share"
+							title="共享歌单"
+							aria-label="共享歌单"
+						>
+							<span class="icon icon--md">group</span>
+						</button>
+						<button
+							class="icon-button icon-only"
+							id="library-refresh"
+							data-testid="library-refresh"
+							title="刷新歌单"
+							aria-label="刷新歌单"
+						>
+							<span class="icon icon--md">refresh</span>
+						</button>
+					</div>
+				</div>
 
 				<section class="content" id="content" data-testid="content">
 					<!-- 由 renderer.js 按视图渲染 -->

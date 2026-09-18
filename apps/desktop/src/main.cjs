@@ -389,6 +389,19 @@ void app.whenReady().then(() => {
 				app.exit(0)
 			}, 3000)
 		})
+	} else if (process.argv.includes('--ui-tour')) {
+		// 截图巡检：把每个视图 / 弹窗 / 空状态都截下来供人眼核对。
+		// 断言证明不了"好不好看"，这一步是为它准备的。
+		mainWindow.webContents.once('did-finish-load', () => {
+			const { run } = require('./ui-tour-driver.cjs')
+			void run(mainWindow)
+				.catch((error) => {
+					console.error('[desktop] UI 巡检失败:', error)
+				})
+				.finally(() => {
+					setTimeout(() => app.exit(0), 500)
+				})
+		})
 	} else if (UI_PROBE_MODE) {
 		// UI 验收：跑界面断言序列（三栏 / 导入 / 播放 / 快捷键 / 搜索）
 		mainWindow.webContents.once('did-finish-load', () => {

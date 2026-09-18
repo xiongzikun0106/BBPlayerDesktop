@@ -124,6 +124,40 @@
 	color: var(--on-surface-variant);
 }
 
+/* ── 视图页签条 ────────────────────────────────────────── */
+/*
+ * 「音乐库」的四个页签（播放列表 / 收藏夹 / 合集 / 导入）。
+ *
+ * 复用**同一套选中态**（`.tab` 已经在那组选择器里），这里只管排布：
+ * 页签在左、页内动作在右，下面一条细分隔线把"页签区"和"内容区"分开。
+ *
+ * ⚠️ 不用下划线做选中（那是浏览器/IDE 的惯用法，移动端没有）。
+ */
+.view-tabs {
+	display: flex;
+	align-items: center;
+	gap: var(--sp-xxs);
+	padding: var(--sp-xs) var(--sp-md) 0;
+	border-bottom: 1px solid var(--outline-variant);
+}
+
+.view-tabs[hidden] {
+	display: none;
+}
+
+.view-tabs .tab {
+	flex: 0 0 auto;
+	padding: 8px var(--sp-md);
+}
+
+.view-tabs__actions {
+	margin-left: auto;
+	display: flex;
+	align-items: center;
+	gap: var(--sp-xxs);
+	padding-bottom: var(--sp-xs);
+}
+
 /* ── 空状态 ────────────────────────────────────────────── */
 /*
  * 空状态是**被设计过的**界面，不是留白：一个淡图标 + 一句话 +

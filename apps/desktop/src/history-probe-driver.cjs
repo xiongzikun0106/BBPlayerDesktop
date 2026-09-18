@@ -108,7 +108,7 @@ async function run(window) {
 			history: typeof window.bbHistory,
 			bridge: typeof window.bbplayer?.history,
 			finder: typeof window.bbplayer?.findTrackByBvid,
-			navItem: Boolean(document.querySelector('[data-testid="nav-history"]')),
+			navItem: Boolean(document.querySelector('[data-testid="nav-home"]')),
 			session: window.bbUI?.playSession?.() ?? null,
 		}))()`,
 	)
@@ -123,7 +123,7 @@ async function run(window) {
 	)
 
 	// ---------- 2. 空历史的视图 ----------
-	await click(window, '[data-testid="nav-history"]')
+	await click(window, '[data-testid="nav-home"]')
 	const emptyView = await waitFor(
 		window,
 		`(() => {
@@ -306,7 +306,7 @@ async function run(window) {
 		JSON.stringify(partial),
 	)
 
-	await click(window, '[data-testid="nav-history"]')
+	await click(window, '[data-testid="nav-home"]')
 	await click(window, '[data-testid="history-tab-resume"]')
 	const resumeRows = await waitFor(
 		window,

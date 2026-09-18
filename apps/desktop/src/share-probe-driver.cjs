@@ -156,9 +156,19 @@ async function exists(window, selector) {
 	)
 }
 
-/** 切到某个视图（走真实的导航按钮，不是直接改 DOM 类名） */
+/**
+ * 切到某个视图（走**真实的**入口，不是直接改 DOM 类名）。
+ *
+ * ⚠️ 阶段 2b 把「共享」从左栏的一级目的地降级成**音乐库页内的动作按钮**，
+ * 所以它不再有 `nav-share`。这里按视图名分派到对应的真实入口 ——
+ * 探针走的路径必须和用户一样，否则"能切到共享视图"就是在骗自己。
+ */
 async function goTo(window, view) {
-	const clicked = await click(window, `[data-testid="nav-${view}"]`)
+	const selector =
+		view === 'share'
+			? '[data-testid="library-share"]'
+			: `[data-testid="nav-${view}"]`
+	const clicked = await click(window, selector)
 	if (!clicked) return false
 	await sleep(500)
 	return true
@@ -228,7 +238,12 @@ async function run(window) {
 	// 1. 导航与账号区
 	// ===============================================================
 
-	check('左栏有「共享」页签', await exists(window, '[data-testid="nav-share"]'))
+	// 阶段 2b：「共享」不再是左栏的一级目的地，降级成音乐库页内的动作按钮。
+	// 所以这条断言从"左栏有入口"改成"页内动作入口存在" —— 功能没少，只是入口归位。
+	check(
+		'共享面板有页内入口（音乐库工具栏的动作按钮）',
+		await exists(window, '[data-testid="library-share"]'),
+	)
 	const navigated = await goTo(window, 'share')
 	check('能切到共享视图', navigated)
 	await sleep(600)
@@ -570,7 +585,17 @@ async function run(window) {
 		inviteClicked === 'clicked',
 		String(inviteClicked),
 	)
-	await sleep(1200)
+	// ⚠️ 等"邀请码区出现了"而不是固定 sleep。
+	//
+	// `loadInvite` 要经过后端请求（本地后端或隧道），延迟随网络浮动。
+	// 第一版是 `await sleep(1200)` 再读文本，快的时候够、慢的时候读到 null，
+	// 于是断言随机失败 —— 典型的 flake。
+	await waitFor(
+		window,
+		`document.querySelector('[data-testid="share-invite"]')`,
+		15_000,
+		'share-invite 出现',
+	)
 
 	const inviteArea = await text(window, '[data-testid="share-invite"]')
 	check(

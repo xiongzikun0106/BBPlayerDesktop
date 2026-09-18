@@ -14,6 +14,7 @@ settings           # 设置
 # 内容来源
 playlist_add       # 导入歌单
 history            # 最近播放
+hourglass_empty    # 加载中
 star               # 收藏夹
 star_border        # 收藏夹（未收藏）
 video_library      # 合集

@@ -10,6 +10,7 @@
 	"scripts": {
 		"check:core": "node scripts/check-core-purity.mjs",
 		"check:deps": "syncpack list-mismatches",
+		"check:probes": "node scripts/check-probe-syntax.mjs",
 		"fix:deps": "syncpack fix-mismatches",
 		"format": "oxfmt --write .",
 		"lint": "oxlint --type-aware",
@@ -29,6 +30,8 @@
 		"verify:desktop:media": "node scripts/verify-desktop-media.mjs",
 		"verify:desktop:settings": "node scripts/verify-desktop-settings.mjs",
 		"verify:desktop:shared": "node scripts/verify-desktop-shared.mjs",
+		"verify:desktop:tour": "node scripts/capture-ui-tour.mjs",
+		"verify:desktop:tour:dark": "node scripts/capture-ui-tour.mjs --dark",
 		"verify:desktop:ui": "node scripts/verify-desktop-ui.mjs",
 		"verify:external-import": "pnpm exec tsx scripts/verify-external-import.mts",
 		"verify:login": "pnpm exec tsx scripts/verify-bilibili-login.mts",

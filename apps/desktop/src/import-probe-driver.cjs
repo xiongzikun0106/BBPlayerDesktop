@@ -128,7 +128,7 @@ async function run(window) {
 		`(() => ({
 			api: typeof window.bbImport,
 			bridge: typeof window.bbplayer?.externalImport,
-			navItem: Boolean(document.querySelector('[data-testid="nav-import"]')),
+			navItem: Boolean(document.querySelector('[data-testid="lib-tab-import"]')),
 			fetchFn: typeof window.bbplayer?.externalImport?.fetchPlaylist,
 			matchFn: typeof window.bbplayer?.externalImport?.matchTrack,
 			startFn: typeof window.bbplayer?.externalImport?.start,
@@ -144,7 +144,7 @@ async function run(window) {
 			modules.startFn === 'function',
 	)
 
-	await click(window, '[data-testid="nav-import"]')
+	await click(window, '[data-testid="lib-tab-import"]')
 	const formReady = await waitFor(
 		window,
 		`(() => {
@@ -408,7 +408,7 @@ async function run(window) {
 	await shot(window, 'import-04-imported')
 
 	// ---------- 6. 幂等：再导一次应当全部跳过 ----------
-	await click(window, '[data-testid="nav-import"]')
+	await click(window, '[data-testid="lib-tab-import"]')
 	await sleep(400)
 	// 直接调 API 验证幂等（再跑一遍匹配太慢）
 	const idempotent = await evaluate(

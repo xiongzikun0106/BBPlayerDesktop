@@ -408,7 +408,7 @@ async function run(window) {
 	)
 
 	// ---------- 10. 收藏夹：公开可读（无需登录）----------
-	await click(window, '[data-testid="nav-favorites"]')
+	await click(window, '[data-testid="lib-tab-favorites"]')
 	await sleep(400)
 	check(
 		'切到收藏夹视图后工具条可见',
@@ -502,7 +502,7 @@ async function run(window) {
 		//     （第一版直接点旧选择器，点击落空，等不到任何变化）；
 		//  2. 同一个状态元素里还留着上一次的文本，`waitFor` 会立刻返回旧值 ——
 		//     必须等文本**变成新值**（第一版因此误报「第二次也新增 10」）。
-		await click(window, '[data-testid="nav-favorites"]')
+		await click(window, '[data-testid="lib-tab-favorites"]')
 		const relisted = await waitFor(
 			window,
 			`document.querySelectorAll('.favorite-list__item').length > 0`,

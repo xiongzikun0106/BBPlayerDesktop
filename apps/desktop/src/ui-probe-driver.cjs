@@ -215,10 +215,82 @@ async function run(window) {
 	await click(window, '[data-testid="rightbar-toggle"]')
 	await sleep(300)
 	check('底部播放条渲染', ui.playbar)
-	// Phase 3 加了「收藏夹」，Phase 3.5 加了「最近播放」，Phase 3.3 加了「导入歌单」，
-	// Phase 3.4 加了「共享」，因此现在是 7 个
-	// （音乐库 / 搜索 / 导入歌单 / 最近播放 / 收藏夹 / 合集 / 共享）
-	check('导航项数量正确（7）', ui.navItems === 7, `实际 ${ui.navItems}`)
+	// 阶段 2b（信息架构分层）：左栏只留**目的地**。
+	//
+	// 原来是 7 个平铺入口，把"目的地"（音乐库 / 搜索）和"某个页面里的子集或
+	// 动作"（导入歌单 / 收藏夹 / 合集 / 共享 / 最近播放）混在同一层 ——
+	// 用户得先猜「导入歌单」和「合集」有什么区别。
+	const navViews = JSON.parse(
+		await evaluate(
+			window,
+			`JSON.stringify([...document.querySelectorAll('.nav__item')].map((el) => el.dataset.view))`,
+		),
+	)
+	check(
+		'左栏只剩 4 个目的地，顺序为 主页/音乐库/搜索/设置',
+		navViews.join(',') === 'home,library,search,settings',
+		navViews.join(' / '),
+	)
+	check(
+		'导入与共享已从一级入口降级为页内动作',
+		!navViews.includes('import') && !navViews.includes('share'),
+		navViews.join(' / '),
+	)
+	const libraryTabs = JSON.parse(
+		await evaluate(
+			window,
+			`JSON.stringify({
+				tabs: [...document.querySelectorAll('[data-lib-tab]')].map((el) => el.dataset.libTab),
+				visible: !document.getElementById('library-tabs')?.hidden,
+				hasShareAction: Boolean(document.getElementById('library-share')),
+			})`,
+		),
+	)
+	check(
+		'音乐库有 4 个页签（播放列表 / 收藏夹 / 合集 / 导入）',
+		libraryTabs.tabs.join(',') === 'playlists,favorites,collection,import' &&
+			libraryTabs.visible,
+		libraryTabs.tabs.join(' / '),
+	)
+	check('音乐库页内保留了「共享」动作入口', libraryTabs.hasShareAction === true)
+
+	// `hidden` 必须**真的**隐藏。
+	//
+	// ⚠️ UA 样式表里 `[hidden] { display: none }` 的优先级极低，任何
+	// `.foo { display: flex }` 都会盖掉它 —— 于是"JS 里设了 hidden，元素照样显示"。
+	// 这个仓库为此绕过两次（`.share-view` 和 `.favorite-bar`），
+	// 后者是在截图巡检里被发现的：在「播放列表」页签下，
+	// 收藏夹的 UID 工具条一直挂在底部。
+	//
+	// 现在 style.css 顶部有一条全局 `[hidden] { display: none !important }`
+	// 保护这个不变量，这里断言**所有**带 hidden 的元素都真的不占位 ——
+	// 一次覆盖全应用，新增组件不用再记得这件事。
+	const hiddenAudit = JSON.parse(
+		await evaluate(
+			window,
+			`(() => {
+				const offenders = []
+				for (const el of document.querySelectorAll('[hidden]')) {
+					const rect = el.getBoundingClientRect()
+					if (rect.width > 0 && rect.height > 0) {
+						offenders.push(
+							(el.id || el.className || el.tagName) +
+								' ' +
+								Math.round(rect.width) +
+								'x' +
+								Math.round(rect.height),
+						)
+					}
+				}
+				return JSON.stringify(offenders)
+			})()`,
+		),
+	)
+	check(
+		'带 hidden 的元素都真的不显示（favorite-bar 这类回归）',
+		hiddenAudit.length === 0,
+		hiddenAudit.length > 0 ? hiddenAudit.join('；') : '全部已隐藏',
+	)
 	check(
 		'右栏默认显示队列',
 		ui.activePanel === 'queue',
@@ -392,7 +464,12 @@ async function run(window) {
 				}
 				return JSON.stringify({
 					body: size('body'),
-					viewTitle: size('.view-head h2'),
+					// ⚠️ 页面标题现在的真值来源是**外壳**的 #page-title
+					//（阶段 2b 之前是各个视图自己渲染的 .view-head h2，
+					// 于是空状态根本没有标题）。
+					viewTitle: size('#page-title'),
+					// 视图内部的次级标题要**低一档**，否则两级标题一样大 = 没有层级
+					sectionHead: size('.view-head h2'),
 					// 设置抽屉里的区块标题（抽屉关着也能算，getComputedStyle 不看可见性）
 					sectionTitle: size('.settings-panel h3'),
 					formLabel: size('.settings-grid label'),
@@ -411,6 +488,12 @@ async function run(window) {
 		'页面标题 ≥ 22（title-large，与移动端的大标题同级）',
 		typeScale.viewTitle !== null && typeScale.viewTitle >= 22,
 		`实际 ${typeScale.viewTitle}px`,
+	)
+	check(
+		'视图内的次级标题低于页面标题（两级标题要有层级）',
+		typeScale.sectionHead === null ||
+			typeScale.sectionHead < (typeScale.viewTitle ?? 0),
+		`页面 ${typeScale.viewTitle}px vs 次级 ${typeScale.sectionHead}px`,
 	)
 	check(
 		'区块标题 ≥ 16 且明显大于正文（层级看得出来）',
