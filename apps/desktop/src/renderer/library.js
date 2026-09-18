@@ -388,8 +388,11 @@
 			['作者', 'col-artist'],
 			['时长', 'col-duration'],
 		]
-		// 只有在「某个可写的本地歌单」里才给移除入口（见 removalContext）
-		if (removal.canRemove) columns.push(['操作', 'col-actions'])
+		// 「操作」列**永远存在**：每行至少有一个「下一首播放」。
+		// 只有「移除」是可选的（只对可写的本地歌单开放，见 removalContext）。
+		//
+		// ⚠️ 表头与行体的列数必须一致，否则整张表错位。
+		columns.push(['操作', 'col-actions'])
 		for (const [label, cls] of columns) {
 			const th = document.createElement('th')
 			th.className = cls
@@ -455,21 +458,62 @@
 				tr.appendChild(td)
 			}
 
+			// 行内动作：**永远有**「下一首播放」，可移除的歌单再加「移除」。
+			//
+			// ⚠️ 原来只有「移除」才给一个操作列，于是搜索结果 / 收藏夹里的曲目
+			// **完全没有行内动作** —— 想"下一首就听这首"只能先整单加进队列再拖，
+			// 而拖拽当时还不存在。用户明确要求了「下一首播放」。
+			const actionsCell = document.createElement('td')
+			actionsCell.className = 'col-actions'
+
+			const playNextButton = document.createElement('button')
+			playNextButton.className = 'track-action'
+			playNextButton.dataset.testid = `track-play-next-${index}`
+			playNextButton.dataset.action = 'play-next'
+			playNextButton.innerHTML = window.bbComponents.iconHtml(
+				'play_next',
+				'icon--sm',
+			)
+			playNextButton.title = '下一首播放'
+			playNextButton.setAttribute('aria-label', '下一首播放')
+			playNextButton.addEventListener('click', (event) => {
+				event.stopPropagation()
+				const result = window.bbPlayer.playNextInsert(track)
+				setStatus(
+					result.ok ? `「${track.title}」将在下一首播放` : '没能加入队列',
+					result.ok ? 'ok' : 'bad',
+				)
+			})
+			actionsCell.appendChild(playNextButton)
+
 			if (removal.canRemove) {
-				const td = document.createElement('td')
-				td.className = 'col-actions'
 				const remove = document.createElement('button')
-				remove.className = 'track-remove'
+				remove.className = 'track-action track-action--danger'
 				remove.dataset.testid = `track-remove-${index}`
-				remove.textContent = '移除'
+				remove.dataset.action = 'remove'
+				remove.innerHTML = window.bbComponents.iconHtml('delete', 'icon--sm')
 				remove.title = '从这个歌单移除这首曲目'
+				remove.setAttribute('aria-label', '从歌单移除')
 				remove.addEventListener('click', (event) => {
 					// 不要让单击冒泡到行的「选中」逻辑上
 					event.stopPropagation()
 					void removeTrackFromPlaylist(track, remove)
 				})
-				td.appendChild(remove)
-				tr.appendChild(td)
+				actionsCell.appendChild(remove)
+			}
+
+			// ⚠️ 列数必须与表头一致，否则表格会错位。
+			// 表头在下面按同样的条件决定要不要加「操作」列。
+			tr.appendChild(actionsCell)
+
+			// 拖拽重排（只在可写的歌单里开启 —— 搜索结果 / 收藏夹不是本地列表，
+			// 拖了也没地方存）
+			if (removal.canRemove) {
+				wireRowDrag(tr, index, tbody, (from, to) => {
+					const playlistId = window.bbState.get().selectedPlaylistId
+					if (!playlistId) return
+					void moveTrackInPlaylist(playlistId, from, to)
+				})
 			}
 
 			tr.addEventListener('dblclick', () => {
@@ -655,6 +699,87 @@
 				actions: [seed, toSearch],
 			}),
 		)
+	}
+
+	/**
+	 * 让一行可以**拖拽重排**（用户明确要求的功能：更改列表顺序）。
+	 *
+	 * 用原生 HTML5 拖放而不是引入库：只有"行内上下移动"这一个场景，
+	 * 而 `dragover` + `drop` 两个事件就够了。
+	 *
+	 * ⚠️ 落点判断要按**鼠标在行的上半/下半**决定插到前面还是后面 ——
+	 * 只按"拖到了哪一行"的话，往下拖永远只能落到那一行的前面，
+	 * 拖到最后一行的后面就永远做不到。
+	 *
+	 * @param {HTMLElement} row 被拖的行
+	 * @param {number} index 它的下标
+	 * @param {HTMLElement} container 行容器（用于清除其它行的样式）
+	 * @param {(from: number, to: number) => void} onDrop
+	 */
+	function wireRowDrag(row, index, container, onDrop) {
+		row.draggable = true
+		row.dataset.dragIndex = String(index)
+
+		row.addEventListener('dragstart', (event) => {
+			event.dataTransfer.effectAllowed = 'move'
+			// Firefox 要求必须 setData 才会真的开始拖
+			event.dataTransfer.setData('text/plain', String(index))
+			row.classList.add('is-dragging')
+		})
+
+		row.addEventListener('dragend', () => {
+			row.classList.remove('is-dragging')
+			for (const other of container.querySelectorAll(
+				'.is-drop-before, .is-drop-after',
+			)) {
+				other.classList.remove('is-drop-before', 'is-drop-after')
+			}
+		})
+
+		row.addEventListener('dragover', (event) => {
+			event.preventDefault()
+			event.dataTransfer.dropEffect = 'move'
+			const rect = row.getBoundingClientRect()
+			const after = event.clientY > rect.top + rect.height / 2
+			row.classList.toggle('is-drop-before', !after)
+			row.classList.toggle('is-drop-after', after)
+		})
+
+		row.addEventListener('dragleave', () => {
+			row.classList.remove('is-drop-before', 'is-drop-after')
+		})
+
+		row.addEventListener('drop', (event) => {
+			event.preventDefault()
+			const from = Number(
+				event.dataTransfer.getData('text/plain') || row.dataset.dragIndex,
+			)
+			const rect = row.getBoundingClientRect()
+			const after = event.clientY > rect.top + rect.height / 2
+			// 目标位置是"插到这一行之前/之后"换算成的最终下标
+			let to = index + (after ? 1 : 0)
+			// 从前面往后拖时，移走自己会让后面的下标整体前移一格
+			if (from < to) to -= 1
+			if (!Number.isInteger(from) || from < 0 || from === to) return
+			row.classList.remove('is-drop-before', 'is-drop-after')
+			onDrop(from, to)
+		})
+	}
+
+	/** 歌单内重排并刷新（走 db 的 fractional indexing，见 db.cjs） */
+	async function moveTrackInPlaylist(playlistId, from, to) {
+		try {
+			const result = await window.bbplayer.movePlaylistTrack({
+				playlistId,
+				from,
+				to,
+			})
+			if (result?.ok === false) throw new Error(result.error ?? '重排失败')
+			await openPlaylist(playlistId)
+			setStatus('已调整播放顺序', 'ok')
+		} catch (error) {
+			setStatus(error.message, 'bad')
+		}
 	}
 
 	/** 示例合集：B 站官方 UP 的公开合集（无需登录即可拉取） */

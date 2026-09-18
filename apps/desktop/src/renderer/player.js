@@ -78,6 +78,9 @@
 		queue: [],
 		index: -1,
 		mode: 'order',
+		/** 随机播放的洗牌顺序（队列下标的排列）与当前所处位置 */
+		shuffleOrder: [],
+		shufflePos: -1,
 	}
 
 	const listeners = new Set()
@@ -151,6 +154,9 @@
 	function setQueue(tracks, startIndex) {
 		state.queue = tracks.slice()
 		state.index = Number.isInteger(startIndex) ? startIndex : 0
+		// 换了队列就重新洗牌（沿用旧顺序会把下标对错歌）
+		state.shuffleOrder = []
+		if (state.mode === 'shuffle') reshuffle()
 		renderQueue()
 		emit({ type: 'queue-changed' })
 	}
@@ -158,6 +164,10 @@
 	function playAt(index) {
 		if (index < 0 || index >= state.queue.length) return false
 		state.index = index
+		// 用户直接点了某一首：洗牌位置要跳到它在洗牌顺序里的位置，
+		// 否则「下一首」会从旧位置继续走，表现成"点了这首之后下一首不对"
+		const pos = state.shuffleOrder.indexOf(index)
+		if (pos >= 0) state.shufflePos = pos
 		const track = state.queue[index]
 		if (!track) return false
 
@@ -169,25 +179,72 @@
 		return true
 	}
 
+	/**
+	 * 随机播放的**洗牌顺序**（队列下标的一个排列）。
+	 *
+	 * ⚠️ 第一版的随机是"每次都随机挑一个、避开当前这首"。那**不是**随机播放 ——
+	 * 它会重复播已经听过的歌，也可能很久碰不到某一首；用户感知就是
+	 * "随机播放老是放那几首"。
+	 *
+	 * 真正的随机播放是**洗牌**：把队列打乱成一个顺序，然后按这个顺序走一遍，
+	 * 走完再重洗。附带两个好处：
+	 *   * 「上一首」有确定含义（洗牌顺序里的前一个），而不是又随机一首；
+	 *   * 每首歌在一个循环里**恰好播一次**。
+	 *
+	 * `shufflePos` 记录"当前曲目在洗牌顺序里的位置"，前进/后退都按它走。
+	 */
+	function reshuffle() {
+		const order = state.queue.map((_, index) => index)
+		// Fisher–Yates：每个排列等概率。用 `sort(() => Math.random() - 0.5)`
+		// 是常见的错法 —— 它的分布不均匀（引擎的排序实现会影响结果）。
+		for (let i = order.length - 1; i > 0; i--) {
+			const j = Math.floor(Math.random() * (i + 1))
+			;[order[i], order[j]] = [order[j], order[i]]
+		}
+		state.shuffleOrder = order
+		state.shufflePos = order.indexOf(state.index)
+	}
+
+	/** 队列变化后（换歌单、插入、删除、重排）让洗牌顺序跟上 */
+	function syncShuffle() {
+		if (state.mode !== 'shuffle') return
+		// 保留了原来的相对顺序、只补上新出现的下标，避免"每加一首就整个重洗"
+		const known = new Set(state.shuffleOrder)
+		const kept = state.shuffleOrder.filter(
+			(index) => index < state.queue.length,
+		)
+		const added = state.queue
+			.map((_, index) => index)
+			.filter((index) => !known.has(index))
+		state.shuffleOrder = [...kept, ...added]
+		state.shufflePos = state.shuffleOrder.indexOf(state.index)
+	}
+
 	function nextIndex(auto) {
 		const { queue, index, mode } = state
 		if (queue.length === 0) return -1
 		if (mode === 'repeat-one' && auto) return index
 		if (mode === 'shuffle') {
 			if (queue.length === 1) return index
-			let candidate = index
-			// 避免随机到同一首
-			while (candidate === index) {
-				candidate = Math.floor(Math.random() * queue.length)
-			}
-			return candidate
+			if (state.shuffleOrder.length !== queue.length) reshuffle()
+			// 走到洗牌顺序的末尾就重洗一轮（对应"顺序播放"的回到队首）
+			const nextPos = (state.shufflePos + 1) % state.shuffleOrder.length
+			if (nextPos === 0) reshuffle()
+			return state.shuffleOrder[nextPos]
 		}
 		return (index + 1) % queue.length
 	}
 
 	function prevIndex() {
-		const { queue, index } = state
+		const { queue, index, mode } = state
 		if (queue.length === 0) return -1
+		if (mode === 'shuffle') {
+			if (state.shuffleOrder.length !== queue.length) reshuffle()
+			const prevPos =
+				(state.shufflePos - 1 + state.shuffleOrder.length) %
+				state.shuffleOrder.length
+			return state.shuffleOrder[prevPos]
+		}
 		return (index - 1 + queue.length) % queue.length
 	}
 
@@ -213,6 +270,94 @@
 		if (els.audio.paused) return play()
 		pause()
 		return Promise.resolve(true)
+	}
+
+	/**
+	 * **把一首歌插到「下一首播放」**（用户明确要求的功能）。
+	 *
+	 * 与「加入队列」的区别：加入队列是**追加到末尾**，这个是插到**当前曲目
+	 * 之后**，下一首就播它 —— 用户说"我现在就要听这首"时用的是后者。
+	 *
+	 * 三个边界：
+	 *   * 队列为空 → 直接当成"开始播放这一首"；
+	 *   * 已经在队列里 → **不重复添加**，而是把它挪到当前位置之后
+	 *     （"下一首播放"的语义是"下一个播它"，不是"列表里出现两次"）；
+	 *   * 不在队列里 → 插到 index + 1。
+	 *
+	 * @param {object} track 曲目（要有 bvid）
+	 */
+	function playNextInsert(track) {
+		if (!track?.bvid) return { ok: false, reason: 'no-bvid' }
+
+		if (state.queue.length === 0) {
+			setQueue([track], 0)
+			void play()
+			return { ok: true, at: 0, started: true }
+		}
+
+		const playingBvid = state.queue[state.index]?.bvid ?? null
+		const target = state.index + 1
+		const existing = state.queue.findIndex((item) => item.bvid === track.bvid)
+
+		if (existing === target) {
+			// 已经就是下一首 —— 不做无意义的移动，否则会打乱用户刚排好的顺序
+			return { ok: true, at: existing, moved: false }
+		}
+
+		let at = target
+		if (existing >= 0) {
+			const [moved] = state.queue.splice(existing, 1)
+			// 移走的那首原本在插入点之前时，插入点要往前挪一格
+			at = existing < target ? target - 1 : target
+			state.queue.splice(at, 0, moved)
+		} else {
+			state.queue.splice(at, 0, track)
+		}
+
+		// 当前播放项的下标可能被动过，按 bvid 重新定位（不能假设它没变）
+		state.index = playingBvid
+			? state.queue.findIndex((entry) => entry.bvid === playingBvid)
+			: state.index
+		syncShuffle()
+		renderQueue()
+		emit({ type: 'queue-changed' })
+		return { ok: true, at, moved: existing >= 0 }
+	}
+
+	/**
+	 * 在队列里移动一项（**更改播放顺序**）。
+	 *
+	 * 拖拽与键盘都走这里，保证两条路径行为完全一致。
+	 *
+	 * @param {number} from 原下标
+	 * @param {number} to 目标下标（移动后该项所在的位置）
+	 */
+	function moveInQueue(from, to) {
+		const { queue } = state
+		if (from < 0 || from >= queue.length) return { ok: false, reason: 'from' }
+		if (to < 0 || to >= queue.length) return { ok: false, reason: 'to' }
+		if (from === to) return { ok: true, moved: false, index: state.index }
+
+		const playingBvid = queue[state.index]?.bvid ?? null
+		const [item] = queue.splice(from, 1)
+		queue.splice(to, 0, item)
+
+		// ⚠️ 当前播放项的下标必须**跟着它自己走**，不能保持不变 ——
+		// 否则拖动别人的行会让"正在播放"跳到另一首歌上（而且很难发现，
+		// 因为列表看起来是对的）。
+		state.index = playingBvid
+			? queue.findIndex((entry) => entry.bvid === playingBvid)
+			: -1
+		syncShuffle()
+		renderQueue()
+		emit({ type: 'queue-changed' })
+		return { ok: true, moved: true, index: state.index }
+	}
+
+	/** 键盘重排：把当前播放项上移 / 下移一位 */
+	function nudgeCurrent(delta) {
+		if (state.index < 0) return { ok: false, reason: 'no-current' }
+		return moveInQueue(state.index, state.index + delta)
 	}
 
 	async function playNext(auto) {
@@ -263,12 +408,35 @@
 	function cycleMode() {
 		const i = PLAY_MODES.indexOf(state.mode)
 		state.mode = PLAY_MODES[(i + 1) % PLAY_MODES.length]
+		// 切到随机就洗一副新牌；切走就清掉（下次进来重新洗）
+		if (state.mode === 'shuffle') reshuffle()
+		else state.shuffleOrder = []
 		if (els.mode) {
 			els.mode.innerHTML = icon(MODE_ICON[state.mode])
 			els.mode.title = MODE_LABEL[state.mode]
 			els.mode.setAttribute('aria-label', MODE_LABEL[state.mode])
 		}
 		emit({ type: 'mode-changed', mode: state.mode })
+		return state.mode
+	}
+
+	/**
+	 * 直接设定播放模式（循环按钮之外的另一条路径）。
+	 *
+	 * 有它才能**确定性地**测随机播放：`cycleMode()` 要按 3 次才轮到，
+	 * 断言里就得写"按三次"，一旦模式顺序变了测试就静默测错东西。
+	 */
+	function setMode(mode) {
+		if (!PLAY_MODES.includes(mode)) return state.mode
+		state.mode = mode
+		if (mode === 'shuffle') reshuffle()
+		else state.shuffleOrder = []
+		if (els.mode) {
+			els.mode.innerHTML = icon(MODE_ICON[mode])
+			els.mode.title = MODE_LABEL[mode]
+			els.mode.setAttribute('aria-label', MODE_LABEL[mode])
+		}
+		emit({ type: 'mode-changed', mode })
 		return state.mode
 	}
 
@@ -340,7 +508,63 @@
 				playAt(index)
 				void play()
 			})
+
+			// **队列内拖动重排**（用户明确要求的功能：更改列表顺序）。
+			// 与歌单内的拖拽同一套交互：按鼠标在行的上半/下半决定插在前还是后。
+			wireQueueDrag(li, index)
 			els.queueList.appendChild(li)
+		})
+	}
+
+	/**
+	 * 队列行的拖拽重排。
+	 *
+	 * ⚠️ 队列是**内存里**的顺序（跟着这次播放走），歌单拖拽是写数据库的 ——
+	 * 两者刻意分开：把队列顺序写回歌单会让"临时插一首"变成永久改动。
+	 */
+	function wireQueueDrag(li, index) {
+		li.draggable = true
+
+		li.addEventListener('dragstart', (event) => {
+			event.dataTransfer.effectAllowed = 'move'
+			event.dataTransfer.setData('text/plain', String(index))
+			li.classList.add('is-dragging')
+		})
+
+		li.addEventListener('dragend', () => {
+			li.classList.remove('is-dragging')
+			for (const other of els.queueList.querySelectorAll(
+				'.is-drop-before, .is-drop-after',
+			)) {
+				other.classList.remove('is-drop-before', 'is-drop-after')
+			}
+		})
+
+		li.addEventListener('dragover', (event) => {
+			event.preventDefault()
+			event.dataTransfer.dropEffect = 'move'
+			const rect = li.getBoundingClientRect()
+			const after = event.clientY > rect.top + rect.height / 2
+			li.classList.toggle('is-drop-before', !after)
+			li.classList.toggle('is-drop-after', after)
+		})
+
+		li.addEventListener('dragleave', () => {
+			li.classList.remove('is-drop-before', 'is-drop-after')
+		})
+
+		li.addEventListener('drop', (event) => {
+			event.preventDefault()
+			const from = Number(
+				event.dataTransfer.getData('text/plain') || li.dataset.index,
+			)
+			const rect = li.getBoundingClientRect()
+			const after = event.clientY > rect.top + rect.height / 2
+			let to = index + (after ? 1 : 0)
+			if (from < to) to -= 1
+			li.classList.remove('is-drop-before', 'is-drop-after')
+			if (!Number.isInteger(from) || from < 0 || from === to) return
+			moveInQueue(from, to)
 		})
 	}
 
@@ -434,6 +658,17 @@
 		seekTo,
 		seekBy,
 		cycleMode,
+		/** 直接设定模式（确定性测试用；顺序循环用 cycleMode） */
+		setMode,
+		/** 插到「下一首播放」（不是追加到末尾） */
+		playNextInsert,
+		/** 队列重排（拖拽与键盘共用） */
+		moveInQueue,
+		/** 键盘重排：把当前项上移/下移一位 */
+		nudgeCurrent,
+		/** 随机播放的洗牌顺序（供自动化断言"每首恰好播一次"） */
+		getShuffleOrder: () => state.shuffleOrder.slice(),
+		getShufflePos: () => state.shufflePos,
 		getQueue: () => state.queue.slice(),
 		getIndex: () => state.index,
 		getCurrent: () => state.queue[state.index] || null,

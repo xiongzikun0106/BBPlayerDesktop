@@ -166,6 +166,22 @@ function registerIpcHandlers() {
 		}
 	})
 
+	/**
+	 * 歌单内重排（更改列表顺序）。
+	 *
+	 * 参数是**下标**而不是 sortKey：渲染进程看到的顺序就是
+	 * `getPlaylistTracks` 的顺序，让它去算 fractional index 的键等于把存储细节
+	 * 泄漏到界面层 —— 而且那个键方向还是反的（键越大越靠前）。
+	 */
+	ipcMain.handle('db:movePlaylistTrack', (_event, payload) => {
+		try {
+			const { playlistId, from, to } = payload ?? {}
+			return { ok: true, data: db.movePlaylistTrack(playlistId, from, to) }
+		} catch (error) {
+			return { ok: false, error: error.message }
+		}
+	})
+
 	ipcMain.handle('db:createPlaylist', (_event, payload) => {
 		try {
 			return { ok: true, data: db.createPlaylist(payload) }

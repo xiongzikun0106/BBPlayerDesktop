@@ -1034,6 +1034,290 @@ async function run(window) {
 		JSON.stringify(emptyProbe),
 	)
 
+	// ---------------------------------------------------------------
+	// 2.6 播放列表功能：随机播放 / 下一首播放 / 更改顺序
+	// ---------------------------------------------------------------
+	//
+	// 用户明确要求的三件事。这三条都属于"逻辑在内存里、界面上看不出来对错"，
+	// 所以必须断言**行为**而不只是"按钮存在"。
+	console.log('\n[ui] 2.6) 播放列表功能')
+
+	// 先确保队列里有一批歌（用侧栏那个歌单）
+	await evaluate(
+		window,
+		`(() => {
+			const row = document.querySelector('[data-playlist-id]')
+			row?.click()
+			return true
+		})()`,
+	)
+	await sleep(1500)
+	await click(window, '[data-testid="btn-play-all"]')
+	await sleep(1500)
+
+	// --- (1) 随机播放：必须是**洗牌**，不是"每次随机挑一首" ---
+	//
+	// 第一版是 `while (candidate === index) candidate = random()` ——
+	// 那会把听过的歌再随机到，用户感知是"随机播放老是放那几首"。
+	// 洗牌顺序的定义很硬：它是下标的**一个排列**，且走完一轮每首恰好一次。
+	const shuffleProbe = JSON.parse(
+		await evaluate(
+			window,
+			`(() => {
+				const player = window.bbPlayer
+				const size = player.getQueue().length
+				player.setMode('shuffle')
+				const order = player.getShuffleOrder()
+				const sorted = [...order].sort((a, b) => a - b)
+				const isPermutation =
+					order.length === size &&
+					sorted.every((value, i) => value === i) &&
+					new Set(order).size === size
+				player.setMode('order')
+				return JSON.stringify({ size, order, isPermutation })
+			})()`,
+		),
+	)
+	check(
+		'随机播放是**洗牌顺序**（队列下标的一个排列，每首恰好一次）',
+		shuffleProbe.isPermutation,
+		`队列 ${shuffleProbe.size} 首，洗牌顺序 [${shuffleProbe.order.slice(0, 8).join(',')}…]`,
+	)
+
+	// 走完一轮应当把每首**恰好播一次**，然后回到起点
+	const roundTrip = JSON.parse(
+		await evaluate(
+			window,
+			`(async () => {
+				const player = window.bbPlayer
+				// 用 4 首的小队列，走一轮看清楚
+				const tracks = player.getQueue().slice(0, 4)
+				player.setQueue(tracks, 0)
+				player.setMode('shuffle')
+				const visited = [player.getIndex()]
+				for (let i = 0; i < 3; i++) {
+					// 只走"下一首"的下标计算，不真的播放（避免等网络）
+					const next = player.getShuffleOrder()[
+						(player.getShufflePos() + 1) % player.getShuffleOrder().length
+					]
+					player.playAt(next)
+					visited.push(next)
+				}
+				const unique = new Set(visited).size
+				player.setMode('order')
+				return JSON.stringify({ visited, unique })
+			})()`,
+		),
+	)
+	check(
+		'洗牌顺序走一轮：4 首里访问到 4 个不同下标',
+		roundTrip.unique === 4,
+		`访问顺序 ${roundTrip.visited.join(' → ')}，去重后 ${roundTrip.unique} 个`,
+	)
+
+	// ⚠️ 「是一个排列」还不够：一个**恒等排列**（0,1,2,3…）也满足"每首恰好一次"，
+	// 但它显然不是随机播放。所以再验一次"重洗真的会变" ——
+	// 24 首的队列洗 5 次全部相同的概率是 0，出现即说明 `reshuffle` 没生效。
+	const reshuffleVariety = JSON.parse(
+		await evaluate(
+			window,
+			`(() => {
+				const player = window.bbPlayer
+				player.setMode('order')
+				const seen = new Set()
+				for (let i = 0; i < 5; i++) {
+					player.setMode('shuffle')
+					seen.add(player.getShuffleOrder().join(','))
+				}
+				player.setMode('order')
+				return JSON.stringify({ distinct: seen.size })
+			})()`,
+		),
+	)
+	check(
+		'重复洗牌会产生**不同的**顺序（证明真的在随机，而不是恒等排列）',
+		reshuffleVariety.distinct > 1,
+		`5 次洗牌得到 ${reshuffleVariety.distinct} 种不同顺序`,
+	)
+
+	// --- (2) 下一首播放 ---
+	const playNextProbe = JSON.parse(
+		await evaluate(
+			window,
+			`(() => {
+				const player = window.bbPlayer
+				const base = player.getQueue().slice(0, 4)
+				player.setQueue(base, 1)
+
+				// 分支 A：队列里**没有**这首歌 → 插到当前位置之后，长度 +1
+				const fresh = { bvid: 'BVprobeNext001', title: '探针曲目·新' }
+				const inserted = player.playNextInsert(fresh)
+				const afterInsert = player.getQueue()
+				const atIsNext = afterInsert[player.getIndex() + 1]?.bvid === fresh.bvid
+
+				// 分支 B：这首歌**已经在**队列里（下标 3）→ 不重复添加，移到下一首
+				const existingTrack = afterInsert[3]
+				const before = player.getQueue().length
+				const moved = player.playNextInsert(existingTrack)
+				const afterMove = player.getQueue()
+				const noDuplicate =
+					afterMove.filter((t) => t.bvid === existingTrack.bvid).length === 1
+				const movedIsNext =
+					afterMove[player.getIndex() + 1]?.bvid === existingTrack.bvid
+
+				// 分支 C：已经就是下一首 → 不做无意义的移动
+				const alreadyNext = player.playNextInsert(afterMove[player.getIndex() + 1])
+				const queueBefore = player.getQueue().map((t) => t.bvid).join(',')
+				const queueAfter = player.getQueue().map((t) => t.bvid).join(',')
+
+				return JSON.stringify({
+					insertedOk: inserted.ok,
+					atIsNext,
+					lengthAfterInsert: afterInsert.length,
+					movedOk: moved.ok,
+					noDuplicate,
+					movedIsNext,
+					lengthUnchanged: afterMove.length === before,
+					alreadyNextNoop: alreadyNext.moved === false &&
+						queueBefore === queueAfter,
+				})
+			})()`,
+		),
+	)
+	check(
+		'「下一首播放」把新歌插到当前曲目之后（不是追加到末尾）',
+		playNextProbe.insertedOk && playNextProbe.atIsNext,
+		`队列长度 ${playNextProbe.lengthAfterInsert}`,
+	)
+	check(
+		'「下一首播放」对队列里已有的歌不重复添加，只把它挪到下一首',
+		playNextProbe.movedOk &&
+			playNextProbe.noDuplicate &&
+			playNextProbe.movedIsNext &&
+			playNextProbe.lengthUnchanged,
+		`不重复=${playNextProbe.noDuplicate} 成为下一首=${playNextProbe.movedIsNext} 长度不变=${playNextProbe.lengthUnchanged}`,
+	)
+	check(
+		'目标已经是下一首时不做无意义的移动（不打乱用户排好的顺序）',
+		playNextProbe.alreadyNextNoop === true,
+	)
+
+	// --- (3) 队列重排 ---
+	const reorderProbe = JSON.parse(
+		await evaluate(
+			window,
+			`(() => {
+				const player = window.bbPlayer
+				player.setQueue(player.getQueue().slice(0, 5), 2)
+				const before = player.getQueue().map((t) => t.bvid)
+				const playingBefore = player.getQueue()[player.getIndex()].bvid
+
+				// 把第 0 项移到第 3 位
+				const result = player.moveInQueue(0, 3)
+				const after = player.getQueue().map((t) => t.bvid)
+				const playingAfter = player.getQueue()[player.getIndex()]?.bvid
+
+				// 期望：第 0 项出现在下标 3，其余整体前移一格
+				const expected = [...before.slice(1, 4), before[0], ...before.slice(4)]
+
+				return JSON.stringify({
+					ok: result.ok,
+					before,
+					after,
+					expected,
+					orderOk: after.join(',') === expected.join(','),
+					// ⚠️ 关键：当前播放项的下标必须**跟着它自己走**
+					playingFollowed: playingBefore === playingAfter,
+				})
+			})()`,
+		),
+	)
+	check(
+		'队列重排把项目移动到目标位置（其余项依次前移）',
+		reorderProbe.ok && reorderProbe.orderOk,
+		`${reorderProbe.before?.join(',')} → ${reorderProbe.after?.join(',')}`,
+	)
+	check(
+		'重排后「正在播放」仍然指向同一首歌（下标跟着它走）',
+		reorderProbe.playingFollowed === true,
+	)
+
+	// --- (4) 歌单内重排（落库，重启后仍在）---
+	const playlistId = await evaluate(
+		window,
+		`window.bbState.get().selectedPlaylistId ?? null`,
+	)
+	if (playlistId) {
+		const persisted = JSON.parse(
+			await evaluate(
+				window,
+				`(async () => {
+					const before = (await window.bbplayer.getPlaylistTracks(${JSON.stringify(playlistId)})).data
+					const bvidsBefore = before.map((t) => t.bvid)
+					const moved = await window.bbplayer.movePlaylistTrack({
+						playlistId: ${JSON.stringify(playlistId)},
+						from: 0,
+						to: 2,
+					})
+					const after = (await window.bbplayer.getPlaylistTracks(${JSON.stringify(playlistId)})).data
+					const bvidsAfter = after.map((t) => t.bvid)
+					const expected = [
+						...bvidsBefore.slice(1, 3),
+						bvidsBefore[0],
+						...bvidsBefore.slice(3),
+					]
+					return JSON.stringify({
+						ok: moved.ok,
+						countSame: bvidsBefore.length === bvidsAfter.length,
+						orderOk: bvidsAfter.join(',') === expected.join(','),
+						first: bvidsAfter[0],
+						third: bvidsAfter[2],
+					})
+				})()`,
+			),
+		)
+		check(
+			'歌单内重排真的写进数据库（重新读取顺序已变）',
+			persisted.ok && persisted.orderOk && persisted.countSame,
+			`第 3 位现在是 ${persisted.third}`,
+		)
+	} else {
+		check(
+			'歌单内重排真的写进数据库（重新读取顺序已变）',
+			false,
+			'没有选中的歌单',
+		)
+	}
+
+	// --- (5) 界面上的入口 ---
+	const listFeatureUi = JSON.parse(
+		await evaluate(
+			window,
+			`(() => {
+				const playNext = document.querySelector('[data-action="play-next"]')
+				const queueRows = [...document.querySelectorAll('[data-queue-index]')]
+				return JSON.stringify({
+					playNextButtons: document.querySelectorAll('[data-action="play-next"]').length,
+					playNextTitle: playNext?.getAttribute('title') ?? null,
+					queueRowsDraggable: queueRows.filter((el) => el.draggable).length,
+					queueRows: queueRows.length,
+				})
+			})()`,
+		),
+	)
+	check(
+		'每行曲目都有「下一首播放」按钮',
+		listFeatureUi.playNextButtons > 0 &&
+			listFeatureUi.playNextTitle === '下一首播放',
+		`${listFeatureUi.playNextButtons} 个，title=${listFeatureUi.playNextTitle}`,
+	)
+	check(
+		'队列行可以拖拽（更改播放顺序）',
+		listFeatureUi.queueRows > 0 &&
+			listFeatureUi.queueRowsDraggable === listFeatureUi.queueRows,
+		`${listFeatureUi.queueRowsDraggable}/${listFeatureUi.queueRows} 行可拖`,
+	)
+
 	// Toast：出现、可点掉、会自动消失
 	const toastProbe = JSON.parse(
 		await evaluate(

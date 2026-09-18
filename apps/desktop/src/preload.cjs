@@ -22,6 +22,9 @@ contextBridge.exposeInMainWorld('bbplayer', {
 	listPlaylists: () => ipcRenderer.invoke('db:listPlaylists'),
 	getPlaylistTracks: (playlistId) =>
 		ipcRenderer.invoke('db:getPlaylistTracks', playlistId),
+	/** 歌单内重排（更改列表顺序）：传下标，不传 sortKey */
+	movePlaylistTrack: (payload) =>
+		ipcRenderer.invoke('db:movePlaylistTrack', payload),
 	createPlaylist: (payload) => ipcRenderer.invoke('db:createPlaylist', payload),
 
 	// ---------- B 站 ----------

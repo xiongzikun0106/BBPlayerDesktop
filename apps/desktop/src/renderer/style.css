@@ -765,11 +765,28 @@ body {
 .queue-list__item {
 	display: flex;
 	gap: var(--sp-xs);
-	align-items: baseline;
+	/* ⚠️ 原来是 `baseline`，加了拖拽把手之后把手会跟文字基线对齐、
+	   整行看着歪。居中才对（行里现在有图标了）。 */
+	align-items: center;
 	padding: 8px var(--sp-sm);
 	border-radius: var(--r-sm);
 	cursor: pointer;
 	color: var(--on-surface-variant);
+}
+
+.queue-list__item::after {
+	content: 'drag_indicator';
+	font-family: 'Material Symbols Rounded';
+	font-size: var(--icon-md);
+	color: var(--outline);
+	opacity: 0;
+	margin-left: auto;
+	flex: none;
+	transition: opacity var(--motion-duration-fast) ease;
+}
+
+.queue-list__item:hover::after {
+	opacity: 0.7;
 }
 
 .queue-list__item::before {
@@ -2276,22 +2293,79 @@ input[type='range']:focus-visible {
 	white-space: nowrap;
 }
 
-.track-remove {
-	background: var(--surface-2);
-	border: 1px solid var(--outline-variant);
-	border-radius: var(--r-sm);
-	color: var(--bad);
+/*
+ * 曲目行的**行内动作**（阶段 2c）。
+ *
+ * ⚠️ 原来只有「移除」有一个文字按钮，而且**只在可写歌单里才有** ——
+ * 搜索结果与收藏夹里的曲目完全没有行内动作，"下一首就听这首"做不到。
+ * 现在每行都有「下一首播放」，可移除的歌单再加一个「移除」。
+ *
+ * 图标按钮 + 悬停才完全显形：常驻两个实心按钮会让整张表看起来像控制面板，
+ * 而这两个动作都是低频的。
+ */
+.col-actions {
+	white-space: nowrap;
+}
+
+.track-action {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	width: 30px;
+	height: 30px;
+	padding: 0;
+	margin-left: 2px;
+	background: transparent;
+	border: none;
+	border-radius: var(--r-full);
+	color: var(--on-surface-variant);
 	cursor: pointer;
-	font: inherit;
-	font-size: var(--fs-label-medium);
-	padding: 2px var(--sp-xs);
+	opacity: 0.45;
+	transition: opacity var(--motion-duration-fast) ease;
 }
 
-.track-remove:hover {
-	background: var(--surface-3);
+.track-table tbody tr:hover .track-action,
+.track-action:focus-visible {
+	opacity: 1;
 }
 
-.track-remove:disabled {
-	opacity: 0.5;
+.track-action:hover {
+	background: var(--surface-container-high);
+	color: var(--on-surface);
+}
+
+.track-action--danger:hover {
+	color: var(--bad);
+}
+
+.track-action:disabled {
+	opacity: 0.3;
 	cursor: default;
 }
+
+/*
+ * 拖拽重排的视觉反馈（阶段 2c「更改列表顺序」）。
+ *
+ * 落点线用 `box-shadow` 而不是 `border` —— border 会改变行高，
+ * 拖动时整张表会跟着抖。
+ */
+.track-table tbody tr[draggable='true'],
+.queue-list__item[draggable='true'] {
+	cursor: grab;
+}
+
+.track-table tbody tr.is-dragging,
+.queue-list__item.is-dragging {
+	opacity: 0.4;
+}
+
+.track-table tbody tr.is-drop-before,
+.queue-list__item.is-drop-before {
+	box-shadow: inset 0 2px 0 0 var(--primary);
+}
+
+.track-table tbody tr.is-drop-after,
+.queue-list__item.is-drop-after {
+	box-shadow: inset 0 -2px 0 0 var(--primary);
+}
+

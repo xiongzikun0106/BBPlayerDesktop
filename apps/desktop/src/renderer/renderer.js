@@ -229,6 +229,17 @@
 	keys.register('arrowright', { description: '快进 5 秒' }, () =>
 		player.seekBy(5),
 	)
+	// 队列重排（与拖拽共用同一套底层 API，行为完全一致）。
+	// 键盘路径既服务"不想用鼠标拖"的用户，也是自动化断言的入口 ——
+	// 原生拖放在无头环境里很难稳定模拟。
+	keys.register('alt+arrowup', { description: '队列：当前曲目上移' }, () => {
+		const result = player.nudgeCurrent(-1)
+		if (result.ok && result.moved) setStatus('已上移一位', 'ok')
+	})
+	keys.register('alt+arrowdown', { description: '队列：当前曲目下移' }, () => {
+		const result = player.nudgeCurrent(1)
+		if (result.ok && result.moved) setStatus('已下移一位', 'ok')
+	})
 	keys.register('shift+arrowleft', { description: '上一首' }, () => {
 		void player.playPrev()
 	})

@@ -241,6 +241,57 @@ function generateSortKey(playlistId) {
 }
 
 /**
+ * 歌单内**重排一首曲目**（用户明确要求的功能：更改列表顺序）。
+ *
+ * ## 为什么整表重写，而不是只算相邻两个键
+ *
+ * 表上用 `sort_key` 做 **fractional indexing**，理论上"移到两项之间"只需要
+ * 算一个新键（`generateKeyBetweenPositions`）。但那个接口要求调用方传
+ * **字典序的下界与上界**，而本仓库的约定是「**键越大越靠前**」——
+ * 视觉上的"前一项"反而是**上界**。传反了会抛 `Invalid key order`。
+ *
+ * 这里选择**整表重写**：读出现有顺序 → 内存里 splice → 用
+ * `generateSortKeySequence` 重新发一遍键。理由：
+ *   * 语义**显然正确**，不需要每个调用方都理解键方向的约定；
+ *   * 歌单是几百首量级，一次事务里几百条 UPDATE 是毫秒级；
+ *   * 不会出现"反复往同一位置插导致键越来越长"的长尾问题。
+ *
+ * 以后真有上万首的歌单，再换成只算相邻键的版本。
+ *
+ * @param {number} playlistId
+ * @param {number} from 原下标
+ * @param {number} to 目标下标（移动后所在位置）
+ * @returns {{ok: boolean, reason?: string, moved?: boolean}}
+ */
+function movePlaylistTrack(playlistId, from, to) {
+	const rows = sqlite.getAllSync(
+		'SELECT track_id FROM playlist_tracks WHERE playlist_id = ? ORDER BY sort_key DESC',
+		[playlistId],
+	)
+	if (from < 0 || from >= rows.length) return { ok: false, reason: 'from' }
+	if (to < 0 || to >= rows.length) return { ok: false, reason: 'to' }
+	if (from === to) return { ok: true, moved: false }
+
+	const ids = rows.map((row) => row.track_id)
+	const [moved] = ids.splice(from, 1)
+	ids.splice(to, 0, moved)
+
+	// ⚠️ 顺序约定：**下标 0 拿最大的键**（见文件顶部的迁移注释，以及
+	// `getPlaylistTracks` 的 `ORDER BY sort_key DESC`）。
+	// `generateSortKeySequence` 已按这个约定生成，顺序赋值即可。
+	const keys = core.generateSortKeySequence(ids.length)
+	sqlite.withTransactionSync(() => {
+		for (let i = 0; i < ids.length; i++) {
+			sqlite.runSync(
+				'UPDATE playlist_tracks SET sort_key = ? WHERE playlist_id = ? AND track_id = ?',
+				[keys[i], playlistId, ids[i]],
+			)
+		}
+	})
+	return { ok: true, moved: true }
+}
+
+/**
  * upsert 作者。
  *
  * `artists` 上有 CHECK 约束：
@@ -890,6 +941,8 @@ module.exports = {
 	upsertTrack,
 	addTrackToPlaylist,
 	removeTrackFromPlaylist,
+	/** 歌单内重排（更改列表顺序），见函数头注释 */
+	movePlaylistTrack,
 	getPlaylistTracks,
 	findPlaylistByRemote,
 	upsertRemotePlaylist,
