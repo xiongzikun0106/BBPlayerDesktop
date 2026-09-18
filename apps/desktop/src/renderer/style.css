@@ -739,6 +739,20 @@ body {
 	display: flex;
 	gap: var(--sp-xs);
 	margin-bottom: var(--sp-sm);
+	/*
+	 * ⚠️ 按钮不许被压窄换行。
+	 *
+	 * `.row-actions` 里的输入框会抢宽度（`input` 的基础层带 `flex: 1` 之类的
+	 * 弹性），把旁边的按钮挤到两个字一行 —— 「合集」页的「读取合集」
+	 * 就变成了"读取合 / 集"两行。按钮宽度应当由**文字**决定，不是由剩余空间。
+	 */
+	align-items: center;
+	flex-wrap: wrap;
+}
+
+.row-actions button {
+	flex: none;
+	white-space: nowrap;
 }
 
 /* ══════════════════════════════════════════════════════════
