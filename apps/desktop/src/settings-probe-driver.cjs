@@ -140,13 +140,19 @@ async function run(window) {
 			panel: typeof window.bbSettings,
 			viaUI: typeof window.bbUI?.settingsPanel,
 			gear: Boolean(document.getElementById('settings-open')),
+			// 设置作为**目的地**在左栏导航里（顶部齿轮已移除，见下面的断言）
+			navSettings: Boolean(document.querySelector('[data-testid="nav-settings"]')),
 			theme: document.documentElement.getAttribute('data-theme'),
 		}))()`,
 	)
 	check('window.bbDesktopFeatures 已暴露', modules.features === 'object')
 	check('window.bbSettings 已暴露', modules.panel === 'object')
 	check('window.bbUI.settingsPanel 可访问', modules.viaUI === 'function')
-	check('侧栏有设置齿轮按钮', modules.gear === true)
+	// ⚠️ 原来断言的是「侧栏有设置齿轮按钮」—— 那是**入口重复**：
+	// 左栏导航里已经有「设置」，顶部再放一个齿轮就是同一个入口两次
+	// （截图审查发现的）。现在断言反过来：**不该有齿轮，且导航里有设置**。
+	check('侧栏没有重复的设置入口（齿轮已移除）', modules.gear === false)
+	check('设置作为目的地存在于左栏导航', modules.navSettings === true)
 	await shot(window, 'settings-01-boot')
 
 	// ---------- 2. 打开抽屉 ----------

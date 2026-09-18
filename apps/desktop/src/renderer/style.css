@@ -617,11 +617,22 @@ body {
 	color: var(--on-surface-variant);
 }
 
+/*
+ * ⚠️ 底部要多留一截 —— 给浮动的 toast 让位。
+ *
+ * toast 是 `position: fixed`，悬在播放条上方约 104px 处。内容区滚到底时
+ * 最后一行正好落在 toast 的位置上，于是「已导入 24 首」这类提示会**盖住
+ * 列表的最后几行**（截图审查在 6 张图里都看到了）。
+ *
+ * 修法不是去挪 toast（它的位置是对的：悬浮在播放条上方最显眼），
+ * 而是让**列表自己**在底部留出安全距离 —— 滚动到底时最后一行仍完全可读。
+ */
 .content {
 	flex: 1 1 auto;
 	min-height: 0;
 	overflow-y: auto;
 	padding: var(--sp-md);
+	padding-bottom: 72px;
 }
 
 .view-head {
@@ -655,28 +666,29 @@ body {
 
 /* 曲目表 */
 /*
- * ⚠️ `table-layout: fixed` 是**必须的**，否则标题列会被压扁。
+ * ⚠️ 标题列用 `width: 100%` 吃掉剩余空间，**不要**用 `table-layout: fixed`。
  *
- * 截图审查发现：搜索结果页里「标题」列只有约 150px（标题全被截成「…」），
- * 而「作者」列右边空着约 480px —— **截断与大片空白同屏**。
+ * 最初的问题是：`auto` 布局下 `.col-title { max-width: 0 }`（为了让
+ * ellipsis 生效）被理解成"这一列可以任意窄"，于是标题被压到约 150px、
+ * 全被截成「…」，而作者列右边空着约 480px —— **截断与大片空白同屏**。
  *
- * 原因是 `auto` 布局下 `.col-title { max-width: 0 }`（为了让 ellipsis 生效）
- * 被理解成"这一列可以任意窄"，补空白的活就交给了没有宽度约束的作者列。
+ * 我第一版的修法是 `table-layout: fixed` + 给作者列 28%。
+ * 它能解决"空白"，但引入了新问题：**歌单里没有作者数据时**（导入的曲目
+ * 作者都是「—」），那一列照样硬占 28%，标题反而更窄了 ——
+ * 等于把一个坏布局换成了另一个坏布局。
  *
- * 改成 `fixed` 之后：有显式宽度的列（序号 / 时长 / 操作）按宽度来，
- * 没写宽度的列（标题 / 作者）平分剩余空间 —— 于是标题至少能拿到一半，
- * 不再被作者列挤扁。
+ * 正确的做法是让**标题列主动索要剩余空间**（`width: 100%`）：
+ * auto 布局会先满足其它列的**内容宽度**（作者是「—」就只占一点点），
+ * 剩下的全给标题。再给作者列一个 `max-width` 防止长名字反过来挤压标题。
  */
 .track-table {
 	width: 100%;
 	border-collapse: collapse;
-	table-layout: fixed;
 }
 
-/* 作者列不让它无限膨胀；标题列吃掉剩下的 */
 .track-table td.col-artist,
 .track-table th.col-artist {
-	width: 28%;
+	max-width: 28%;
 	overflow: hidden;
 	text-overflow: ellipsis;
 	white-space: nowrap;
@@ -734,6 +746,10 @@ body {
  * 表格布局当场崩掉（封面被压成细竖线、标题消失）。
  */
 .track-table td.col-title {
+	/* `width: 100%` 是**关键**：标题列索要所有剩余空间。
+	   缺了它，`max-width: 0`（ellipsis 的常规写法）会让浏览器
+	   认为"这列可以任意窄"，标题就被压扁。 */
+	width: 100%;
 	overflow: hidden;
 	max-width: 0;
 }

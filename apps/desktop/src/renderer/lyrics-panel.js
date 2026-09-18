@@ -161,11 +161,35 @@
 		scrollEl.append(listEl)
 		container.append(headerEl, scrollEl)
 
-		/** 空状态只建一次，靠 hidden 切换 */
+		/**
+		 * 空状态只建一次，靠 hidden 切换。
+		 *
+		 * ⚠️ 用组件层的 `.empty`（图标 + 标题 + 说明），不要自己拼一行灰字。
+		 *
+		 * 第一版就是 `<div class="... muted">暂无歌词</div>` ——
+		 * 截图审查里它是"一行灰字悬在中上部，无图标、无说明、无出口"，
+		 * 与设置页 / 欢迎视图里那些**被设计过的**空状态完全不是一套语言。
+		 * 同一个应用里不该有两种空状态。
+		 *
+		 * `data-testid="lyrics-empty"` 保留在外层，探针按它找不受影响。
+		 */
 		const emptyEl = document.createElement('div')
-		emptyEl.className = 'lyrics-panel__empty muted'
+		emptyEl.className = 'lyrics-panel__empty'
 		emptyEl.dataset.testid = 'lyrics-empty'
-		emptyEl.textContent = emptyText
+		if (window.bbComponents?.empty) {
+			emptyEl.appendChild(
+				window.bbComponents.empty({
+					testid: 'lyrics-empty-box',
+					iconName: 'lyrics',
+					title: emptyText,
+					hint: '正在播放的曲目如果有歌词，会自动显示在这里。',
+				}),
+			)
+		} else {
+			// 组件层还没就绪时退回纯文本，不让面板空着
+			emptyEl.classList.add('muted')
+			emptyEl.textContent = emptyText
+		}
 		scrollEl.append(emptyEl)
 
 		/** @type {HTMLElement[]} 与 lines 同下标的 DOM 节点 */

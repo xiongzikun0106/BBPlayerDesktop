@@ -20,7 +20,6 @@
 		 * 导航模型是「分类列表 → 子页」，与移动端一致。
 		 */
 		view: document.getElementById('view-settings'),
-		open: document.getElementById('settings-open'),
 		categories: document.getElementById('settings-categories'),
 		panelsBox: document.getElementById('settings-panels'),
 		categoryButtons: document.querySelectorAll('[data-settings-category]'),
@@ -1155,7 +1154,8 @@
 		}
 	}
 
-	els.open?.addEventListener('click', () => open())
+	// 顶部齿轮已移除（「设置」是左栏的目的地，不再需要第二个入口）。
+	// 入口只剩左栏导航：见 renderer.js 的 setActiveNav → showMainPane。
 
 	// —— 账号 / 通用 分类里的动作 ——
 	//
