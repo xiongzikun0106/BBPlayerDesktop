@@ -292,6 +292,51 @@ async function run(window) {
 	)
 	check('音乐库页内保留了「共享」动作入口', libraryTabs.hasShareAction === true)
 
+	// 点音乐库页签**不该影响右栏**。
+	//
+	// ⚠️ 这是截图巡检发现的一个真 bug：音乐库页签条与右栏页签**共用 `.tab` 类**，
+	// 而右栏的点击处理器绑在**所有** `.tab` 上 —— 点「收藏夹」会顺带
+	// `switchPanel(undefined)`：右栏两个面板全部变成不激活（一片空白），
+	// 而且还会擅自把收起状态的右栏展开。
+	//
+	// 表现很隐蔽：断言全绿（没人检查"点了 A 会不会影响 B"），
+	// 是靠巡检里"03–11 那几张的右栏一直是展开的"发现的；
+	// 体检表的 `.content` 宽度从 1186 变成 866 给出了确证。
+	const tabIsolation = JSON.parse(
+		await evaluate(
+			window,
+			`(() => {
+				const before = {
+					collapsed: document
+						.querySelector('.app')
+						?.classList.contains('is-rightbar-collapsed'),
+					activePanels: document.querySelectorAll('.panel.is-active').length,
+				}
+				// 点一个音乐库页签，再回到播放列表
+				const tab = document.querySelector('[data-testid="lib-tab-favorites"]')
+				tab?.click()
+				const during = {
+					collapsed: document
+						.querySelector('.app')
+						?.classList.contains('is-rightbar-collapsed'),
+					activePanels: document.querySelectorAll('.panel.is-active').length,
+				}
+				document.querySelector('[data-testid="lib-tab-playlists"]')?.click()
+				return JSON.stringify({ before, during })
+			})()`,
+		),
+	)
+	check(
+		'点音乐库页签不会顺带展开右栏（两套页签共用 .tab，必须按 data-panel 隔离）',
+		tabIsolation.before.collapsed === tabIsolation.during.collapsed,
+		`收起状态 ${tabIsolation.before.collapsed} → ${tabIsolation.during.collapsed}`,
+	)
+	check(
+		'点音乐库页签不会把右栏面板全部关掉',
+		tabIsolation.during.activePanels === 1,
+		`激活的右栏面板数 ${tabIsolation.during.activePanels}（应为 1）`,
+	)
+
 	// `hidden` 必须**真的**隐藏。
 	//
 	// ⚠️ UA 样式表里 `[hidden] { display: none }` 的优先级极低，任何
@@ -583,7 +628,11 @@ async function run(window) {
 				}
 				return JSON.stringify({
 					nav: pick('.nav__item.is-active'),
-					tab: pick('.tab.is-active'),
+					// ⚠️ 用 [data-panel] 而不是 .tab —— 音乐库的页签条也用 .tab
+					// 且 DOM 顺序在前，用 .tab.is-active 查询会先命中
+					// **音乐库页签**。那条「选中态一致性」断言因此一直在测错的
+					// 元素（两边视觉本来就一样，所以看不出来）。
+					tab: pick('[data-panel].is-active'),
 					segmented: pick('.segmented button.is-active'),
 				})
 			})()`,

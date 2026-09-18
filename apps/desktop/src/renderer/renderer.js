@@ -59,8 +59,27 @@
 		setRightbar(!isRightbarOpen()),
 	)
 
+	/**
+	 * 右栏面板（播放队列 / 歌词）的页签。
+	 *
+	 * ⚠️ 选择器必须限定在**右栏**，不能用 `.tab`。
+	 *
+	 * 音乐库的页签条（播放列表 / 收藏夹 / 合集 / 导入）也用了 `.tab` 类
+	 * （视觉上确实是同一套页签）。用 `.tab` 绑事件的话，点「收藏夹」会顺带
+	 * 调 `switchPanel(undefined)` —— 右栏两个面板**全部变成不激活**（一片空白），
+	 * 而且还会擅自把收起状态的右栏展开。
+	 *
+	 * 是靠截图巡检发现的：03–11 那几张里右栏一直是展开的（本该收起），
+	 * 而体检表显示点完音乐库页签后 `.content` 从 1186 变成了 866。
+	 *
+	 * 用 `[data-panel]` 而不是 `#rightbar .tab`：前者是**语义属性**，
+	 * 右栏页签独有的标记，将来改类名也不会误伤。
+	 */
+	const rightbarTabs = document.querySelectorAll('[data-panel]')
+
 	function switchPanel(panel) {
-		for (const tab of document.querySelectorAll('.tab')) {
+		if (!panel) return
+		for (const tab of rightbarTabs) {
 			tab.classList.toggle('is-active', tab.dataset.panel === panel)
 		}
 		for (const section of document.querySelectorAll('.panel')) {
@@ -72,7 +91,7 @@
 		window.bbState.set({ rightPanel: panel })
 	}
 
-	for (const tab of document.querySelectorAll('.tab')) {
+	for (const tab of rightbarTabs) {
 		tab.addEventListener('click', () => switchPanel(tab.dataset.panel))
 	}
 
