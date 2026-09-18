@@ -83,11 +83,137 @@ async function shot(window, name, note) {
 	// 光看 PNG 没法区分"没渲染"、"渲染了但透明"、"渲染在屏幕外"。
 	// 把关键容器与可见行数记进 manifest，就能直接对照。
 	const audit = await auditVisibility(window)
+	// 「每个角落都看过」的**机械化**那一半：把三次"元素量得出尺寸却看不见"
+	// 的教训写成四条通用规则，在每一屏上自动跑（见 auditLayout 的注释）。
+	const layoutProblems = await auditLayout(window)
+	audit.layoutProblems = layoutProblems
+	if (layoutProblems.length > 0) {
+		report.problems.push(
+			`${name} 布局体检：${layoutProblems.slice(0, 3).join('；')}`,
+		)
+	}
 	report.shots.push({ name, note, file, ...size, audit })
 	console.log(
-		`  📷 ${name}  ${size.width}x${size.height}  ${note}  ${audit.summary}`,
+		`  📷 ${name}  ${size.width}x${size.height}  ${note}  ${audit.summary}` +
+			(layoutProblems.length > 0 ? `  ⚠ ${layoutProblems.length} 条` : ''),
 	)
 	return file
+}
+
+/**
+ * **布局体检**：把"每个角落都看过"变成机械检查。
+ *
+ * 为什么需要它：这一路上遇到的三个真问题都是同一个形状 ——
+ * **元素在 DOM 里、量得出尺寸、断言全绿，但用户看不见**：
+ *   * 设置页被放到 `.app` 外面（排在视口下方）；
+ *   * 正在播放的标题因 flex 项被 blockify + line-clamp 而**高度为 0**；
+ *   * 面板封面 `hidden` 摘不掉、占位图标又被藏起来，**两头都空**。
+ *
+ * 逐张盯着 PNG 找这类问题很不可靠、也不可复现。下面四条规则是那三个问题的
+ * **一般化**，能在每一屏上自动跑：
+ *
+ *   1. 整页横向溢出（有东西把页面撑宽了）；
+ *   2. **有文字却高度为 0** 的元素（标题塌掉的那一类）；
+ *   3. 文字被容器横向裁掉（写了 `overflow: hidden` 却没写 `ellipsis`）；
+ *   4. 可见元素整个落在视口之外（放到屏幕外的那一类）。
+ *
+ * 只看**有自己文字的元素**，避免把纯布局容器算进来（误报会很吵）。
+ */
+async function auditLayout(window) {
+	try {
+		/** @type {string[]} */
+		const problems = JSON.parse(
+			await evaluate(
+				window,
+				`(() => {
+					const problems = []
+					const vw = window.innerWidth
+					const vh = window.innerHeight
+
+					const doc = document.documentElement
+					if (doc.scrollWidth > vw + 2) {
+						problems.push('整页横向溢出 ' + doc.scrollWidth + ' > ' + vw)
+					}
+
+					const isVisible = (s) =>
+						s.display !== 'none' &&
+						s.visibility !== 'hidden' &&
+						Number(s.opacity) !== 0
+
+					/**
+					 * 祖先里有没有"会滚动/裁剪"的容器。
+					 *
+					 * 有的话，这个元素在视口外是**正常的**（长列表滚出屏幕、
+					 * 收起的面板把内容裁掉），不该报。
+					 */
+					const hasScrollableAncestor = (el) => {
+						let node = el.parentElement
+						while (node && node !== document.body) {
+							const s = getComputedStyle(node)
+							if (s.overflowY !== 'visible' || s.overflowX !== 'visible') {
+								return true
+							}
+							node = node.parentElement
+						}
+						return false
+					}
+
+					for (const el of document.querySelectorAll('body *')) {
+						// 跳过探针自己注入的临时节点
+						if (el.closest('[data-testid="toast-host"], .status-host')) continue
+						const s = getComputedStyle(el)
+						if (!isVisible(s)) continue
+						const r = el.getBoundingClientRect()
+						if (r.width === 0 && r.height === 0) continue
+
+						const ownText = [...el.childNodes]
+							.filter((n) => n.nodeType === 3)
+							.map((n) => n.textContent.trim())
+							.join('')
+						if (ownText.length === 0) continue
+						const label =
+							(el.id ? '#' + el.id : '') +
+							(typeof el.className === 'string' && el.className
+								? '.' + el.className.split(' ')[0]
+								: '') +
+							' 「' + ownText.slice(0, 14) + '」'
+
+						if (ownText.length > 1 && r.height < 1) {
+							problems.push('文字高度为 0：' + label)
+						}
+						if (
+							ownText.length > 8 &&
+							s.overflow !== 'visible' &&
+							el.scrollWidth > el.clientWidth + 4 &&
+							s.textOverflow === 'clip'
+						) {
+							problems.push('文字被裁掉：' + label)
+						}
+						if (
+							r.width > 4 &&
+							r.height > 4 &&
+							s.position !== 'absolute' &&
+							// ⚠️ 有**滚动祖先**的元素不算"在视口外" ——
+							// 长列表里滚出屏幕的行本来就在视口外，那是正常的。
+							// 同理，"收起"的右栏（列宽 0 + overflow: hidden）里的
+							// 元素也在视口外，那是收起的实现方式。
+							// 第一版没这条判断，16 张截图每张都报十来条误报
+							// （曲目标题的文本节点、右栏的「播放队列」页签…），
+							// 真问题会被淹掉。
+							!hasScrollableAncestor(el) &&
+							(r.bottom < -4 || r.top > vh + 4 || r.right < -4 || r.left > vw + 4)
+						) {
+							problems.push('可见元素在视口外：' + label)
+						}
+					}
+					return JSON.stringify([...new Set(problems)].slice(0, 12))
+				})()`,
+			),
+		)
+		return problems
+	} catch (error) {
+		return [`体检失败：${error.message}`]
+	}
 }
 
 /** 这一屏里"实际看得见"的东西有多少 —— 用于判断空白截图 */
