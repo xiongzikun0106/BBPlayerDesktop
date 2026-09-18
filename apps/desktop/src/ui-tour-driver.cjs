@@ -416,10 +416,36 @@ async function run(window) {
 		['favorites', '03-library-favorites', '音乐库 › 收藏夹'],
 		['collection', '04-library-collection', '音乐库 › 合集'],
 		['import', '05-library-import', '音乐库 › 导入'],
-		['playlists', '06-library-back', '音乐库 › 回到播放列表'],
+		['playlists', '06-library-playlists-again', '音乐库 › 切回播放列表'],
 	]) {
 		await click(window, `[data-testid="lib-tab-${tab}"]`)
 		await sleep(1500)
+		// ⚠️ 这张图原来叫 '06-library-back'（「回到播放列表」），
+		// 但画面与 02 几乎一样 —— 因为**这里没有"返回"这回事**：
+		// 左栏本身就是歌单列表，中栏永远显示"当前选中的那个歌单"，
+		// 没有导航栈，所以也没有返回按钮。
+		//
+		// 与其留一张名不副实的图，不如把这条**事实**钉住：左栏的歌单
+		// 列表必须与中栏的歌单详情**同时可见**（这正是"不需要返回"的前提）。
+		if (tab === 'playlists') {
+			const sidebar = JSON.parse(
+				await evaluate(
+					window,
+					`(() => JSON.stringify({
+						rows: document.querySelectorAll('[data-playlist-id]').length,
+					}))()`,
+				),
+			)
+			if (sidebar.rows === 0) {
+				report.problems.push(
+					'切回播放列表后左栏歌单列表为空 —— "左栏即列表"这个前提不成立',
+				)
+			} else {
+				console.log(
+					`  ✓ 左栏歌单列表与中栏详情同时可见（${sidebar.rows} 个歌单）`,
+				)
+			}
+		}
 		await shot(window, name, note)
 	}
 
@@ -560,19 +586,90 @@ async function run(window) {
 	await shot(window, '32-share', '共享歌单面板')
 
 	console.log('\n=== 10) 搜索无结果 / 空状态 ===')
+	// ⚠️ 这里原来用的是 'zzzzzzzzzzzzzz'，但 B 站搜索对任何字符串都会
+	// **模糊匹配出结果** —— 实测返回了 20 条，于是这张名为
+	// "search-empty-result" 的截图**从来没有拍到过空状态**。
+	//
+	// 是子代理逐张看图时发现的（它读到 20 条却看见文件名写着"无结果"）。
+	// 现在的做法有两条：用一个更不可能命中的长随机串，
+	// 并且**断言真的 0 行** —— 拿不到空状态就报成问题，
+	// 而不是继续悄悄拍一张有结果的图。
+	const emptyQuery = 'qzjxvbkwmfnrptyudhglsacoie'
 	await click(window, '[data-testid="nav-search"]')
 	await sleep(600)
 	await evaluate(
 		window,
 		`(() => {
 			const input = document.getElementById('search-input')
-			input.value = 'zzzzzzzzzzzzzz'
+			input.value = '${emptyQuery}'
 			input.dispatchEvent(new Event('input', { bubbles: true }))
 			return true
 		})()`,
 	)
 	await click(window, '[data-testid="search-button"]')
 	await sleep(4500)
+	/*
+	 * ⚠️ 第一版的断言查的是 `[data-testid^="search-result-"]` —— 那个属性
+	 * **根本不存在**，于是恒为 0、**永远报"已覆盖"**，而截图里明明是 20 条结果。
+	 * 又一次"断言测错了元素"（这个仓库已经栽过好几次）。
+	 *
+	 * 现在改成读**数据源本身**（`bbLibrary.getTracks()`）：它不可能与画面不一致。
+	 */
+	const realSearch = JSON.parse(
+		await evaluate(
+			window,
+			`(() => JSON.stringify({
+				tracks: window.bbLibrary.getTracks().length,
+			}))()`,
+		),
+	)
+	console.log(
+		`  · 查询「${emptyQuery}」实际返回 ${realSearch.tracks} 条（B 站搜索对任何字符串都会模糊匹配）`,
+	)
+
+	/*
+	 * 所以「无结果」这个状态**走真实搜索到不了** —— 与其继续拍一张有结果的图
+	 * 冒充空状态，不如**确定性地驱动渲染层**：直接让曲目表收到一个空数组。
+	 * 这样拍到的才是用户真的会看到的那个空状态。
+	 */
+	const emptyDriven = JSON.parse(
+		await evaluate(
+			window,
+			`(() => {
+				window.bbLibrary.renderTrackTable([], {
+					query: '${emptyQuery}',
+					title: '搜索',
+				})
+				const empty = document.querySelector('[data-testid="content-empty"]')
+				const box = empty?.getBoundingClientRect()
+				return JSON.stringify({
+					rendered: Boolean(empty),
+					visible: Boolean(box && box.width > 40 && box.height > 20),
+					tracks: window.bbLibrary.getTracks().length,
+					text: (empty?.textContent ?? '').slice(0, 60),
+				})
+			})()`,
+		),
+	)
+	if (!emptyDriven.rendered || !emptyDriven.visible) {
+		report.problems.push(
+			`搜索无结果空状态没渲染出来（rendered=${emptyDriven.rendered} visible=${emptyDriven.visible}）`,
+		)
+	}
+	// 清掉上一次真实搜索留下的 toast —— 否则截图里
+	// 「找到 20 个结果」与「没有相关的结果」同框，自相矛盾。
+	await evaluate(
+		window,
+		`(() => {
+			const host = document.querySelector('[data-testid="toast-host"]')
+			if (host) host.textContent = ''
+			return true
+		})()`,
+	)
+	console.log(
+		`  ✓ 搜索无结果态：${emptyDriven.rendered ? '已渲染' : '未渲染'}，` +
+			`曲目 ${emptyDriven.tracks} 条，文案「${emptyDriven.text}」`,
+	)
 	await shot(window, '33-search-empty-result', '搜索无结果（空状态）')
 
 	console.log('\n=== 11) 窄窗口（看会不会挤坏）===')
