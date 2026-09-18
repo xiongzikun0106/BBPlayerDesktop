@@ -878,9 +878,10 @@ function registerIpcHandlers() {
 		try {
 			const settings = getSettings()
 			await settings.update(patch ?? {})
-			// 主题偏好可能刚被改掉（含 system ↔ light/dark），立刻把解析后的
-			// 变量推给所有窗口，不等下一次 `theme:describe`
-			if (patch && 'theme' in patch) broadcastTheme()
+			// 主题偏好或材质强度可能刚被改掉，立刻把解析后的变量推给所有窗口，
+			// 不等下一次 `theme:describe`
+			if (patch && ('theme' in patch || 'materialLevel' in patch))
+				broadcastTheme()
 			return { ok: true, data: await settings.describe() }
 		} catch (error) {
 			return { ok: false, error: error.message }
@@ -1153,9 +1154,11 @@ const wrapShareHandler =
 async function describeCurrentTheme() {
 	const { describeTheme } = require('./theme.cjs')
 	const described = await getSettings().describe()
+	const settings = described.settings ?? {}
 	return describeTheme(
-		described.settings?.theme,
+		settings.theme,
 		nativeTheme.shouldUseDarkColors,
+		settings.materialLevel,
 	)
 }
 

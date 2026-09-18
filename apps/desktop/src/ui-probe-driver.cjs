@@ -455,6 +455,146 @@ async function run(window) {
 	)
 
 	// ---------------------------------------------------------------
+	// 1.10 图标：必须是 Material Symbols 而不是 unicode 字形
+	// ---------------------------------------------------------------
+	//
+	// 第一版用的是 ♪ ⌕ ⤓ ↺ ★ ▤ ⇄ ⚙ ▶ ⏮ ⏭ ✕ —— 跨平台渲染不一致
+	// （Windows 的 Segoe UI Symbol 与 Linux 的 DejaVu Sans 粗细、基线都不同），
+	// 而且混着「音乐符号 / 几何符号 / 箭头」三类，视觉重量不齐，
+	// 用户一眼就看出杂乱。
+	//
+	// 现在是 Material Symbols Rounded 的**子集字体**（57 个图标，9.3 KB），
+	// 用合字渲染：`<span class="icon">library_music</span>`。
+	//
+	// ⚠️ 怎么断言「字体真的生效」？只看 `document.fonts.check` 不够 ——
+	// 字体加载失败时合字不生效，图标名会被**当成普通文字**渲染出来，
+	// 那时元素会宽得离谱（"library_music" 13 个字符 vs 一个图标）。
+	// 所以同时量**每个图标元素的宽度**：一个图标应当接近 1em。
+	console.log('\n[ui] 1.10) 图标')
+	const iconState = JSON.parse(
+		await evaluate(
+			window,
+			`(() => {
+				const nodes = [...document.querySelectorAll('.icon')]
+				const fontOk = document.fonts.check('24px "Material Symbols Rounded"')
+				const tooWide = nodes
+					.filter((el) => {
+						const size = Number.parseFloat(getComputedStyle(el).fontSize)
+						if (!Number.isFinite(size) || size === 0) return false
+						return el.getBoundingClientRect().width / size > 1.8
+					})
+					.map((el) => el.textContent.trim())
+				return JSON.stringify({
+					count: nodes.length,
+					fontOk,
+					tooWide,
+					fontStatus: document.fonts.status,
+				})
+			})()`,
+		),
+	)
+	check('界面里有图标元素', iconState.count > 0, `${iconState.count} 个`)
+	check(
+		'Material Symbols 字体已加载',
+		iconState.fontOk === true,
+		`document.fonts.check=${iconState.fontOk}，status=${iconState.fontStatus}`,
+	)
+	check(
+		'每个图标都渲染成单个字形（合字生效，没有退化成字母）',
+		iconState.tooWide.length === 0,
+		iconState.tooWide.length > 0
+			? `过宽：${iconState.tooWide.join('、')}`
+			: `${iconState.count} 个都正常`,
+	)
+
+	// 图标必须在按钮**正中**，而且「只放图标」的按钮必须显式声明。
+	//
+	// ⚠️ 用户报过「上一首 / 下一首 / 播放暂停的图标歪了，不在控件正中」。
+	// 原因是图标是 inline-block，坐在文字基线上，而按钮基础层给的是
+	// `padding: 7px 16px`（上下 7、左右 16）—— 水平被拉宽、垂直因基线偏上。
+	//
+	// 第一版用 `button:has(> .icon:only-child)` 自动识别，**误伤了左栏导航项**：
+	// 导航项只有一个「元素」子节点（图标），文字标签是**裸文本节点**，
+	// `:only-child` 数不到它 → 导航项被压成 34px 方块、文字竖排。
+	// 所以改成显式类名，并在这里双向校验：
+	//   (a) 所有 .icon-only 的图标必须居中；
+	//   (b) 凡是「只有一个图标子节点、且没有文字标签」的按钮，**必须**有该类名
+	//       （防止以后新增图标按钮忘了加，又回到不居中的样子）。
+	const centered = JSON.parse(
+		await evaluate(
+			window,
+			`(() => {
+				const offenders = []
+				const missingClass = []
+				for (const button of document.querySelectorAll('button')) {
+					const icons = [...button.children].filter((c) =>
+						c.classList.contains('icon'),
+					)
+					const hasOnlyIcon =
+						icons.length === 1 && button.children.length === 1
+					if (!hasOnlyIcon) continue
+					// 文字标签是裸文本节点，children 数不到它，单独查一遍
+					const label = [...button.childNodes]
+						.filter((n) => n.nodeType === 3)
+						.map((n) => n.textContent)
+						.join('')
+						.trim()
+					if (label !== '') continue // 「图标 + 文字」的行，左对齐是设计
+					const isIconOnly = button.classList.contains('icon-only')
+					const b = button.getBoundingClientRect()
+					const i = icons[0].getBoundingClientRect()
+					if (b.width === 0 || b.height === 0) continue // 隐藏的按钮跳过
+					const dx = Math.abs(i.left + i.width / 2 - (b.left + b.width / 2))
+					const dy = Math.abs(i.top + i.height / 2 - (b.top + b.height / 2))
+					if (dx > 1.5 || dy > 1.5) {
+						offenders.push(
+							(button.id || button.className || button.tagName) +
+								' dx=' +
+								dx.toFixed(1) +
+								' dy=' +
+								dy.toFixed(1),
+						)
+					}
+					if (!isIconOnly) {
+						missingClass.push(button.id || button.className || button.tagName)
+					}
+				}
+				return JSON.stringify({ offenders, missingClass })
+			})()`,
+		),
+	)
+	check(
+		'只放图标的按钮，图标在正中（偏差 < 1.5px）',
+		centered.offenders.length === 0,
+		centered.offenders.length > 0 ? centered.offenders.join('；') : '全部居中',
+	)
+	check(
+		'只放图标的按钮都显式标了 .icon-only（漏标就会回到不居中）',
+		centered.missingClass.length === 0,
+		centered.missingClass.length > 0
+			? `漏标：${centered.missingClass.join('、')}`
+			: '无遗漏',
+	)
+	// 反向：导航项是「图标 + 文字」，**不能**被当成图标按钮压缩
+	const navWidths = JSON.parse(
+		await evaluate(
+			window,
+			`(() => {
+				const items = [...document.querySelectorAll('.nav__item')]
+				const squeezed = items
+					.filter((el) => el.getBoundingClientRect().width < 120)
+					.map((el) => (el.textContent || '').trim().slice(0, 12))
+				return JSON.stringify(squeezed)
+			})()`,
+		),
+	)
+	check(
+		'左栏导航项没有被当成图标按钮压缩（文字不竖排）',
+		navWidths.length === 0,
+		navWidths.length > 0 ? `过窄：${navWidths.join('、')}` : '全部占满整行',
+	)
+
+	// ---------------------------------------------------------------
 	// 2. 空库 → 导入示例合集
 	// ---------------------------------------------------------------
 	console.log('\n[ui] 2) 空库欢迎视图 + 导入合集')

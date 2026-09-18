@@ -291,6 +291,109 @@ async function run(window) {
 		String(persistedTheme),
 	)
 
+	// ---------- 3b. 材质强度（阶段 1b，借鉴 Salt Player 的「材质」页）----------
+	//
+	// 三档不是"越来越模糊"，而是三种表面处理：
+	//   none      不透明（纯色块上加模糊是看不见的，留半透明只会干扰阅读）
+	//   blur      半透明 + 模糊
+	//   gradient  半透明 + 更浓的模糊 + 提饱和
+	//
+	// 断言必须落到**计算样式**上：只改 `data-material` 而 CSS 没跟上，
+	// 是"改了个属性什么都没发生"，正是这个仓库反复踩过的坑。
+	const materialState = () =>
+		evaluate(
+			window,
+			`(() => {
+				const topbar = document.querySelector('.topbar')
+				const s = topbar ? getComputedStyle(topbar) : null
+				return {
+					dataset: document.documentElement.dataset.material ?? null,
+					backdrop: s ? (s.backdropFilter || s.webkitBackdropFilter) : null,
+					topbarBg: s ? s.backgroundColor : null,
+					described: window.bbTheme?.describe?.() ?? null,
+				}
+			})()`,
+		)
+
+	const materialDefault = await materialState()
+	check(
+		'默认材质是「模糊」且已标到 <html> 上',
+		materialDefault.dataset === 'blur' &&
+			materialDefault.described?.materialLevel === 'blur',
+		`data-material=${materialDefault.dataset}，主进程说=${materialDefault.described?.materialLevel}`,
+	)
+	check(
+		'默认档位下顶栏真的有 backdrop-filter（不是只改了个属性）',
+		/blur\(/.test(String(materialDefault.backdrop)),
+		String(materialDefault.backdrop),
+	)
+	check(
+		'默认档位下顶栏是半透明的（否则模糊没有东西可透）',
+		// ⚠️ 不能断言字符串长什么样：Chromium 对 `color-mix()` 的结果返回的是
+		// `color(srgb 0.10 0.10 0.12 / 0.78)`，而不是 `rgba(...)`。
+		// 第一版按 `rgba(` 前缀匹配，于是**行为正确却判失败**。
+		// 这里改成解析 alpha：`color(... / a)` 与 `rgba(..., a)` 都要认。
+		(() => {
+			const value = String(materialDefault.topbarBg)
+			const slash = value.match(/\/\s*([\d.]+)\s*\)/)
+			if (slash) return Number(slash[1]) < 1
+			const rgba = value.match(/^rgba\([^)]*,\s*([\d.]+)\s*\)$/)
+			if (rgba) return Number(rgba[1]) < 1
+			return false // 纯 rgb(...) = 不透明
+		})(),
+		String(materialDefault.topbarBg),
+	)
+
+	await click(window, '[data-testid="material-none"]')
+	await sleep(800)
+	const materialNone = await materialState()
+	check(
+		'选「无」后 data-material 变成 none',
+		materialNone.dataset === 'none',
+		String(materialNone.dataset),
+	)
+	check(
+		'「无」档位下顶栏**没有**模糊（这一档必须不透明）',
+		materialNone.backdrop === 'none' || materialNone.backdrop === null,
+		String(materialNone.backdrop),
+	)
+
+	await click(window, '[data-testid="material-gradient"]')
+	await sleep(800)
+	const materialGradient = await materialState()
+	check(
+		'选「渐变模糊」后 data-material 变成 gradient',
+		materialGradient.dataset === 'gradient',
+		String(materialGradient.dataset),
+	)
+	check(
+		'渐变比模糊更浓（模糊半径更大且带 saturate）',
+		/blur\((\d+(\.\d+)?)px\)/.test(String(materialGradient.backdrop)) &&
+			Number(
+				String(materialGradient.backdrop).match(
+					/blur\((\d+(\.\d+)?)px\)/,
+				)?.[1] ?? 0,
+			) >
+				Number(
+					String(materialDefault.backdrop).match(
+						/blur\((\d+(\.\d+)?)px\)/,
+					)?.[1] ?? 0,
+				) &&
+			/saturate/.test(String(materialGradient.backdrop)),
+		`blur=${materialDefault.backdrop} → gradient=${materialGradient.backdrop}`,
+	)
+	check(
+		'材质档位也持久化到设置',
+		(await evaluate(
+			window,
+			`window.bbplayer.settings.get().then((r) => r?.data?.settings?.materialLevel ?? null)`,
+		)) === 'gradient',
+	)
+
+	// 恢复默认档，后面的截图标按「模糊」走
+	await click(window, '[data-testid="material-blur"]')
+	await sleep(600)
+
 	// ---------- 4. 定时关闭：预设与倒计时 ----------
 	await click(window, '[data-settings-tab="playback"]')
 	await sleep(300)

@@ -32,6 +32,13 @@ const SETTINGS_KEY = 'desktop-settings'
  */
 const THEMES = ['system', 'light', 'dark']
 
+/**
+ * 材质强度档位（与 `theme.cjs` 的 `MATERIAL_LEVELS` 对应）。
+ *
+ * 放在这里只用于校验取值合法；具体的 CSS 由 `theme.cjs` 生成。
+ */
+const MATERIAL_LEVELS = ['none', 'blur', 'gradient']
+
 /** 定时关闭的预设（分钟），与移动端 `PRESET_DURATIONS` 一致 */
 const SLEEP_PRESETS_MINUTES = [15, 30, 45, 60]
 
@@ -50,6 +57,14 @@ const DEFAULT_SETTINGS = {
 	loudnessMaxGainDb: 12,
 	/** 下载并发（1–6，与移动端同区间） */
 	downloadMaxParallel: 2,
+	/**
+	 * 材质强度（阶段 1b，借鉴 Salt Player 的「材质」设置页）。
+	 *
+	 * `none` 不透明；`blur` 遮罩模糊；`gradient` 渐变模糊（更浓 + 提饱和）。
+	 * 用在顶栏、弹窗、设置抽屉这些**盖在内容之上**的地方 ——
+	 * 有东西可透才叫材质，纯色块上加模糊是看不见的。
+	 */
+	materialLevel: 'blur',
 }
 
 /**
@@ -92,6 +107,9 @@ function createSettings({ storage, log = () => {} }) {
 			1,
 			6,
 		)
+		if (!MATERIAL_LEVELS.includes(cache.materialLevel)) {
+			cache.materialLevel = DEFAULT_SETTINGS.materialLevel
+		}
 
 		return cache
 	}
@@ -137,6 +155,7 @@ function createSettings({ storage, log = () => {} }) {
 			return {
 				settings: await load(),
 				themes: THEMES,
+				materialLevels: MATERIAL_LEVELS,
 				sleepPresets: SLEEP_PRESETS_MINUTES,
 				sleepFadeMs: SLEEP_FADE_MS,
 				defaults: DEFAULT_SETTINGS,

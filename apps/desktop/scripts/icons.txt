@@ -1,0 +1,73 @@
+# 图标清单：一次取全，避免每加一个图标就要重建字体
+#
+# 命名 = Material Symbols 的官方图标名（ligature 名）
+# 注释里写「用在哪」，方便以后清理
+
+# 导航目的地
+library_music      # 音乐库
+search             # 搜索
+home               # 主页（阶段 2）
+settings           # 设置
+
+# 内容来源
+playlist_add       # 导入歌单
+history            # 最近播放
+star               # 收藏夹
+star_border        # 收藏夹（未收藏）
+video_library      # 合集
+album              # 专辑 / 分p
+folder             # 目录
+group              # 共享 / 成员
+person             # 账号
+queue_music        # 播放队列
+lyrics             # 歌词面板
+
+# 播放控制
+play_arrow         # 播放
+pause              # 暂停
+skip_previous      # 上一首
+skip_next          # 下一首
+repeat             # 列表循环
+repeat_one         # 单曲循环
+shuffle            # 随机
+volume_up          # 音量
+graphic_eq         # 响度均衡
+timer              # 定时关闭
+speed              # 倍速（预留）
+
+# 动作
+close              # 关闭
+refresh            # 刷新
+sync               # 同步
+delete             # 移除 / 删除
+share              # 分享
+key                # 邀请码
+link               # 链接
+folder_open        # 打开所在文件夹
+download           # 导出 / 下载
+upload             # 上传 / 备份
+restart_alt        # 重启应用
+add                # 新建
+check              # 已勾选
+content_copy       # 复制
+open_in_new        # 在浏览器打开
+more_vert          # 更多
+chevron_right      # 进入子页
+arrow_back         # 返回
+expand_more        # 展开
+expand_less        # 收起
+
+# 外观 / 主题
+palette            # 配色
+dark_mode          # 深色
+light_mode         # 浅色
+contrast           # 跟随系统
+blur_on            # 材质（模糊）
+text_fields        # 字号
+
+# 状态
+check_circle       # 成功
+error              # 失败
+warning            # 注意
+info               # 说明
+cloud_off          # 未配置 / 离线

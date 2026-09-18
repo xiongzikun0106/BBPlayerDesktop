@@ -28,6 +28,7 @@ const STYLE_ID = 'bb-theme-vars'
 	const state = {
 		preference: null,
 		mode: null,
+		materialLevel: null,
 		colors: null,
 		/** 最近一次应用的完整描述，供自动化断言 */
 		last: null,
@@ -52,11 +53,14 @@ const STYLE_ID = 'bb-theme-vars'
 
 		const root = document.documentElement
 		root.dataset.theme = theme.mode
+		// 材质强度：CSS 用 `[data-material='blur']` 之类的选择器切换
+		if (theme.materialLevel) root.dataset.material = theme.materialLevel
 		// 让原生控件（滚动条、表单、自动填充）跟着走
 		root.style.colorScheme = theme.mode
 
 		state.preference = theme.preference
 		state.mode = theme.mode
+		state.materialLevel = theme.materialLevel ?? null
 		state.colors = theme.colors
 		state.last = theme
 
@@ -105,6 +109,9 @@ const STYLE_ID = 'bb-theme-vars'
 			preference: state.preference,
 			mode: state.mode,
 			systemPrefersDark: state.last?.systemPrefersDark ?? null,
+			materialLevel: state.materialLevel,
+			materialBlur: state.last?.materialBlur ?? null,
+			datasetMaterial: document.documentElement.dataset.material ?? null,
 			hasVars: Boolean(document.getElementById(STYLE_ID)?.textContent),
 			varCount: (document.getElementById(STYLE_ID)?.textContent ?? '').split(
 				';',

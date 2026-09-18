@@ -10,11 +10,34 @@
 ;(function () {
 	'use strict'
 
+	/**
+	 * 生成一个 Material Symbols 图标节点的 HTML。
+	 *
+	 * 图标名是字体的**合字**（ligature），所以写的是 `play_arrow` 这样的名字，
+	 * 字体把它渲染成图形 —— HTML 里读起来是语义，不是乱码。
+	 * 字体来自 `scripts/build-icon-font.mjs`（子集，9.3 KB，随源码提交）。
+	 */
+	function icon(name, extraClass = '') {
+		return `<span class="icon ${extraClass}">${name}</span>`
+	}
+
 	const PLAY_MODES = ['order', 'repeat-one', 'shuffle']
+	/**
+	 * 播放模式的图标与无障碍名。
+	 *
+	 * 第一版这里是一个**文字按钮**（顺序 / 单曲 / 随机），在一排图标按钮里
+	 * 显得格格不入 —— 移动端用的是图标。	itle / ria-label 保留文字，
+	 * 所以鼠标悬停与读屏仍然能知道当前是什么模式。
+	 */
+	const MODE_ICON = {
+		order: 'repeat',
+		'repeat-one': 'repeat_one',
+		shuffle: 'shuffle',
+	}
 	const MODE_LABEL = {
-		order: '顺序',
-		'repeat-one': '单曲',
-		shuffle: '随机',
+		order: '顺序播放',
+		'repeat-one': '单曲循环',
+		shuffle: '随机播放',
 	}
 
 	const els = {
@@ -238,7 +261,11 @@
 	function cycleMode() {
 		const i = PLAY_MODES.indexOf(state.mode)
 		state.mode = PLAY_MODES[(i + 1) % PLAY_MODES.length]
-		if (els.mode) els.mode.textContent = MODE_LABEL[state.mode]
+		if (els.mode) {
+			els.mode.innerHTML = icon(MODE_ICON[state.mode])
+			els.mode.title = MODE_LABEL[state.mode]
+			els.mode.setAttribute('aria-label', MODE_LABEL[state.mode])
+		}
 		emit({ type: 'mode-changed', mode: state.mode })
 		return state.mode
 	}
@@ -304,10 +331,10 @@
 				setStatus(`播放失败：${error ? error.name : '未知'}`, 'bad')
 			} else if (name === 'playing') {
 				setStatus('正在播放', 'ok')
-				if (els.play) els.play.textContent = '⏸'
+				if (els.play) els.play.innerHTML = icon('pause')
 			} else if (name === 'pause') {
 				setStatus('已暂停', 'idle')
-				if (els.play) els.play.textContent = '▶'
+				if (els.play) els.play.innerHTML = icon('play_arrow')
 			} else if (name === 'ended') {
 				// 自动续播
 				void playNext(true)

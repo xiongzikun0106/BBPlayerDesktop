@@ -52,6 +52,7 @@
 
 		// 外观
 		themes: document.querySelectorAll('[data-theme-choice]'),
+		materials: document.querySelectorAll('[data-material-choice]'),
 
 		// 播放
 		sleepPresets: document.getElementById('settings-sleep-presets'),
@@ -164,6 +165,7 @@
 		try {
 			currentSettings = await features.readSettings()
 			renderTheme(currentSettings.theme)
+			renderMaterial(currentSettings.materialLevel)
 			renderSleep(currentSettings.sleepEndsAt)
 			renderLoudness(currentSettings.loudnessNormalization)
 			if (els.loudnessTarget && currentSettings.loudnessTargetDb != null) {
@@ -199,6 +201,37 @@
 				}
 				const theme = button.dataset.themeChoice
 				await features.writeSettings({ theme })
+				await refreshSettings()
+			})()
+		})
+	}
+
+	/**
+	 * 材质强度。
+	 *
+	 * 与主题走同一条路：写设置 → 主进程重新解析 → 推送 `theme:changed`
+	 * → `theme.js` 把 `data-material` 标到 `<html>` 上，CSS 靠它切模糊强度。
+	 * 渲染进程这边**不需要**自己拼 CSS —— 强度档位是主进程的单一真相。
+	 */
+	function renderMaterial(level) {
+		for (const button of els.materials) {
+			button.classList.toggle(
+				'is-active',
+				button.dataset.materialChoice === level,
+			)
+		}
+	}
+
+	for (const button of els.materials) {
+		button.addEventListener('click', () => {
+			void (async () => {
+				if (!ready) {
+					notReady(els.backupStatus)
+					return
+				}
+				await features.writeSettings({
+					materialLevel: button.dataset.materialChoice,
+				})
 				await refreshSettings()
 			})()
 		})

@@ -339,7 +339,7 @@
 		actions.className = 'row-actions'
 		const playAll = document.createElement('button')
 		playAll.dataset.testid = 'btn-play-all'
-		playAll.textContent = '▶ 播放全部'
+		playAll.innerHTML = '<span class="icon icon--sm">play_arrow</span> 播放全部'
 		playAll.addEventListener('click', () => {
 			// ⚠️ 必须显式 playAt(0)：`setQueue` 只设置队列，不会载入曲目；
 			// 直接 play() 对空 src 的 <audio> 是静默 no-op（实测踩过）。

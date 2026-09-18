@@ -7,6 +7,7 @@
 			content="default-src 'self'; media-src bbplayer-audio: https:; connect-src bbplayer-audio: https:; img-src 'self' data: https:; style-src 'self' 'unsafe-inline'"
 		/>
 		<title>BBPlayer Desktop</title>
+		<link rel="stylesheet" href="assets/material-symbols.css" />
 		<link rel="stylesheet" href="style.css" />
 		<link rel="stylesheet" href="lyrics-panel.css" />
 	</head>
@@ -18,14 +19,12 @@
 					<span class="sidebar__title">BBPlayer</span>
 					<div class="sidebar__brand-actions">
 						<button
-							class="icon-button"
+							class="icon-button icon-only"
 							id="settings-open"
 							data-testid="settings-open"
 							title="设置"
 							aria-label="设置"
-						>
-							⚙
-						</button>
+						><span class="icon icon--md">settings</span></button>
 						<span
 							class="sidebar__badge"
 							id="account-badge"
@@ -37,25 +36,25 @@
 
 				<nav class="nav" data-testid="nav">
 					<button class="nav__item is-active" data-view="library" data-testid="nav-library">
-						<span class="nav__icon">♪</span> 音乐库
+						<span class="nav__icon icon">library_music</span> 音乐库
 					</button>
 					<button class="nav__item" data-view="search" data-testid="nav-search">
-						<span class="nav__icon">⌕</span> 搜索
+						<span class="nav__icon icon">search</span> 搜索
 					</button>
 					<button class="nav__item" data-view="import" data-testid="nav-import">
-						<span class="nav__icon">⤓</span> 导入歌单
+						<span class="nav__icon icon">playlist_add</span> 导入歌单
 					</button>
 					<button class="nav__item" data-view="history" data-testid="nav-history">
-						<span class="nav__icon">↺</span> 最近播放
+						<span class="nav__icon icon">history</span> 最近播放
 					</button>
 					<button class="nav__item" data-view="favorites" data-testid="nav-favorites">
-						<span class="nav__icon">★</span> 收藏夹
+						<span class="nav__icon icon">star</span> 收藏夹
 					</button>
 					<button class="nav__item" data-view="collection" data-testid="nav-collection">
-						<span class="nav__icon">▤</span> 合集
+						<span class="nav__icon icon">video_library</span> 合集
 					</button>
 					<button class="nav__item" data-view="share" data-testid="nav-share">
-						<span class="nav__icon">⇄</span> 共享
+						<span class="nav__icon icon">group</span> 共享
 					</button>
 				</nav>
 
@@ -70,7 +69,7 @@
 
 			<!-- ── 中栏：主内容 ─────────────────────────────────── -->
 			<main class="main" data-testid="main">
-				<header class="topbar">
+				<header class="topbar material">
 					<div class="search-box">
 						<input
 							id="search-input"
@@ -175,11 +174,26 @@
 				</div>
 
 				<div class="playbar__controls">
-					<button id="prev" data-testid="btn-prev" title="上一首">⏮</button>
-					<button id="play" data-testid="btn-play" class="playbar__play" title="播放/暂停">
-						▶
+					<button
+						id="prev"
+						class="icon-only"
+						data-testid="btn-prev"
+						title="上一首"
+					><span class="icon icon--md">skip_previous</span></button>
+					<button
+						id="play"
+						data-testid="btn-play"
+						class="playbar__play icon-only"
+						title="播放/暂停"
+					>
+						<span class="icon icon--md">play_arrow</span>
 					</button>
-					<button id="next" data-testid="btn-next" title="下一首">⏭</button>
+					<button
+						id="next"
+						class="icon-only"
+						data-testid="btn-next"
+						title="下一首"
+					><span class="icon icon--md">skip_next</span></button>
 				</div>
 
 				<div class="playbar__progress">
@@ -196,7 +210,12 @@
 				</div>
 
 				<div class="playbar__extra">
-					<button id="mode" data-testid="btn-mode" title="循环/随机">顺序</button>
+					<button
+						id="mode"
+						class="icon-only"
+						data-testid="btn-mode"
+						title="顺序播放"
+					><span class="icon icon--md">repeat</span></button>
 					<input
 						id="volume"
 						data-testid="volume"
@@ -217,7 +236,7 @@
 
 		<!-- ── 登录弹窗 ──────────────────────────────────────── -->
 		<div
-			class="modal"
+			class="modal material"
 			id="login-modal"
 			data-testid="login-modal"
 			hidden
@@ -229,12 +248,12 @@
 				<header class="modal__head">
 					<h2>登录 B 站</h2>
 					<button
-						class="modal__close"
+						class="modal__close icon-only"
 						id="login-close"
 						data-testid="login-close"
 						title="关闭"
 					>
-						✕
+						<span class="icon icon--sm">close</span>
 					</button>
 				</header>
 
@@ -377,7 +396,7 @@
 
 		<!-- ── 设置抽屉（Phase 4 收尾）────────────────────────── -->
 		<aside
-			class="settings-drawer"
+			class="settings-drawer material"
 			id="settings-drawer"
 			data-testid="settings-drawer"
 			hidden
@@ -389,12 +408,12 @@
 				<header class="modal__head">
 					<h2>设置</h2>
 					<button
-						class="modal__close"
+						class="modal__close icon-only"
 						id="settings-close"
 						data-testid="settings-close"
 						title="关闭"
 					>
-						✕
+						<span class="icon icon--sm">close</span>
 					</button>
 				</header>
 
@@ -448,6 +467,25 @@
 						</button>
 						<button data-theme-choice="dark" data-testid="theme-dark">
 							深色
+						</button>
+					</div>
+
+					<h3>材质</h3>
+					<p class="muted settings-hint">
+						顶栏、弹窗与设置面板的模糊强度。
+					</p>
+					<div class="segmented" data-testid="settings-material">
+						<button data-material-choice="none" data-testid="material-none">
+							无
+						</button>
+						<button data-material-choice="blur" data-testid="material-blur">
+							模糊
+						</button>
+						<button
+							data-material-choice="gradient"
+							data-testid="material-gradient"
+						>
+							渐变模糊
 						</button>
 					</div>
 				</section>

@@ -1,0 +1,63 @@
+/*
+ * Material Symbols Rounded（子集）。
+ *
+ * ⚠️ 这个文件是 scripts/build-icon-font.mjs **生成**的，不要手改。
+ * 改图标清单请改 scripts/icons.txt 再重新生成。
+ *
+ * 用法：<span class="icon">play_arrow</span>
+ * （ligature：字体把图标名当成合字渲染成图形）
+ */
+@font-face {
+	font-family: 'Material Symbols Rounded';
+	font-style: normal;
+	font-weight: 100 700;
+	src: url('material-symbols-rounded.woff2') format('woff2');
+	font-display: block;
+}
+
+.icon {
+	font-family: 'Material Symbols Rounded';
+	font-weight: normal;
+	font-style: normal;
+	line-height: 1;
+	letter-spacing: normal;
+	text-transform: none;
+	display: inline-block;
+	white-space: nowrap;
+	word-wrap: normal;
+	direction: ltr;
+	/* 默认档位：M3 常用的 24dp / wght 400 / 不填充 */
+	font-variation-settings:
+		'FILL' 0,
+		'wght' 400,
+		'GRAD' 0,
+		'opsz' 24;
+	-webkit-font-smoothing: antialiased;
+	text-rendering: optimizeLegibility;
+	/* 让图标在行内与文字对齐（否则会因为 line-height 顶上去） */
+	vertical-align: middle;
+	user-select: none;
+}
+
+/* 尺寸档位 */
+.icon--sm {
+	font-size: 16px;
+}
+.icon--md {
+	font-size: 20px;
+}
+.icon--lg {
+	font-size: 24px;
+}
+.icon--xl {
+	font-size: 40px;
+}
+
+/* 填充版（选中态、当前曲目） */
+.icon--filled {
+	font-variation-settings:
+		'FILL' 1,
+		'wght' 400,
+		'GRAD' 0,
+		'opsz' 24;
+}

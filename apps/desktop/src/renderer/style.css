@@ -204,6 +204,66 @@ body {
 }
 
 /* ══════════════════════════════════════════════════════════
+   材质层（模糊表面）
+   ────────────────────────────────────────────────────────── */
+/*
+ * 借鉴 Salt Player 的「材质」设置页：标题栏背景可选
+ * *无效果 / 遮罩模糊（Android 12+）/ 渐变模糊（Android 13+）*。
+ * 桌面端用 `backdrop-filter` 直接支持，成本极低但质感提升明显。
+ *
+ * 强度由主进程解析、`theme.js` 写进 `<html data-material="…">`：
+ *
+ *   none      不透明。**这一档必须不透明** —— 纯色块上加模糊是看不见的，
+ *             留半透明只会让文字后面的内容透出来干扰阅读
+ *   blur      半透明 + 模糊
+ *   gradient  半透明 + 更浓的模糊 + 提饱和
+ *
+ * ⚠️ 只用在**盖在内容之上**的地方（顶栏、弹窗、设置抽屉）。
+ * 三栏之间是并排关系、彼此不重叠，给它们加模糊只会白花合成开销。
+ */
+:root {
+	--material-blur: none;
+}
+
+[data-material='blur'] {
+	--material-blur: blur(18px);
+}
+
+[data-material='gradient'] {
+	--material-blur: blur(28px) saturate(160%);
+}
+
+.material {
+	background: var(--surface-container);
+}
+
+[data-material='blur'] .material,
+[data-material='gradient'] .material {
+	background: color-mix(in srgb, var(--surface-container) 72%, transparent);
+	backdrop-filter: var(--material-blur);
+	-webkit-backdrop-filter: var(--material-blur);
+}
+
+/* 顶栏是"内容从它下面滚过去"的典型场景 */
+.topbar.material {
+	background: color-mix(in srgb, var(--bg) 78%, transparent);
+}
+
+/* 抽屉与弹窗盖在整个应用上，材质效果最明显 */
+.settings-drawer.material,
+.modal.material {
+	background: color-mix(in srgb, var(--scrim) 42%, transparent);
+	backdrop-filter: var(--material-blur);
+	-webkit-backdrop-filter: var(--material-blur);
+}
+
+[data-material='none'] .settings-drawer.material,
+[data-material='none'] .modal.material {
+	background: color-mix(in srgb, var(--scrim) 60%, transparent);
+	backdrop-filter: none;
+}
+
+/* ══════════════════════════════════════════════════════════
    统一的「选中态」：填充胶囊
    ────────────────────────────────────────────────────────── */
 /*
@@ -264,9 +324,18 @@ body {
 	text-align: left;
 }
 
+/*
+ * 左栏导航图标。
+ *
+ * 宽度固定成图标尺寸，这样「有图标 / 没图标」的行文字左边缘是对齐的。
+ * 换成 Material Symbols 之后字形本身是 1em 见方，不再需要为不同宽度的
+ * unicode 符号（♪ 窄、▤ 宽）做补偿。
+ */
 .nav__icon {
-	width: 18px;
+	font-size: var(--icon-lg);
+	width: var(--icon-lg);
 	text-align: center;
+	flex: none;
 }
 
 .sidebar__section {
@@ -549,13 +618,17 @@ body {
 	gap: var(--sp-xs);
 }
 
+/*
+ * 播放/暂停：主色实心。尺寸与居中在下面「只放一个图标的按钮」那一节里统一给
+ * （原来这里也写了一份 width/height，两处重复容易改漏一处）。
+ *
+ * `!important` 也一并去掉了：它当年是为了压过
+ * `.playbar button { … }` 那条容器规则，而那条规则在表单控件基础层里已经删除。
+ * `.playbar__play` 的特异性本来就高于 `button`。
+ */
 .playbar__play {
-	width: 42px;
-	height: 42px;
-	border-radius: var(--r-full);
-	background: var(--primary) !important;
-	color: var(--on-primary) !important;
-	font-size: var(--icon-md);
+	background: var(--primary);
+	color: var(--on-primary);
 }
 
 .playbar__progress {
@@ -576,8 +649,44 @@ body {
 }
 
 /* ══════════════════════════════════════════════════════════
-   表单控件基础层
+   「只放一个图标」的按钮：真正的居中
    ────────────────────────────────────────────────────────── */
+/*
+ * ⚠️ 用户报过：**上一首 / 下一首 / 播放暂停的图标歪了，不在控件正中**。
+ *
+ * 原因很具体：图标是 inline-block 的 `<span>`，在普通按钮里它坐在**文字基线**
+ * 上，按钮高度由行高 + padding 决定。基础层给的是 `padding: 7px 16px`
+ * （上下 7、左右 16）—— 水平被拉成宽胶囊、垂直因基线偏上；图标字形自带的
+ * 侧边留白又让水平再偏一点。用 flex 居中与等边尺寸彻底解耦。
+ *
+ * ⚠️ 用**显式类名** `.icon-only`，不要用 `button:has(> .icon:only-child)`。
+ *
+ * 第一版就是那么写的，看着很聪明，结果**误伤了左栏导航项**：
+ * 导航项只有一个「元素」子节点（图标），文字标签是**裸文本节点**，
+ * `:only-child` 只数元素节点 → 导航项也命中规则，被压成 34px 方块、
+ * 文字竖着排（截图里一眼就能看到）。CSS 没有办法判断"有没有文字"，
+ * 所以这件事必须由写 HTML 的人显式声明。
+ *
+ * 代价是新增图标按钮时要记得加类名 —— 由 ui 探针的一条断言兜底：
+ * 「凡是只有一个图标子节点、且没有文字标签的按钮，都必须有 icon-only」。
+ */
+.icon-only {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	padding: 0;
+	width: 34px;
+	height: 34px;
+	flex: none;
+	border-radius: var(--r-full);
+}
+
+/* 播放/暂停是主按钮，比旁边两个大一圈 */
+.playbar__play {
+	width: 42px;
+	height: 42px;
+}
+
 /*
  * ⚠️ 这一层是**必需的**，不是锦上添花。
  *

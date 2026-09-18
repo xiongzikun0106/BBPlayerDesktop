@@ -134,7 +134,7 @@
 		actions.className = 'row-actions'
 		const playAll = document.createElement('button')
 		playAll.dataset.testid = 'history-play-all'
-		playAll.textContent = '▶ 播放全部'
+		playAll.innerHTML = '<span class="icon icon--sm">play_arrow</span> 播放全部'
 		playAll.addEventListener('click', () => {
 			window.bbPlayer.setQueue(tracks, 0)
 			window.bbPlayer.playAt(0)

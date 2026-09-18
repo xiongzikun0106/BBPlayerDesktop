@@ -159,20 +159,48 @@ function buildCssVars(mode, tokens) {
 }
 
 /**
+ * 材质强度：把偏好变成 `data-material` 的值 + 一段 CSS。
+ *
+ * 借鉴 Salt Player 的「材质」设置页（它的标题栏背景可选
+ * *无效果 / 遮罩模糊 / 渐变模糊*）。桌面端同样需要一个「要多通透」的开关，
+ * 因为模糊是当下音乐播放器最好用的质感手段。
+ *
+ * ⚠️ 三档不是"越来越模糊"，而是**三种不同的表面处理**：
+ *   none     不透明 —— 纯色块上加模糊是看不见的，所以这一档必须不透明
+ *   blur     半透明 + 模糊
+ *   gradient 半透明 + 更浓的模糊 + 提饱和（"渐变模糊"）
+ */
+const MATERIAL_LEVELS = ['none', 'blur', 'gradient']
+
+const MATERIAL_BLUR = {
+	none: 'none',
+	blur: 'blur(18px)',
+	gradient: 'blur(28px) saturate(160%)',
+}
+
+function normalizeMaterial(value) {
+	return MATERIAL_LEVELS.includes(value) ? value : 'blur'
+}
+
+/**
  * 生成渲染进程需要的一切。
  *
- * @param {string} preference
+ * @param {string} preference 主题偏好
  * @param {boolean} systemPrefersDark
+ * @param {string} [material] 材质强度
  */
-function describeTheme(preference, systemPrefersDark) {
+function describeTheme(preference, systemPrefersDark, material) {
 	const tokens = loadTokens()
 	const normalized = normalizePreference(preference)
 	const mode = resolveMode(normalized, systemPrefersDark)
+	const materialLevel = normalizeMaterial(material)
 
 	return {
 		preference: normalized,
 		mode,
 		systemPrefersDark,
+		materialLevel,
+		materialBlur: MATERIAL_BLUR[materialLevel],
 		css: buildCssVars(mode, tokens),
 		colors: tokens.colorSchemes[mode],
 		status: tokens.statusColors[mode],
@@ -180,24 +208,20 @@ function describeTheme(preference, systemPrefersDark) {
 		radius: tokens.radius,
 		spacing: tokens.spacing,
 		preferences: THEME_PREFERENCES,
+		materialLevels: MATERIAL_LEVELS,
 	}
-}
-
-/** 把材质强度也做成令牌（阶段 1 的「材质」层用；这里只定义档位） */
-const MATERIAL_LEVELS = {
-	none: null,
-	blur: 'blur(18px)',
-	gradient: 'blur(28px) saturate(140%)',
 }
 
 module.exports = {
 	THEME_PREFERENCES,
 	DEFAULT_PREFERENCE,
 	MATERIAL_LEVELS,
+	MATERIAL_BLUR,
 	TOKENS_BUNDLE,
 	TOKENS_ENTRY,
 	loadTokens,
 	normalizePreference,
+	normalizeMaterial,
 	resolveMode,
 	buildCssVars,
 	describeTheme,
