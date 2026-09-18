@@ -1629,8 +1629,22 @@ input[type='range']:focus-visible {
 	width: 460px;
 }
 
+/*
+ * 内联页签（登录弹窗的 扫码 / Cookie / 密码 / 账号）。
+ *
+ * ⚠️ 往左拉回"条内边距 + 首个页签自身内边距"那么多，
+ * 让**首个页签的文字**与弹窗标题、正文在同一条左对齐线上。
+ *
+ * 不这么做的话，标题在容器内容边缘、页签文字却再往里 20px
+ * （`--sp-xs` 4px + 页签自身 `--sp-md` 16px），同一个弹窗里出现两条
+ * 左对齐线 —— 截图审查量出 375 vs 359 差 16px 就是这个。
+ *
+ * 负边距在这里是安全的：`.tabs` 本身**没有背景**（背景在激活的那一颗
+ * 页签上），所以拉出去不会带出一条悬空的底色。
+ */
 .tabs--inline {
 	flex: 0 0 auto;
+	margin-left: calc(-1 * (var(--sp-xs) + var(--sp-md)));
 }
 
 .login-panel {
@@ -1692,6 +1706,26 @@ input[type='range']:focus-visible {
 	font-size: var(--fs-body-small);
 	line-height: 1.6;
 	margin: 0;
+}
+
+/*
+ * 带图标的提示（目前是密码登录那条风控说明）。
+ *
+ * 用 flex 让**图标与第一行文字**对齐，而不是跟着行高上下浮动。
+ * `align-items: flex-start` + 图标自己的 `vertical-align: middle`
+ * 在多行文字里是唯一稳的组合。
+ */
+.login-hint--warn {
+	display: flex;
+	align-items: flex-start;
+	gap: var(--sp-xs);
+}
+
+.login-hint--warn .icon {
+	flex: none;
+	color: var(--warn);
+	/* 与首行文字的中线对齐（16px 图标 vs 1.6 行高） */
+	margin-top: 2px;
 }
 
 .login-hint code {

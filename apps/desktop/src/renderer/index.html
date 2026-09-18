@@ -1314,9 +1314,18 @@
 					data-login-panel="password"
 					data-testid="login-panel-password"
 				>
-					<p class="muted login-hint">
-						⚠️ 密码登录受 B 站风控约束：若服务端要求验证码，本应用无法完成，
-						请改用扫码或粘贴 Cookie。密码只在本地做 RSA 加密后提交，不落盘。
+					<!--
+						⚠️ 用图标字体里的 `warning`，不要用 emoji 的 ⚠️。
+						emoji 走系统彩色字体，在这里渲染成一个单色小三角，
+						和后面的灰字挤在一起像渲染残留（截图审查发现的）。
+						应用里所有图标都来自同一套图标字体，警告也不例外。
+					-->
+					<p class="muted login-hint login-hint--warn">
+						<span class="icon icon--sm" aria-hidden="true">warning</span>
+						<span
+							>密码登录受 B 站风控约束：若服务端要求验证码，本应用无法完成，
+							请改用扫码或粘贴 Cookie。密码只在本地做 RSA 加密后提交，不落盘。</span
+						>
 					</p>
 					<input
 						id="login-username"
