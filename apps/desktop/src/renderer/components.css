@@ -139,6 +139,125 @@
 	color: var(--on-surface-variant);
 }
 
+/* ── 媒体卡（阶段 6d：音乐库歌单卡片 / 主页近期歌单）───────── */
+/*
+ * ## 安卓端怎么做 → 桌面端怎么做
+ *
+ * 安卓端「音乐库 › 播放列表」是**竖排单列的行**（封面 + 标题 + N 首 + ›），
+ * 在 360dp 宽的手机上这是唯一合理的选择。桌面端中栏有 ~1000px，同样的
+ * 单列会让每一行浪费 600 多像素（内容只占左边一小段，右边空一片）——
+ * 所以桌面端把它排成**卡片网格**：同样的信息、同样的卡片样式，
+ * 一屏从 6 个歌单变成 8–12 个。这是"因鼠标 + 宽屏而改变"的那一类，
+ * 不是发明新惯例。
+ *
+ * 卡片的**外观**与安卓端逐条对齐（`index.tsx:678-696` 的 playlistCard）：
+ *   * 圆角 12（这里走令牌 `--r-md`，与其它圆角同一套）
+ *   * 底色 `surfaceVariant`（这里走 `--surface-container-high`，
+ *     它就是这个色板里的 surfaceVariant 档）
+ *   * 封面 **1:1**，宽度撑满卡片
+ *   * 标题最多 2 行，副标题「N 首」
+ *
+ * ⚠️ 封面**必须**是 1:1 的正方形（用户明确要求"封面缩略图和曲绘封面
+ * 都要是圆角的正方形"）。用 `aspect-ratio` 而不是写死高度：卡片宽度由
+ * 网格决定，写死高度在窄窗口下会变成非正方形。
+ */
+.media-card {
+	display: flex;
+	flex-direction: column;
+	align-items: stretch;
+	gap: var(--sp-xs);
+	padding: var(--sp-xs);
+	margin: 0;
+	min-width: 0;
+	/* 卡片自己带圆角，网格里不需要额外的按钮基线高度 */
+	min-height: 0;
+	background: var(--surface-container-high);
+	border: none;
+	border-radius: var(--r-md);
+	color: var(--on-surface);
+	font: inherit;
+	text-align: left;
+	cursor: pointer;
+	transition: background var(--motion-duration-fast) ease;
+}
+
+.media-card:hover {
+	background: var(--surface-container-highest);
+}
+
+.media-card.is-active {
+	background: var(--secondary-container);
+	color: var(--on-secondary-container);
+}
+
+/*
+ * ⚠️ 当前选中的歌单是 `is-active`（同一套选中态令牌，与左栏的歌单行一致）。
+ * 也就是说"卡片自己的底色"对**选中那一张**看不出来 —— 它被高亮色盖住了。
+ * 界面截图上只有一张卡时容易误判成"底色没生效"，所以断言分两条：
+ * 选中态用高亮色、**未选中**的卡用自己的底色。
+ */
+
+/*
+ * 封面位：复用列表行的 `.list-row__art`（同一套「有封面用封面、
+ * 没有就用首字 + 渐变」逻辑），只把尺寸从固定的 44px 改成**撑满卡片**。
+ */
+.list-row__art--card {
+	width: 100%;
+	height: auto;
+	aspect-ratio: 1;
+	border-radius: var(--r-md);
+	font-size: var(--fs-headline-small);
+}
+
+.media-card__title {
+	display: -webkit-box;
+	-webkit-box-orient: vertical;
+	-webkit-line-clamp: 2;
+	line-clamp: 2;
+	overflow: hidden;
+	font-size: var(--fs-body-medium);
+	line-height: var(--lh-body-medium);
+	font-weight: 600;
+	/* 固定两行高度：否则一行标题的卡片与两行的卡片参差不齐 */
+	min-height: calc(var(--lh-body-medium) * 2);
+	word-break: break-word;
+}
+
+.media-card__sub {
+	display: flex;
+	align-items: center;
+	gap: var(--sp-xxs);
+	font-size: var(--fs-body-small);
+	line-height: var(--lh-body-small);
+	color: var(--on-surface-variant);
+	overflow: hidden;
+	white-space: nowrap;
+}
+
+.media-card.is-active .media-card__sub {
+	color: color-mix(in srgb, var(--on-secondary-container) 76%, transparent);
+}
+
+/* 状态图标比文字略小半档（安卓端那里是 13px） */
+.media-card__sub .icon {
+	font-size: 14px;
+	flex: none;
+}
+
+/*
+ * 卡片网格。
+ *
+ * `auto-fill` + `minmax` 而不是写死列数：窄窗口自动减少列数，
+ * 宽窗口自动增加 —— 不需要写任何媒体查询。`minmax(148px, 1fr)` 的下界
+ * 取自安卓端的卡宽 140 + 两侧留白。
+ */
+.media-grid {
+	display: grid;
+	grid-template-columns: repeat(auto-fill, minmax(148px, 1fr));
+	gap: var(--sp-sm);
+	align-items: start;
+}
+
 /* ── 视图页签条 ────────────────────────────────────────── */
 /*
  * 「音乐库」的四个页签（播放列表 / 收藏夹 / 合集 / 导入）。

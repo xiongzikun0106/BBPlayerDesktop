@@ -466,7 +466,20 @@ async function run(window) {
 		)
 		await sleep(1200)
 	}
-	await shot(window, '02-library-playlists', '音乐库 › 播放列表（有内容）')
+	// 导入结束后落在**歌单详情**（曲目表 + 返回）。先拍它，再回列表拍卡片网格 ——
+	// 阶段 6d 之后这是**两个状态**，各有各会出问题的地方（详情漏返回、网格不渲染）。
+	await shot(
+		window,
+		'02-library-playlist-detail',
+		'音乐库 › 歌单详情（曲目表）',
+	)
+	await click(window, '[data-testid="playlist-back"]')
+	await sleep(1000)
+	await shot(
+		window,
+		'02b-library-playlists-grid',
+		'音乐库 › 播放列表（歌单卡片网格）',
+	)
 
 	console.log('\n=== 3) 音乐库的四个页签 ===')
 	for (const [tab, name, note] of [
@@ -477,29 +490,36 @@ async function run(window) {
 	]) {
 		await click(window, `[data-testid="lib-tab-${tab}"]`)
 		await sleep(1500)
-		// ⚠️ 这张图原来叫 '06-library-back'（「回到播放列表」），
-		// 但画面与 02 几乎一样 —— 因为**这里没有"返回"这回事**：
-		// 左栏本身就是歌单列表，中栏永远显示"当前选中的那个歌单"，
-		// 没有导航栈，所以也没有返回按钮。
+		// ⚠️ 这张图原来叫 '06-library-back'，画面与 02 几乎一样 —— 那时页签的
+		// 内容是"当前歌单的曲目表"，根本没有"回列表"这回事。
 		//
-		// 与其留一张名不副实的图，不如把这条**事实**钉住：左栏的歌单
-		// 列表必须与中栏的歌单详情**同时可见**（这正是"不需要返回"的前提）。
+		// 阶段 6d 之后**确实有**这一步了：页签的内容是歌单**卡片网格**，
+		// 曲目表在详情里。所以断言改成：切回播放列表 = 回到卡片网格，
+		// 且左栏的歌单行仍在（两个入口指向同一批歌单，不能有一个是空的）。
 		if (tab === 'playlists') {
-			const sidebar = JSON.parse(
+			const back = JSON.parse(
 				await evaluate(
 					window,
 					`(() => JSON.stringify({
+						cards: document.querySelectorAll('.media-card').length,
 						rows: document.querySelectorAll('[data-playlist-id]').length,
+						trackTable: Boolean(
+							document.querySelector('[data-testid="track-table"]'),
+						),
 					}))()`,
 				),
 			)
-			if (sidebar.rows === 0) {
+			if (back.cards === 0) {
 				report.problems.push(
-					'切回播放列表后左栏歌单列表为空 —— "左栏即列表"这个前提不成立',
+					'切回播放列表后没有歌单卡片（页签内容不是歌单列表）',
 				)
+			} else if (back.trackTable) {
+				report.problems.push('播放列表页签里出现了曲目表（那是详情的内容）')
+			} else if (back.rows === 0) {
+				report.problems.push('左栏歌单列表为空 —— 两个入口指向的列表不一致')
 			} else {
 				console.log(
-					`  ✓ 左栏歌单列表与中栏详情同时可见（${sidebar.rows} 个歌单）`,
+					`  ✓ 卡片网格与左栏歌单行同时可见（${back.cards} 张卡 / ${back.rows} 行）`,
 				)
 			}
 		}
@@ -543,6 +563,9 @@ async function run(window) {
 	// 播放一首，让队列有"正在播放"
 	await click(window, '[data-testid="nav-library"]')
 	await sleep(800)
+	// 音乐库页签是歌单卡片网格（阶段 6d），曲目表在详情里 —— 先点一张卡
+	await click(window, '[data-testid^="playlist-card-"]')
+	await sleep(1300)
 	await click(window, '[data-testid="btn-play-all"]')
 	await sleep(2500)
 	await click(window, '[data-testid="rightbar-toggle"]')
@@ -624,9 +647,11 @@ async function run(window) {
 	await sleep(600)
 
 	console.log('\n=== 8b) 正在播放面板（阶段 4b）===')
-	// 先让队列有内容：回到音乐库点「播放全部」
+	// 先让队列有内容：回到音乐库，进一个歌单详情，点「播放全部」
 	await click(window, '[data-testid="nav-library"]')
-	await sleep(700)
+	await sleep(800)
+	await click(window, '[data-testid^="playlist-card-"]')
+	await sleep(1300)
 	await click(window, '[data-testid="btn-play-all"]')
 	await sleep(2000)
 	await click(window, '[data-testid="playbar-cover"]')

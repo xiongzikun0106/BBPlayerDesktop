@@ -461,7 +461,10 @@
 		const background = document.getElementById('nowplaying-bg')
 
 		if (title) title.textContent = track?.title ?? '未在播放'
-		if (artist) artist.textContent = track ? track.artist || '—' : '—'
+		if (artist)
+			artist.textContent = track
+				? track.artist || track.artist_name || '—'
+				: '—'
 		if (count) count.textContent = String(state.queue.length)
 
 		const coverUrl = track?.cover ?? track?.coverUrl ?? track?.cover_url ?? null
@@ -517,7 +520,10 @@
 	function updateNowPlaying() {
 		const track = state.queue[state.index]
 		if (els.title) els.title.textContent = track ? track.title : '未在播放'
-		if (els.artist) els.artist.textContent = track ? track.artist || '—' : '—'
+		if (els.artist)
+			els.artist.textContent = track
+				? track.artist || track.artist_name || '—'
+				: '—'
 		refreshNowPlayingView()
 
 		// 封面缩略图：有就显示，加载失败就退回占位图标。

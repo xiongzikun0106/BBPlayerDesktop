@@ -50,11 +50,23 @@
 	/**
 	 * 封面位：有封面用封面，否则用**首字 + 渐变**。
 	 *
-	 * @param {{ title?: string, coverUrl?: string|null, iconName?: string }} input
+	 * @param {object} input
+	 * @param {string} [input.title]
+	 * @param {string|null} [input.coverUrl]
+	 * @param {string} [input.iconName]
+	 * @param {keyof HTMLElementTagNameMap} [input.tag] 默认 `div`；
+	 *   卡片是 `<button>`，里面只能放**短语内容**，所以那里要传 `span`
+	 * @param {string} [input.extraClass]
 	 */
-	function art({ title, coverUrl, iconName } = {}) {
-		const box = document.createElement('div')
-		box.className = 'list-row__art'
+	function art({
+		title,
+		coverUrl,
+		iconName,
+		tag = 'div',
+		extraClass = '',
+	} = {}) {
+		const box = document.createElement(tag)
+		box.className = extraClass ? `list-row__art ${extraClass}` : 'list-row__art'
 
 		if (coverUrl) {
 			const img = document.createElement('img')
@@ -141,6 +153,62 @@
 		}
 
 		return row
+	}
+
+	/**
+	 * 媒体卡（阶段 6d）。
+	 *
+	 * 安卓端「近期歌单」的单条目就是这张卡（`index.tsx:549-586` 的
+	 * `playlistCard`）：`surfaceVariant` 底 + 圆角 12 + **1:1 封面** +
+	 * 标题（最多 2 行）+ 副标题「N 首」。音乐库 › 播放列表的卡片网格
+	 * 用的是同一张卡 —— 同一个东西在两处必须是同一套样式。
+	 *
+	 * ⚠️ 外层是 `<button>`，所以内部**只能用短语内容**（`span`），
+	 * 不能放 `div` —— 见 components.css 里 `.list-row__main` 那条注释
+	 * （设置分类行踩过同一个坑）。
+	 *
+	 * @param {object} options
+	 * @param {string} [options.title]
+	 * @param {string} [options.sub]
+	 * @param {string|null} [options.coverUrl]
+	 * @param {string[]} [options.badges] 副标题旁的**状态图标名**（如 `group`）
+	 * @param {string} [options.testid]
+	 * @param {boolean} [options.active]
+	 * @param {() => void} [options.onClick]
+	 */
+	function mediaCard({
+		title,
+		sub,
+		coverUrl = null,
+		badges = [],
+		testid,
+		active = false,
+		onClick,
+	} = {}) {
+		const card = document.createElement('button')
+		card.className = 'media-card'
+		if (active) card.classList.add('is-active')
+		if (testid) card.dataset.testid = testid
+		if (onClick) card.addEventListener('click', onClick)
+
+		card.appendChild(
+			art({ title, coverUrl, tag: 'span', extraClass: 'list-row__art--card' }),
+		)
+
+		const titleNode = document.createElement('span')
+		titleNode.className = 'media-card__title'
+		titleNode.textContent = title ?? ''
+		card.appendChild(titleNode)
+
+		const subNode = document.createElement('span')
+		subNode.className = 'media-card__sub'
+		const subText = document.createElement('span')
+		subText.textContent = sub ?? ''
+		subNode.appendChild(subText)
+		for (const name of badges) subNode.appendChild(icon(name))
+		card.appendChild(subNode)
+
+		return card
 	}
 
 	/**
@@ -400,6 +468,7 @@
 		hueOf,
 		art,
 		listRow,
+		mediaCard,
 		empty,
 		toast,
 		menu,

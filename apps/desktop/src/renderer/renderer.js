@@ -129,7 +129,9 @@
 
 	/** 音乐库的页签 → 渲染函数 */
 	const LIBRARY_TABS = {
-		playlists: () => window.bbLibrary.init(),
+		// ⚠️ 「播放列表」页签的内容是**歌单列表**（卡片网格），不是曲目表 ——
+		// 与安卓端一致。曲目表是点卡片之后的详情页（见 showPlaylistsTab）。
+		playlists: () => window.bbLibrary.showPlaylistsTab(),
 		favorites: () => window.bbFavorites.show(),
 		collection: () => window.bbLibrary.showCollectionTab(),
 		import: () => window.bbImport.show(),
@@ -522,7 +524,11 @@
 		try {
 			const result = await window.bbplayer.autoMatchLyrics({
 				title: track.title,
-				artist: track.artist ?? null,
+				// ⚠️ 三个字段名都要认：搜索结果是 `artist`，
+				// 数据库路径（歌单曲目）是 `artist_name`，B 站接口是 `upperName`。
+				// 只读 `artist` 的话，从歌单播放时**歌词匹配会丢掉歌手证据**，
+				// 而歌手在匹配里占 0.3 权重。
+				artist: track.artist ?? track.artist_name ?? track.upperName ?? null,
 				duration: track.duration ?? null,
 			})
 			if (seq !== lyricsRequestSeq) return
@@ -897,6 +903,10 @@
 	window.bbUI = {
 		switchPanel,
 		setActiveNav,
+		/** 音乐库的页签切换（供 library.js 复用，不要自己点 DOM 按钮） */
+		setLibraryTab,
+		/** 打开一个目的地（同上） */
+		openView,
 		/** 右栏开关（阶段 2：默认收起，按需展开） */
 		setRightbar,
 		isRightbarOpen,

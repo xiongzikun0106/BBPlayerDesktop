@@ -154,6 +154,40 @@ async function typeInto(window, selector, text) {
 	)
 }
 
+/**
+ * 打开一个**有曲目**的歌单（阶段 6d 之后，曲目表在**歌单详情**里）。
+ *
+ * ⚠️ 「音乐库 › 播放列表」现在渲染的是歌单**卡片网格**，与安卓端一致。
+ * 凡是需要曲目表的断言，都必须先从卡片（或左栏的歌单行）进详情 ——
+ * 否则测的是"曲目表碰巧还留在屏幕上"，而不是"它应该出现"。
+ *
+ * ⚠️ 必须挑 `item_count > 0` 的那个：套件中途会**新建一个空歌单**
+ * （验证「＋」真的能用），而空歌单的详情没有「播放全部」——
+ * 拿到它会让后面所有依赖曲目表的断言一起挂，且看起来像"功能坏了"。
+ */
+async function openPlaylistWithTracks(window) {
+	const id = await evaluate(
+		window,
+		`(async () => {
+			const list = await window.bbplayer.listPlaylists()
+			const target = (list?.data ?? []).find((p) => (p.item_count ?? 0) > 0)
+			return target ? target.id : null
+		})()`,
+	)
+	if (id == null) return false
+	// 优先点卡片（这是用户在新界面里的路径）；卡片不在屏上时退回左栏的歌单行
+	if (!(await click(window, `[data-testid="playlist-card-${id}"]`))) {
+		await click(window, `[data-playlist-id="${id}"]`)
+	}
+	await waitFor(
+		window,
+		`Boolean(document.querySelector('[data-testid="btn-play-all"]'))`,
+		10_000,
+		'曲目表（播放全部）',
+	)
+	return true
+}
+
 /** 派发真实键盘事件（走 window 上的监听器） */
 async function press(window, combo) {
 	return await evaluate(
@@ -1128,6 +1162,254 @@ async function run(window) {
 	)
 
 	// ---------------------------------------------------------------
+	// 2.5b 音乐库 › 播放列表 = **歌单卡片网格**（阶段 6d）
+	// ---------------------------------------------------------------
+	//
+	// 用户的原话：「音乐库这里，你要参考安卓端的 ui，应该是呈卡片样式展示
+	// 歌单列表」以及「我没有看到任何新建本地歌单的按钮」。
+	//
+	// 安卓端这个页签的内容是**歌单列表**（`LocalPlaylistList.tsx`），
+	// 页签的内容从来不是曲目表。桌面端原来错在这里：页签渲染的是
+	// "当前歌单的曲目表"，歌单列表挂在左栏，新建入口完全不存在。
+	console.log('\n[ui] 2.5b) 播放列表页签 = 歌单卡片网格')
+	await click(window, '[data-testid="lib-tab-playlists"]')
+	await sleep(1200)
+
+	const gridProbe = JSON.parse(
+		await evaluate(
+			window,
+			`(() => {
+				const cards = [...document.querySelectorAll('.media-card')]
+				const first = cards[0]
+				const cover = first?.querySelector('.list-row__art--card')
+				const coverRect = cover?.getBoundingClientRect()
+				return JSON.stringify({
+					count: cards.length,
+					gridTestid: Boolean(
+						document.querySelector('[data-testid="playlist-grid"]'),
+					),
+					// 卡片封面必须是**1:1 的圆角正方形**（用户明确要求）
+					coverSquare: coverRect
+						? Math.abs(coverRect.width - coverRect.height) <= 1
+						: false,
+					coverRadius: coverRect
+						? getComputedStyle(cover).borderTopLeftRadius
+						: null,
+					hasTitle: Boolean(first?.querySelector('.media-card__title')),
+					hasSub: Boolean(first?.querySelector('.media-card__sub')),
+					// ⚠️ 卡片必须**真的有自己的底色**：安卓端的卡是 surfaceVariant，
+					// 与页面底色不同。"类名在、样式没生效"（变量名写错 →
+					// var() 无效 → 退回 transparent）是这个仓库吃过多次的假绿。
+					cardBg: first ? getComputedStyle(first).backgroundColor : null,
+					contentBg: getComputedStyle(
+						document.getElementById('content'),
+					).backgroundColor,
+					// 新建入口：头部右边那颗「＋」
+					hasAdd: Boolean(document.querySelector('[data-testid="playlist-new"]')),
+					hasFilter: Boolean(
+						document.querySelector('[data-testid="playlist-filter"]'),
+					),
+					// 没有曲目表：曲目表只出现在**详情**里
+					trackTable: Boolean(document.querySelector('[data-testid="track-table"]')),
+				})
+			})()`,
+		),
+	)
+	check(
+		'播放列表页签渲染歌单卡片网格（不是曲目表）',
+		gridProbe.count > 0 && gridProbe.gridTestid && !gridProbe.trackTable,
+		`${gridProbe.count} 张卡，trackTable=${gridProbe.trackTable}`,
+	)
+	check(
+		'歌单卡片封面是 1:1 的圆角正方形',
+		gridProbe.coverSquare && parseFloat(gridProbe.coverRadius) >= 8,
+		`1:1=${gridProbe.coverSquare} radius=${gridProbe.coverRadius}`,
+	)
+	check(
+		'卡片有标题与副标题，头部有计数 / 新建 / 搜索',
+		gridProbe.hasTitle &&
+			gridProbe.hasSub &&
+			gridProbe.hasAdd &&
+			gridProbe.hasFilter,
+		JSON.stringify(gridProbe),
+	)
+	check(
+		'歌单卡片与页面底色可区分（第一张）',
+		Boolean(gridProbe.cardBg) &&
+			gridProbe.cardBg !== 'rgba(0, 0, 0, 0)' &&
+			gridProbe.cardBg !== gridProbe.contentBg,
+		`卡片 ${gridProbe.cardBg} vs 内容区 ${gridProbe.contentBg}`,
+	)
+
+	// `＋` 菜单必须**点得开**，且三项都是真的（不是装饰）
+	const newMenu = JSON.parse(
+		await evaluate(
+			window,
+			`(async () => {
+				document.querySelector('[data-testid="playlist-new"]')?.click()
+				await new Promise((r) => setTimeout(r, 200))
+				const items = [...document.querySelectorAll('.menu__item')].map(
+					(node) => node.textContent.trim(),
+				)
+				window.bbComponents.closeMenu()
+				return JSON.stringify({ items })
+			})()`,
+		),
+	)
+	check(
+		'「＋」菜单有新建 / 导入 / 订阅三项',
+		newMenu.items.length === 3 &&
+			newMenu.items.some((t) => t.includes('新建播放列表')) &&
+			newMenu.items.some((t) => t.includes('导入外部歌单')) &&
+			newMenu.items.some((t) => t.includes('订阅共享歌单')),
+		newMenu.items.join(' / '),
+	)
+
+	// 从卡片进详情 → 有返回 → 能回来。
+	// ⚠️ 三条都要断言："点得开"、"详情里真的换了内容"、"回得来" ——
+	// 只断言"卡片存在"等于没测（列表能点但点不动也满足）。
+	const drill = JSON.parse(
+		await evaluate(
+			window,
+			`(async () => {
+				const card = document.querySelector('.media-card')
+				card?.click()
+				await new Promise((r) => setTimeout(r, 1500))
+				// 作者列：**数据库路径**的作者在 artists 表里（tracks 只存外键），
+				// 所以这条同时验证 join 真的做了 —— 用户抱怨过「作者列永远是 —」。
+				const artists = [
+					...document.querySelectorAll('.track-table tbody td.col-artist'),
+				].map((td) => td.textContent)
+				const inDetail = {
+					trackTable: Boolean(document.querySelector('[data-testid="track-table"]')),
+					back: Boolean(document.querySelector('[data-testid="playlist-back"]')),
+					title: document.querySelector('.view-head h2')?.textContent ?? '',
+					authorRows: artists.length,
+					authorFilled: artists.filter((t) => t && t !== '—').length,
+					authorSample: artists.find((t) => t && t !== '—') ?? null,
+				}
+				document.querySelector('[data-testid="playlist-back"]')?.click()
+				await new Promise((r) => setTimeout(r, 1200))
+				const backToList = Boolean(document.querySelector('.media-card'))
+				return JSON.stringify({ inDetail, backToList })
+			})()`,
+		),
+	)
+	check(
+		'点歌单卡片进详情（曲目表 + 返回按钮都在）',
+		drill.inDetail.trackTable && drill.inDetail.back,
+		`标题「${drill.inDetail.title}」 ${JSON.stringify(drill.inDetail)}`,
+	)
+	check(
+		'详情里的「播放列表」能回到卡片网格',
+		drill.backToList,
+		String(drill.backToList),
+	)
+	check(
+		'歌单详情里「作者」列真的有作者（数据库路径必须 join artists）',
+		drill.inDetail.authorRows > 0 &&
+			drill.inDetail.authorFilled === drill.inDetail.authorRows,
+		`${drill.inDetail.authorFilled}/${drill.inDetail.authorRows} 行有作者，例：${drill.inDetail.authorSample}`,
+	)
+
+	// 新建歌单：走**完整的用户路径**（`＋` → 新建播放列表 → 输入名字 → 创建）。
+	//
+	// ⚠️ 只断言"按钮存在"是不够的 —— 用户抱怨的正是"我没有看到任何新建本地歌单
+	// 的按钮"，而一个点不开/建不成的按钮等于没有。这里必须看到卡片数真的 +1。
+	await click(window, '[data-testid="playlist-new"]')
+	await sleep(300)
+	await click(window, '[data-testid="playlist-new-local"]')
+	await sleep(400)
+	const createDialogOpen = await evaluate(
+		window,
+		`Boolean(document.querySelector('[data-testid="create-playlist"]'))`,
+	)
+	check('「＋ → 新建播放列表」打开新建对话框', createDialogOpen)
+	await typeInto(
+		window,
+		'[data-testid="create-playlist-name"]',
+		'探针新建的歌单',
+	)
+	await click(window, '[data-testid="create-playlist-ok"]')
+	await sleep(1800)
+	const afterCreate = JSON.parse(
+		await evaluate(
+			window,
+			`(async () => {
+				const inDetail = {
+					title: document.querySelector('.view-head h2')?.textContent ?? '',
+					dialogGone: !document.querySelector('[data-testid="create-playlist"]'),
+				}
+				document.querySelector('[data-testid="playlist-back"]')?.click()
+				await new Promise((r) => setTimeout(r, 1200))
+				const cards = [...document.querySelectorAll('.media-card')]
+				const titles = cards.map(
+					(node) => node.querySelector('.media-card__title')?.textContent ?? '',
+				)
+				const inactive = cards.find((node) => !node.classList.contains('is-active'))
+				return JSON.stringify({
+					inDetail,
+					cards: cards.length,
+					titles,
+					// 非当前选中的卡片：它的底色必须与内容区不同，否则"卡片"只是
+					// 一个没有边界的透明盒子（选中那几张靠高亮色看不出来）
+					inactiveBg: inactive
+						? getComputedStyle(inactive).backgroundColor
+						: null,
+					contentBg: getComputedStyle(
+						document.getElementById('content'),
+					).backgroundColor,
+				})
+			})()`,
+		),
+	)
+	check(
+		'新建歌单：对话框关闭、进入新歌单、卡片数增加',
+		afterCreate.inDetail.dialogGone &&
+			afterCreate.inDetail.title === '探针新建的歌单' &&
+			afterCreate.cards >= 2 &&
+			afterCreate.titles.includes('探针新建的歌单'),
+		`${afterCreate.cards} 张卡：${afterCreate.titles.join(' / ')}`,
+	)
+	check(
+		'未选中的歌单卡片也有自己的底色（不是透明盒子）',
+		afterCreate.inactiveBg != null &&
+			afterCreate.inactiveBg !== 'rgba(0, 0, 0, 0)' &&
+			afterCreate.inactiveBg !== afterCreate.contentBg,
+		`卡片 ${afterCreate.inactiveBg} vs 内容区 ${afterCreate.contentBg}`,
+	)
+
+	// 搜索播放列表（页内筛选，与安卓端的「搜索播放列表」同义）
+	const filterProbe = JSON.parse(
+		await evaluate(
+			window,
+			`(async () => {
+				const before = document.querySelectorAll('.media-card').length
+				const input = document.querySelector('[data-testid="playlist-filter"]')
+				input.value = '不存在的歌单名 zzz'
+				input.dispatchEvent(new Event('input', { bubbles: true }))
+				await new Promise((r) => setTimeout(r, 200))
+				const after = document.querySelectorAll('.media-card').length
+				const empty = Boolean(
+					document.querySelector('[data-testid="playlist-grid-empty"]'),
+				)
+				input.value = ''
+				input.dispatchEvent(new Event('input', { bubbles: true }))
+				await new Promise((r) => setTimeout(r, 200))
+				const restored = document.querySelectorAll('.media-card').length
+				return JSON.stringify({ before, after, empty, restored })
+			})()`,
+		),
+	)
+	check(
+		'搜索播放列表：筛掉全部时给空状态，清空后恢复',
+		filterProbe.after === 0 &&
+			filterProbe.empty &&
+			filterProbe.restored === filterProbe.before,
+		JSON.stringify(filterProbe),
+	)
+
+	// ---------------------------------------------------------------
 	// 2.6 播放列表功能：随机播放 / 下一首播放 / 更改顺序
 	// ---------------------------------------------------------------
 	//
@@ -1145,16 +1427,10 @@ async function run(window) {
 			: `${iconsAfterContent.count} 个都正常`,
 	)
 
-	// 先确保队列里有一批歌（用侧栏那个歌单）
-	await evaluate(
-		window,
-		`(() => {
-			const row = document.querySelector('[data-playlist-id]')
-			row?.click()
-			return true
-		})()`,
-	)
-	await sleep(1500)
+	// 先确保队列里有一批歌。
+	// ⚠️ 不能"点左栏第一行" —— 套件前面刚**新建了一个空歌单**，它可能排在最前，
+	// 那样「播放全部」根本不存在。必须挑一个有曲目的。
+	await openPlaylistWithTracks(window)
 	await click(window, '[data-testid="btn-play-all"]')
 	await sleep(1500)
 
@@ -1802,7 +2078,8 @@ async function run(window) {
 
 	// 先让队列里有东西并把当前曲目置上
 	await click(window, '[data-testid="nav-library"]')
-	await sleep(600)
+	await sleep(800)
+	await openPlaylistWithTracks(window)
 	await click(window, '[data-testid="btn-play-all"]')
 	await sleep(1800)
 
@@ -1924,8 +2201,10 @@ async function run(window) {
 	)
 
 	// 回到音乐库，免得影响后面的断言
+	// ⚠️ 音乐库页签现在是卡片网格，后面的断言要用曲目表，所以显式进详情
 	await click(window, '[data-testid="nav-library"]')
-	await sleep(500)
+	await sleep(700)
+	await openPlaylistWithTracks(window)
 
 	// Toast：出现、可点掉、会自动消失
 	const toastProbe = JSON.parse(

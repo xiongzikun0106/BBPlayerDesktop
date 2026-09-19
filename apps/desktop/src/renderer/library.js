@@ -313,9 +313,24 @@
 
 		const head = document.createElement('div')
 		head.className = 'view-head'
+		const lead = document.createElement('div')
+		lead.className = 'view-head__lead'
+
+		// 歌单详情是从「播放列表」卡片进来的，所以要有一条**明确的回路**。
+		// 安卓端这是路由自带的返回；桌面端没有导航栈，得自己给。
+		if (window.bbState.get().view === 'playlist') {
+			const back = document.createElement('button')
+			back.className = 'text-button view-head__back'
+			back.dataset.testid = 'playlist-back'
+			back.innerHTML = `${window.bbComponents.iconHtml('arrow_back', 'icon--sm')} 播放列表`
+			back.addEventListener('click', () => void showPlaylistsTab())
+			lead.appendChild(back)
+		}
+
 		const h2 = document.createElement('h2')
 		h2.textContent = title || '音乐库'
-		head.appendChild(h2)
+		lead.appendChild(h2)
+		head.appendChild(lead)
 
 		const meta = document.createElement('span')
 		meta.className = 'muted'
@@ -771,7 +786,7 @@
 					tracks: items.map((t) => ({
 						bvid: t.bvid,
 						title: t.title,
-						artist: t.artist ?? t.upperName ?? null,
+						artist: t.artist ?? t.artist_name ?? t.upperName ?? null,
 						cover: t.cover ?? t.coverUrl ?? null,
 						duration: t.duration ?? 0,
 					})),
@@ -1038,6 +1053,232 @@
 	/** 示例合集：B 站官方 UP 的公开合集（无需登录即可拉取） */
 	const DEMO_MID = 8047632
 
+	/** 歌单卡片上的状态图标（与安卓端 `LocalPlaylistItem` 的副标题图标同义） */
+	function playlistBadges(playlist) {
+		const badges = []
+		if (playlist?.share_id) badges.push('group')
+		else if (playlist?.type && playlist.type !== 'local') badges.push('sync')
+		return badges
+	}
+
+	/**
+	 * 新建歌单（页签头部的 `+` 菜单第一项）。
+	 *
+	 * ⚠️ 复用与「添加到歌单」弹层里**同一套**内联创建语义：
+	 * 建完立刻刷新列表并打开它。区别只是这里没有「已选曲目」要保留。
+	 */
+	function openCreatePlaylistDialog() {
+		const view = window.bbComponents.dialog({
+			testid: 'create-playlist',
+			title: '新建播放列表',
+		})
+
+		const input = document.createElement('input')
+		input.type = 'text'
+		input.placeholder = '歌单名字'
+		input.dataset.testid = 'create-playlist-name'
+		input.maxLength = 60
+		view.body.appendChild(input)
+
+		const cancelButton = document.createElement('button')
+		cancelButton.className = 'text-button'
+		cancelButton.dataset.testid = 'create-playlist-cancel'
+		cancelButton.textContent = '取消'
+		const okButton = document.createElement('button')
+		okButton.className = 'btn--filled'
+		okButton.dataset.testid = 'create-playlist-ok'
+		okButton.textContent = '创建'
+		view.actions.append(cancelButton, okButton)
+
+		async function create() {
+			const title = input.value.trim()
+			if (!title) {
+				setStatus('歌单名字不能为空', 'bad')
+				input.focus()
+				return
+			}
+			okButton.disabled = true
+			const created = await window.bbplayer.createPlaylist({ title })
+			if (created?.ok === false) {
+				okButton.disabled = false
+				setStatus(`创建失败：${created.error}`, 'bad')
+				return
+			}
+			view.close()
+			await refreshPlaylists()
+			const newId = created?.data?.id ?? created?.data?.playlist?.id ?? null
+			setStatus(`已创建「${title}」`, 'ok')
+			// 建完直接进去 —— 空歌单里下一步必然是加歌，站在列表上没意义
+			if (newId != null) await openPlaylist(newId)
+			else await showPlaylistsTab()
+		}
+
+		okButton.addEventListener('click', () => void create())
+		cancelButton.addEventListener('click', () => view.close())
+		input.addEventListener('keydown', (event) => {
+			if (event.key === 'Enter') {
+				event.preventDefault()
+				void create()
+			}
+		})
+		input.focus()
+	}
+
+	/**
+	 * 音乐库 › 播放列表 页签（阶段 6d）。
+	 *
+	 * ## 安卓端怎么做 → 桌面端怎么做
+	 *
+	 * 安卓端这个页签的内容是**歌单列表**（`LocalPlaylistList.tsx`）：
+	 * 头部一行「播放列表 / N 个播放列表 / ＋菜单」，下面一个圆角搜索框，
+	 * 然后是一列歌单；点一个进详情（有返回）。**页签的内容从来不是曲目表。**
+	 *
+	 * ⚠️ 桌面端原来错在这里：这个页签渲染的是"当前选中歌单的曲目表"，
+	 * 而歌单列表挂在左栏 —— 于是用户点「播放列表」看到的是一堆歌曲，
+	 * 想换个歌单得去左栏找；歌单的**新建入口则完全不存在**。
+	 * 这正是用户说的「音乐库这里…应该是卡片样式展示歌单列表」和
+	 * 「我没有看到任何新建本地歌单的按钮」。
+	 *
+	 * 保留 / 改变：
+	 *   * **保留**：页签内容 = 歌单列表；头部标题 + 计数 + `＋` 菜单；
+	 *     页内搜索；点卡片进详情。
+	 *   * **改变（因宽屏）**：竖排单列 → **卡片网格**（`mediaCard`，
+	 *     与安卓端「近期歌单」的卡是同一张）。理由见 components.css。
+	 *   * **改变（桌面端没有的能力）**：安卓端 `＋` 菜单有 4 项，最后一项是
+	 *     「动态合并歌单」。桌面端**没有**动态歌单（`type: 'dynamic'`）
+	 *     的实现，所以只放 3 项 —— 不做一个点了没用的菜单项。
+	 */
+	async function showPlaylistsTab() {
+		clear(els.content)
+		window.bbUI?.showContent?.()
+
+		let playlists = []
+		try {
+			playlists = await refreshPlaylists()
+		} catch (error) {
+			setStatus(error.message, 'bad')
+			els.content.appendChild(
+				window.bbComponents.empty({
+					iconName: 'error',
+					title: '读取歌单失败',
+					hint: error.message,
+				}),
+			)
+			return
+		}
+
+		// 空库：欢迎视图（带「导入示例合集」）比一张空网格有用得多
+		if (playlists.length === 0) {
+			renderWelcome()
+			return
+		}
+
+		const head = document.createElement('div')
+		head.className = 'view-head'
+		const title = document.createElement('h2')
+		title.textContent = '播放列表'
+		head.appendChild(title)
+
+		const actions = document.createElement('div')
+		actions.className = 'view-head__actions'
+		const count = document.createElement('span')
+		count.className = 'muted'
+		count.dataset.testid = 'playlist-tab-count'
+		actions.appendChild(count)
+
+		const addButton = document.createElement('button')
+		addButton.className = 'icon-only icon-button'
+		addButton.dataset.testid = 'playlist-new'
+		addButton.title = '新建播放列表'
+		addButton.setAttribute('aria-label', '新建播放列表')
+		addButton.innerHTML = window.bbComponents.iconHtml('add', 'icon--md')
+		addButton.addEventListener('click', () => {
+			// ⚠️ 菜单项复用**已有的入口**，不另起一套：
+			// 「导入」是音乐库自己的页签，「订阅共享歌单」是共享面板。
+			window.bbComponents.menu(addButton, [
+				{
+					label: '新建播放列表',
+					icon: 'add',
+					testid: 'playlist-new-local',
+					onSelect: () => openCreatePlaylistDialog(),
+				},
+				{
+					label: '导入外部歌单',
+					icon: 'playlist_add',
+					testid: 'playlist-new-import',
+					onSelect: () => window.bbUI?.setLibraryTab?.('import'),
+				},
+				{
+					label: '订阅共享歌单',
+					icon: 'group',
+					testid: 'playlist-new-share',
+					onSelect: () => window.bbUI?.openView?.('share'),
+				},
+			])
+		})
+		actions.appendChild(addButton)
+		head.appendChild(actions)
+		els.content.appendChild(head)
+
+		const filter = document.createElement('div')
+		filter.className = 'filter-field'
+		const filterInput = document.createElement('input')
+		filterInput.type = 'search'
+		filterInput.placeholder = '搜索播放列表'
+		filterInput.dataset.testid = 'playlist-filter'
+		filterInput.spellcheck = false
+		filterInput.setAttribute('aria-label', '搜索播放列表')
+		filter.appendChild(filterInput)
+		els.content.appendChild(filter)
+
+		const grid = document.createElement('div')
+		grid.className = 'media-grid'
+		grid.dataset.testid = 'playlist-grid'
+		els.content.appendChild(grid)
+
+		const selectedId = window.bbState.get().selectedPlaylistId
+
+		function render() {
+			const keyword = filterInput.value.trim().toLowerCase()
+			const shown = playlists.filter((playlist) =>
+				keyword
+					? String(playlist.title ?? '')
+							.toLowerCase()
+							.includes(keyword)
+					: true,
+			)
+			count.textContent = `${playlists.length} 个播放列表`
+			clear(grid)
+			if (shown.length === 0) {
+				grid.appendChild(
+					window.bbComponents.empty({
+						testid: 'playlist-grid-empty',
+						iconName: 'search_off',
+						title: `没有与「${filterInput.value.trim()}」匹配的播放列表`,
+						hint: '换个关键词试试。',
+					}),
+				)
+				return
+			}
+			for (const playlist of shown) {
+				grid.appendChild(
+					window.bbComponents.mediaCard({
+						title: playlist.title,
+						sub: `${playlist.item_count ?? 0} 首`,
+						coverUrl: playlist.cover_url ?? null,
+						badges: playlistBadges(playlist),
+						testid: `playlist-card-${playlist.id}`,
+						active: playlist.id === selectedId,
+						onClick: () => void openPlaylist(playlist.id),
+					}),
+				)
+			}
+		}
+
+		filterInput.addEventListener('input', render)
+		render()
+	}
+
 	/**
 	 * 音乐库 › 合集 页签（阶段 2b）。
 	 *
@@ -1270,6 +1511,12 @@
 		 * 默认读登录用户自己的合集，没登录就退回示例 UP。
 		 */
 		showCollectionTab,
+		/**
+		 * 音乐库 › 播放列表（阶段 6d）：**歌单列表**（卡片网格），
+		 * 不是"当前歌单的曲目表"。点卡片才进曲目表。
+		 */
+		showPlaylistsTab,
+		openCreatePlaylistDialog,
 		openPlaylist,
 		runSearch,
 		renderTrackTable,

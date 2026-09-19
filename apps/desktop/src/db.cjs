@@ -515,12 +515,25 @@ function removeTrackFromPlaylist(playlistId, trackId) {
 	return removed
 }
 
-/** 读取播放列表里的曲目（按 sort_key） */
+/**
+ * 读取播放列表里的曲目（按 sort_key）。
+ *
+ * ⚠️ **必须 join `artists`**：`tracks` 表里存的是外键 `artist_id`，
+ * 作者名字在 `artists.name`。只返回 `t.*` 的话，作者名根本不在结果里，
+ * 界面上的「作者」列就永远是「—」—— 用户明确抱怨过这一条
+ * （「你没有拉取到作者信息」）。
+ *
+ * 这与收藏夹预览那条路径**是两回事**：那边是 B 站接口直接给的
+ * `media.upper.name`（映射成 `upperName`），字段名不同但都是"作者"，
+ * 渲染层两个都认。这里是**数据库路径**，从前一条注释里漏了 join，
+ * 所以两个字段名都没有 —— 那是"永远「—」"的真正原因。
+ */
 function getPlaylistTracks(playlistId) {
 	return sqlite.getAllSync(
-		`SELECT t.*, pt.sort_key, bm.bvid, bm.cid
+		`SELECT t.*, a.name AS artist_name, pt.sort_key, bm.bvid, bm.cid
 		 FROM playlist_tracks pt
 		 JOIN tracks t ON t.id = pt.track_id
+		 LEFT JOIN artists a ON a.id = t.artist_id
 		 LEFT JOIN bilibili_metadata bm ON bm.track_id = t.id
 		 WHERE pt.playlist_id = ?
 		 ORDER BY pt.sort_key DESC`,

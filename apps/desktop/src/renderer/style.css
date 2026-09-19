@@ -707,6 +707,57 @@ body {
 .view-head h2 {
 	margin: 0;
 	font-size: var(--fs-title-medium);
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+/*
+ * 标题左侧的「返回 + 标题」组，以及右侧的计数 + 动作组。
+ *
+ * ⚠️ 为什么要包一层：`.view-head` 是 `space-between` 的两个端点。
+ * 直接把「返回」按钮当成第三个子节点塞进去，标题会被挤到**中间**，
+ * 看起来像居中的分区标题（`.sidebar__brand` 踩过同一个坑）。
+ */
+.view-head__lead {
+	display: flex;
+	align-items: center;
+	gap: var(--sp-xs);
+	min-width: 0;
+}
+
+.view-head__actions {
+	display: flex;
+	align-items: center;
+	gap: var(--sp-xs);
+	flex: none;
+}
+
+/* 返回是个"文字 + 图标"的次级按钮，不该长得像主按钮 */
+.view-head__back {
+	flex: none;
+	padding-left: var(--sp-xs);
+	padding-right: var(--sp-sm);
+	color: var(--on-surface-variant);
+}
+
+/*
+ * 页内筛选框（音乐库 › 播放列表的「搜索播放列表」）。
+ *
+ * 安卓端的搜索框是**胶囊**（`borderRadius: 9999`），而通用输入框基线是
+ * 10px 圆角 —— 这里显式改成胶囊，与全应用"选中/输入都是胶囊"的语言一致。
+ */
+.filter-field {
+	display: flex;
+	align-items: center;
+	gap: var(--sp-xs);
+	margin-bottom: var(--sp-md);
+}
+
+.filter-field input {
+	flex: 0 1 320px;
+	min-width: 160px;
+	border-radius: var(--r-full);
 }
 
 .muted {

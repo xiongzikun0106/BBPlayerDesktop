@@ -187,6 +187,17 @@ async function run(window) {
 		)
 	}
 
+	// ⚠️ 音乐库 › 播放列表现在是**歌单卡片网格**（阶段 6d），曲目表在详情里。
+	// 库里已有曲目（跳过了播种）时不会有欢迎视图，得先从卡片进一次详情。
+	if (
+		!(await evaluate(
+			window,
+			`Boolean(document.querySelector('[data-testid="btn-play-all"]'))`,
+		))
+	) {
+		await click(window, '[data-testid^="playlist-card-"]')
+		await sleep(1200)
+	}
 	await click(window, '[data-testid="btn-play-all"]')
 	const playing = await waitFor(
 		window,
