@@ -441,6 +441,57 @@ function addTrackToPlaylist(playlistId, trackId) {
 }
 
 /**
+ * 把若干曲目加入某个歌单（阶段 6c「添加到歌单」的写库路径）。
+ *
+ * ## 语义（与移动端对齐）
+ *
+ * * **重复静默忽略** —— `addTrackToPlaylist` 底层是 `INSERT OR IGNORE`，
+ *   与移动端 `playlistService` 的 `onConflictDoNothing` 同一个语义：
+ *   不报错、也不重复添加。这里把 `added` / `skipped` 分开报，
+ *   好让 UI 能说清「新增 3 首，2 首已在歌单里」，而不是笼统的"添加成功"
+ *   （移动端那条"添加成功"就是信息量不够的例子）。
+ * * **追加到末尾** —— `generateSortKey` 取比现有最小键更小的键。
+ * * 新曲目走 `upsertTrack`，`unique_key` 用 `bilibili::BVxxx` ——
+ *   与既有导入路径**同一个约定**，所以同一首歌从两个入口进来不会变成两条。
+ *
+ * ⚠️ 整批放在**一个事务**里：中途失败不能留下"加了一半"的歌单。
+ * ⚠️ 事务与 DB 细节留在这一层 —— IPC 层不该编排事务。
+ *
+ * @param {number} playlistId
+ * @param {Array<{bvid: string, title?: string, artist?: string, upperName?: string,
+ *   artistMid?: number|null, cover?: string|null, duration?: number, cid?: number|null}>} items
+ * @returns {{added: number, skipped: number, total: number}}
+ */
+function addTracksToPlaylist(playlistId, items) {
+	const list = Array.isArray(items) ? items : []
+	if (!playlistId) throw new Error('缺少 playlistId')
+	if (list.length === 0) throw new Error('没有要添加的曲目')
+
+	let added = 0
+	let skipped = 0
+	sqlite.withTransactionSync(() => {
+		for (const item of list) {
+			// 没有 bvid 的条目（例如失效视频）静默跳过，不算失败
+			if (!item?.bvid) continue
+			const track = upsertTrack({
+				uniqueKey: `bilibili::${item.bvid}`,
+				title: item.title ?? '(无标题)',
+				artistName: item.artist ?? item.upperName ?? '未知作者',
+				artistRemoteId: item.artistMid ?? null,
+				coverUrl: item.cover ?? null,
+				duration: item.duration ?? 0,
+				bvid: item.bvid,
+				cid: item.cid ?? null,
+				isMultiPage: false,
+			})
+			if (addTrackToPlaylist(playlistId, track.id)) added += 1
+			else skipped += 1
+		}
+	})
+	return { added, skipped, total: list.length }
+}
+
+/**
  * 从播放列表里移除一首曲目（幂等），并重算 `item_count`。
  *
  * 共享歌单需要这个动作来驱动 outbox（`remove_tracks`），因此**不在这里**
@@ -940,6 +991,7 @@ module.exports = {
 	listPlaylists,
 	upsertTrack,
 	addTrackToPlaylist,
+	addTracksToPlaylist,
 	removeTrackFromPlaylist,
 	/** 歌单内重排（更改列表顺序），见函数头注释 */
 	movePlaylistTrack,

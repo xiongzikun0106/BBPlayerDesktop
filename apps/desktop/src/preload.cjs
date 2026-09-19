@@ -26,6 +26,9 @@ contextBridge.exposeInMainWorld('bbplayer', {
 	movePlaylistTrack: (payload) =>
 		ipcRenderer.invoke('db:movePlaylistTrack', payload),
 	createPlaylist: (payload) => ipcRenderer.invoke('db:createPlaylist', payload),
+	/** 把曲目加入歌单（阶段 6c）；重复项被静默忽略，返回 {added,skipped,total} */
+	addTracksToPlaylist: (payload) =>
+		ipcRenderer.invoke('db:addTracksToPlaylist', payload),
 
 	// ---------- B 站 ----------
 	search: (keyword) => ipcRenderer.invoke('bili:search', keyword),

@@ -116,6 +116,37 @@ const PROBE_ENABLED = [
 	'--share-probe',
 ].some((flag) => process.argv.includes(flag))
 
+/**
+ * ⚠️ 探针**中途抛异常**时必须让进程以非 0 退出。
+ *
+ * 原来每个探针块都是 `.catch((e) => console.error(...))` 然后
+ * `.finally(() => app.exit(0))` —— 于是**驱动崩溃也被当成成功**：
+ * harness 打印「通过 N 项，失败 0 项」，而实际上后面的断言根本没跑。
+ * 这是最危险的一种假绿（测试框架本身在骗人）。
+ *
+ * 实测撞到过：一条断言里把 `window.bbplayer.listPlaylists` 写成了
+ * `window.bbplayer.playlist.listPlaylists`，抛异常之后套件依然全绿。
+ */
+let probeFailed = false
+
+/**
+ * ⚠️ 探针**崩溃时不要弹系统模态框**。
+ *
+ * Electron 对主进程未捕获异常会弹一个原生错误对话框（"A JavaScript error
+ * occurred in the main process"）。那是一个**会抢焦点的系统窗口** ——
+ * 用户明确要求测试必须静默（他在打游戏），一个弹框打断他很糟。
+ * 实测踩到过一次：探针脚本里一个语法错误就把它弹了出来。
+ *
+ * 所以探针模式下自己接管：打到 stderr，并以**非 0** 退出 ——
+ * 失败仍然可见（CI 会红），但不打扰人。
+ */
+if (PROBE_ENABLED) {
+	process.on('uncaughtException', (error) => {
+		console.error('[desktop] 主进程未捕获异常（探针模式，不弹窗）:', error)
+		process.exit(1)
+	})
+}
+
 const SHOT_DIR = path.join(__dirname, '..', 'probe-output')
 
 // 自定义协议必须在 app ready 之前声明特权：
@@ -420,7 +451,7 @@ void app.whenReady().then(() => {
 					console.error('[desktop] UI 巡检失败:', error)
 				})
 				.finally(() => {
-					setTimeout(() => app.exit(0), 500)
+					setTimeout(() => app.exit(probeFailed ? 1 : 0), 500)
 				})
 		})
 	} else if (UI_PROBE_MODE) {
@@ -429,10 +460,13 @@ void app.whenReady().then(() => {
 			const { run } = require('./ui-probe-driver.cjs')
 			void run(mainWindow)
 				.catch((error) => {
-					console.error('[desktop] UI 探针执行失败:', error)
+					{
+						probeFailed = true
+						console.error('[desktop] UI 探针执行失败:', error)
+					}
 				})
 				.finally(() => {
-					setTimeout(() => app.exit(0), 500)
+					setTimeout(() => app.exit(probeFailed ? 1 : 0), 500)
 				})
 		})
 	} else if (LOGIN_PROBE_MODE) {
@@ -444,7 +478,7 @@ void app.whenReady().then(() => {
 					console.error('[desktop] 登录探针执行失败:', error)
 				})
 				.finally(() => {
-					setTimeout(() => app.exit(0), 500)
+					setTimeout(() => app.exit(probeFailed ? 1 : 0), 500)
 				})
 		})
 	} else if (MEDIA_PROBE_MODE) {
@@ -456,7 +490,7 @@ void app.whenReady().then(() => {
 					console.error('[desktop] 媒体探针执行失败:', error)
 				})
 				.finally(() => {
-					setTimeout(() => app.exit(0), 500)
+					setTimeout(() => app.exit(probeFailed ? 1 : 0), 500)
 				})
 		})
 	} else if (SETTINGS_PROBE_MODE) {
@@ -468,7 +502,7 @@ void app.whenReady().then(() => {
 					console.error('[desktop] 设置探针执行失败:', error)
 				})
 				.finally(() => {
-					setTimeout(() => app.exit(0), 500)
+					setTimeout(() => app.exit(probeFailed ? 1 : 0), 500)
 				})
 		})
 	} else if (VERIFY_GATING_MODE) {
@@ -524,7 +558,7 @@ void app.whenReady().then(() => {
 				.catch((error) =>
 					console.error('[desktop] 歌词窗口探针执行失败:', error),
 				)
-				.finally(() => setTimeout(() => app.exit(0), 500))
+				.finally(() => setTimeout(() => app.exit(probeFailed ? 1 : 0), 500))
 		})
 	} else if (HISTORY_PROBE_MODE) {
 		// 播放历史验收（Phase 3.5）
@@ -534,7 +568,7 @@ void app.whenReady().then(() => {
 				.catch((error) =>
 					console.error('[desktop] 播放历史探针执行失败:', error),
 				)
-				.finally(() => setTimeout(() => app.exit(0), 500))
+				.finally(() => setTimeout(() => app.exit(probeFailed ? 1 : 0), 500))
 		})
 	} else if (IMPORT_PROBE_MODE) {
 		// 外部歌单导入验收（Phase 3.3）
@@ -542,7 +576,7 @@ void app.whenReady().then(() => {
 			const { run } = require('./import-probe-driver.cjs')
 			void run(mainWindow)
 				.catch((error) => console.error('[desktop] 导入探针执行失败:', error))
-				.finally(() => setTimeout(() => app.exit(0), 500))
+				.finally(() => setTimeout(() => app.exit(probeFailed ? 1 : 0), 500))
 		})
 	} else if (SHARE_PROBE_MODE) {
 		// 共享歌单验收（Phase 3.4）
@@ -550,7 +584,7 @@ void app.whenReady().then(() => {
 			const { run } = require('./share-probe-driver.cjs')
 			void run(mainWindow)
 				.catch((error) => console.error('[desktop] 共享探针执行失败:', error))
-				.finally(() => setTimeout(() => app.exit(0), 500))
+				.finally(() => setTimeout(() => app.exit(probeFailed ? 1 : 0), 500))
 		})
 	} else if (COMPARE_MODE) {
 		installWebRequestHeaderInjection()
@@ -563,7 +597,7 @@ void app.whenReady().then(() => {
 					console.error('[desktop] 对比探针执行失败:', error)
 				})
 				.finally(() => {
-					setTimeout(() => app.exit(0), 500)
+					setTimeout(() => app.exit(probeFailed ? 1 : 0), 500)
 				})
 		})
 	} else if (PROBE_MODE) {
@@ -578,7 +612,7 @@ void app.whenReady().then(() => {
 				})
 				.finally(() => {
 					// 给报告与截图一点落盘时间
-					setTimeout(() => app.exit(0), 500)
+					setTimeout(() => app.exit(probeFailed ? 1 : 0), 500)
 				})
 		})
 	}

@@ -190,6 +190,25 @@ function registerIpcHandlers() {
 		}
 	})
 
+	/**
+	 * 把若干曲目加入某个本地歌单（阶段 6c「添加到歌单」的写库路径）。
+	 *
+	 * 语义（重复静默忽略 / 追加到末尾 / 整批一个事务）全在
+	 * `db.addTracksToPlaylist` 里，**这一层只做参数校验与结果包装** ——
+	 * IPC 层不该编排事务，否则将来第二个调用方就得再抄一遍。
+	 */
+	ipcMain.handle('db:addTracksToPlaylist', (_event, payload) => {
+		try {
+			const { playlistId, tracks } = payload ?? {}
+			return {
+				ok: true,
+				data: db.addTracksToPlaylist(playlistId, tracks),
+			}
+		} catch (error) {
+			return { ok: false, error: error.message }
+		}
+	})
+
 	// ---------- B 站 ----------
 	ipcMain.handle('bili:search', async (_event, keyword) => {
 		try {

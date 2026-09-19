@@ -1967,6 +1967,84 @@ async function run(window) {
 	//
 	// 写入方式与各模块一致（直接改 `#status` 的文本与类名，
 	// 观察者会接管显示与淡出），而不是绕开观察者去调内部函数。
+	// ---------------------------------------------------------------
+	// 1.7c 写库路径：把曲目加入歌单（阶段 6c）
+	// ---------------------------------------------------------------
+	//
+	// 这是「添加到歌单」的地基，所以先单独把它钉死，再去做弹层 UI。
+	// 三条要点：**真的写进去了**、**重复是静默忽略而不是报错**、
+	// **item_count 与歌单内容一致**。
+	console.log('\n[ui] 1.7c) 曲目加入歌单的写库路径')
+	const addResult = JSON.parse(
+		await evaluate(
+			window,
+			`(async () => {
+				const list = await window.bbplayer.listPlaylists()
+				const target = (list?.data ?? [])[0]
+				if (!target) return JSON.stringify({ skipped: true })
+				const before = await window.bbplayer.getPlaylistTracks(target.id)
+				const item = {
+					bvid: 'BVprobeAddToPlaylist01',
+					title: '探针用例：加入歌单',
+					artist: '探针歌手',
+					duration: 123,
+				}
+				const first = await window.bbplayer.addTracksToPlaylist({
+					playlistId: target.id,
+					tracks: [item],
+				})
+				// 第二次同一首：必须静默忽略，且不能重复
+				const second = await window.bbplayer.addTracksToPlaylist({
+					playlistId: target.id,
+					tracks: [item],
+				})
+				const after = await window.bbplayer.getPlaylistTracks(target.id)
+				const rows = after?.data ?? []
+				return JSON.stringify({
+					skipped: false,
+					beforeCount: (before?.data ?? []).length,
+					afterCount: rows.length,
+					firstOk: first?.ok === true,
+					firstAdded: first?.data?.added ?? null,
+					firstSkipped: first?.data?.skipped ?? null,
+					secondOk: second?.ok === true,
+					secondAdded: second?.data?.added ?? null,
+					secondSkipped: second?.data?.skipped ?? null,
+					// 该 bvid 在歌单里出现的行数（重复添加的话会是 2）
+					occurrences: rows.filter((r) => r.bvid === item.bvid).length,
+					// ⚠️ getPlaylistTracks 返回的是 t.* —— 作者存的是
+					// **外键 artist_id**，名字在 artists 表里。
+					// 第一版断言 row.artist 拿到 null，是我对返回结构的假设错了
+					// （不是写入失败）。
+					artistId:
+						rows.find((r) => r.bvid === item.bvid)?.artist_id ?? null,
+					titleStored: rows.find((r) => r.bvid === item.bvid)?.title ?? null,
+				})
+			})()`,
+		),
+	)
+	check(
+		'加入歌单：真的写进去了（added=1 且歌单曲目数 +1）',
+		addResult.firstOk &&
+			addResult.firstAdded === 1 &&
+			addResult.afterCount === addResult.beforeCount + 1,
+		`${addResult.beforeCount} → ${addResult.afterCount}，added=${addResult.firstAdded}`,
+	)
+	check(
+		'加入歌单：重复添加被**静默忽略**（不报错、也不出现两行）',
+		addResult.secondOk &&
+			addResult.secondAdded === 0 &&
+			addResult.secondSkipped === 1 &&
+			addResult.occurrences === 1,
+		`第二次 added=${addResult.secondAdded} skipped=${addResult.secondSkipped}，该曲在歌单中出现 ${addResult.occurrences} 次`,
+	)
+	check(
+		'加入歌单：题名与作者外键都真的落库了（不是空壳行）',
+		addResult.titleStored === '探针用例：加入歌单' &&
+			typeof addResult.artistId === 'number' &&
+			addResult.artistId > 0,
+		`title=「${addResult.titleStored}」 artist_id=${addResult.artistId}`,
+	)
 	console.log('\n[ui] 1.7b) 浮动状态胶囊会自己消失（每一种）')
 	const pillFade = JSON.parse(
 		await evaluate(
