@@ -375,6 +375,11 @@
 		.getElementById('playbar-queue')
 		?.addEventListener('click', () => toggleQueueColumn())
 
+	// 正在播放卡片顶部条上的同一动作（同一组状态，两个触发点）
+	document
+		.getElementById('nowplaying-toggle-queue')
+		?.addEventListener('click', () => toggleQueueColumn())
+
 	// 页内动作：共享歌单面板
 	document.getElementById('library-share')?.addEventListener('click', () => {
 		void window.bbShare?.show?.()
@@ -484,7 +489,6 @@
 	 */
 	function toggleQueueColumn() {
 		const columns = document.getElementById('nowplaying-columns')
-		const button = document.getElementById('playbar-queue')
 		if (!columns) return
 		if (currentView !== 'nowplaying') {
 			setNowPlaying(true)
@@ -493,7 +497,13 @@
 			columns.classList.toggle('is-queue-hidden')
 		}
 		const hidden = columns.classList.contains('is-queue-hidden')
-		if (button) button.setAttribute('aria-pressed', String(!hidden))
+		// 两个触发点同步（播放条按钮 + 正在播放卡片顶栏按钮）
+		const playbarButton = document.getElementById('playbar-queue')
+		if (playbarButton)
+			playbarButton.setAttribute('aria-pressed', String(!hidden))
+		const topbarButton = document.getElementById('nowplaying-toggle-queue')
+		if (topbarButton)
+			topbarButton.setAttribute('aria-expanded', String(!hidden))
 	}
 
 	keys.register('ctrl+q', { description: '呼出/收起播放列表' }, () => {

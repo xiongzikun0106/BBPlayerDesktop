@@ -462,7 +462,7 @@
 			if (updated.length === 0) return
 			const byBvid = new Map(updated.map((item) => [item.bvid, item.cover]))
 			for (const row of table.querySelectorAll('tbody tr')) {
-				const cover = byBvid.get(row.dataset.bvid)
+				const cover = window.bbComponents.coverSrc(byBvid.get(row.dataset.bvid))
 				if (!cover) continue
 				const art = row.querySelector('.list-row__art')
 				if (!art) continue

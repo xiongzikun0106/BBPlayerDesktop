@@ -57,6 +57,15 @@
 		queueList: document.getElementById('queue-list'),
 		queueEmpty: document.getElementById('queue-empty'),
 		status: document.getElementById('status'),
+		// ── 正在播放卡片（与底部播放条是同一组状态的第二触发点）──
+		npPlay: document.getElementById('nowplaying-play'),
+		npPrev: document.getElementById('nowplaying-prev'),
+		npNext: document.getElementById('nowplaying-next'),
+		npMode: document.getElementById('nowplaying-mode'),
+		npVolume: document.getElementById('nowplaying-volume'),
+		npProgress: document.getElementById('nowplaying-progress'),
+		npTimeCurrent: document.getElementById('nowplaying-time-current'),
+		npTimeTotal: document.getElementById('nowplaying-time-total'),
 	}
 
 	/** 事件计数：自动化脚本靠它断言「确实发生过网络/解码活动」 */
@@ -402,7 +411,17 @@
 	function setVolume(percent) {
 		const clamped = Math.max(0, Math.min(100, percent))
 		els.audio.volume = clamped / 100
-		syncRangeFill(els.volume, clamped)
+		if (els.volume) syncRangeFill(els.volume, clamped)
+		if (els.npVolume) syncRangeFill(els.npVolume, clamped)
+	}
+
+	function syncModeButtons() {
+		for (const btn of [els.mode, els.npMode]) {
+			if (!btn) continue
+			btn.innerHTML = icon(MODE_ICON[state.mode])
+			btn.title = MODE_LABEL[state.mode]
+			btn.setAttribute('aria-label', MODE_LABEL[state.mode])
+		}
 	}
 
 	function cycleMode() {
@@ -411,11 +430,7 @@
 		// 切到随机就洗一副新牌；切走就清掉（下次进来重新洗）
 		if (state.mode === 'shuffle') reshuffle()
 		else state.shuffleOrder = []
-		if (els.mode) {
-			els.mode.innerHTML = icon(MODE_ICON[state.mode])
-			els.mode.title = MODE_LABEL[state.mode]
-			els.mode.setAttribute('aria-label', MODE_LABEL[state.mode])
-		}
+		syncModeButtons()
 		emit({ type: 'mode-changed', mode: state.mode })
 		return state.mode
 	}
@@ -431,11 +446,7 @@
 		state.mode = mode
 		if (mode === 'shuffle') reshuffle()
 		else state.shuffleOrder = []
-		if (els.mode) {
-			els.mode.innerHTML = icon(MODE_ICON[mode])
-			els.mode.title = MODE_LABEL[mode]
-			els.mode.setAttribute('aria-label', MODE_LABEL[mode])
-		}
+		syncModeButtons()
 		emit({ type: 'mode-changed', mode })
 		return state.mode
 	}
@@ -467,7 +478,9 @@
 				: '—'
 		if (count) count.textContent = String(state.queue.length)
 
-		const coverUrl = track?.cover ?? track?.coverUrl ?? track?.cover_url ?? null
+		const coverUrl = window.bbComponents.coverSrc(
+			track?.cover ?? track?.coverUrl ?? track?.cover_url ?? null,
+		)
 		/*
 		 * ⚠️ 面板封面必须和播放条封面一样接 load / error。
 		 *
@@ -533,7 +546,9 @@
 		// 核心层的歌单曲目是 `coverUrl`（数据库列 `cover_url`）。
 		// 三个都认，不然"搜索进来的有封面、从歌单进来的没有"——
 		// 这种不一致很难一眼看出来。
-		const coverUrl = track?.cover ?? track?.coverUrl ?? track?.cover_url ?? null
+		const coverUrl = window.bbComponents.coverSrc(
+			track?.cover ?? track?.coverUrl ?? track?.cover_url ?? null,
+		)
 		if (els.cover) {
 			if (coverUrl && els.cover.getAttribute('src') !== coverUrl) {
 				els.cover.hidden = true
@@ -686,11 +701,22 @@
 		const { currentTime, duration } = els.audio
 		if (els.timeCurrent) els.timeCurrent.textContent = formatTime(currentTime)
 		if (els.timeTotal) els.timeTotal.textContent = formatTime(duration)
+		if (els.npTimeCurrent)
+			els.npTimeCurrent.textContent = formatTime(currentTime)
+		if (els.npTimeTotal) els.npTimeTotal.textContent = formatTime(duration)
 		if (els.progress && Number.isFinite(duration) && duration > 0) {
 			// 拖动中不要覆盖用户的手动位置
 			if (!isScrubbing) {
 				els.progress.value = String(Math.round((currentTime / duration) * 1000))
 				syncRangeFill(els.progress, (currentTime / duration) * 100)
+			}
+		}
+		if (els.npProgress && Number.isFinite(duration) && duration > 0) {
+			if (!isNpScrubbing) {
+				els.npProgress.value = String(
+					Math.round((currentTime / duration) * 1000),
+				)
+				syncRangeFill(els.npProgress, (currentTime / duration) * 100)
 			}
 		}
 	}
@@ -708,9 +734,11 @@
 			} else if (name === 'playing') {
 				setStatus('正在播放', 'ok')
 				if (els.play) els.play.innerHTML = icon('pause')
+				if (els.npPlay) els.npPlay.innerHTML = icon('pause')
 			} else if (name === 'pause') {
 				setStatus('已暂停', 'idle')
 				if (els.play) els.play.innerHTML = icon('play_arrow')
+				if (els.npPlay) els.npPlay.innerHTML = icon('play_arrow')
 			} else if (name === 'ended') {
 				// 自动续播
 				void playNext(true)
@@ -722,6 +750,8 @@
 	els.audio.addEventListener('timeupdate', updateProgress)
 
 	let isScrubbing = false
+	/** 正在播放卡片进度条的拖动状态（与 isScrubbing 同理） */
+	let isNpScrubbing = false
 	if (els.progress) {
 		els.progress.addEventListener('input', () => {
 			isScrubbing = true
@@ -749,11 +779,55 @@
 	if (els.prev) els.prev.addEventListener('click', () => void playPrev())
 	if (els.mode) els.mode.addEventListener('click', cycleMode)
 	if (els.volume) {
-		els.volume.addEventListener('input', () =>
-			setVolume(Number(els.volume.value)),
-		)
+		els.volume.addEventListener('input', () => {
+			setVolume(Number(els.volume.value))
+			// 同步正在播放卡片的音量条
+			if (els.npVolume) {
+				els.npVolume.value = els.volume.value
+				syncRangeFill(els.npVolume, Number(els.npVolume.value))
+			}
+		})
 		// 初始音量也要把已填充段画出来（默认 100%）
 		syncRangeFill(els.volume, Number(els.volume.value))
+	}
+
+	// ── 正在播放卡片（同一组状态的第二触发点）──────────────────────
+	// 按钮全部转调到底部播放条已经 wire 好的动作 —— 不在这里复制逻辑。
+	if (els.npPlay) els.npPlay.addEventListener('click', () => void toggle())
+	if (els.npNext)
+		els.npNext.addEventListener('click', () => void playNext(false))
+	if (els.npPrev) els.npPrev.addEventListener('click', () => void playPrev())
+	if (els.npMode) els.npMode.addEventListener('click', cycleMode)
+	if (els.npVolume) {
+		els.npVolume.addEventListener('input', () => {
+			setVolume(Number(els.npVolume.value))
+			// 同步底部播放条的音量条 —— 不然两处显示会脱节
+			if (els.volume) {
+				els.volume.value = els.npVolume.value
+				syncRangeFill(els.volume, Number(els.volume.value))
+			}
+		})
+		syncRangeFill(els.npVolume, Number(els.npVolume.value))
+	}
+	if (els.npProgress) {
+		els.npProgress.addEventListener('input', () => {
+			isNpScrubbing = true
+			const duration = els.audio.duration
+			syncRangeFill(els.npProgress, Number(els.npProgress.value) / 10)
+			if (Number.isFinite(duration) && duration > 0) {
+				const target = (Number(els.npProgress.value) / 1000) * duration
+				if (els.npTimeCurrent)
+					els.npTimeCurrent.textContent = formatTime(target)
+			}
+		})
+		els.npProgress.addEventListener('change', () => {
+			const duration = els.audio.duration
+			if (Number.isFinite(duration) && duration > 0) {
+				seekTo((Number(els.npProgress.value) / 1000) * duration)
+			}
+			isNpScrubbing = false
+		})
+		syncRangeFill(els.npProgress, Number(els.npProgress.value) / 10)
 	}
 
 	// ---------------------------------------------------------------

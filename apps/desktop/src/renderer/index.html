@@ -1061,73 +1061,168 @@
 				<div class="nowplaying__bg" id="nowplaying-bg" data-testid="nowplaying-bg"></div>
 
 				<div class="nowplaying__inner">
-					<button
-						class="icon-only nowplaying__back"
-						id="nowplaying-close"
-						data-testid="nowplaying-close"
-						title="返回"
-						aria-label="返回"
-					>
-						<span class="icon icon--md">expand_more</span>
-					</button>
+					<header class="nowplaying__topbar">
+						<button
+							class="icon-button icon-only nowplaying__back"
+							id="nowplaying-close"
+							data-testid="nowplaying-close"
+							title="返回"
+							aria-label="返回"
+						>
+							<span class="icon icon--md">expand_more</span>
+						</button>
+						<div class="nowplaying__crumb">
+							<span class="nowplaying__crumb-label">正在播放</span>
+						</div>
+						<button
+							class="icon-button icon-only"
+							id="nowplaying-toggle-queue"
+							data-testid="nowplaying-toggle-queue"
+							title="呼出 / 收起播放列表"
+							aria-label="呼出 / 收起播放列表"
+							aria-expanded="false"
+						>
+							<span class="icon icon--md">queue_music</span>
+						</button>
+					</header>
 
 					<!--
-						三栏布局（阶段 D，对齐网易云播放页的**布局**，视觉仍用本项目令牌）：
-						  左 = 大封面 + 曲名/歌手   中 = 歌词   右 = 播放队列（可收起）
+						三栏卡片（对齐网易云布局，但视觉卡片化对齐设置/音乐库页）：
+						  左卡 = 封面 + 曲名/歌手/进度/主控
+						  中卡 = 歌词
+						  右卡 = 播放队列（可收起）
 						⚠️ 歌词与队列都是**同一份 DOM 搬进来**的，不复制：
 						   队列见 renderer.js 的 placeQueue，歌词见 placeLyrics。
-						   复制一份会让 testid 重复、拖拽落到错误的树上 —— 界面却看着正常。
 					-->
 					<div
 						class="nowplaying__columns is-queue-hidden"
 						id="nowplaying-columns"
 						data-testid="nowplaying-columns"
 					>
-						<div class="nowplaying__left">
+						<!-- 左卡：封面 + 元信息 + 进度 + 主控 -->
+						<article class="nowplaying__card nowplaying__card--left">
 							<div class="nowplaying__art" data-testid="nowplaying-art">
 								<img id="nowplaying-cover" data-testid="nowplaying-cover" alt="" hidden />
 								<span class="icon icon--xl" id="nowplaying-placeholder">music_note</span>
 							</div>
 
-							<h2
-								class="nowplaying__title"
-								id="nowplaying-title"
-								data-testid="nowplaying-title"
-							>
-								未在播放
-							</h2>
-							<p
-								class="nowplaying__artist muted"
-								id="nowplaying-artist"
-								data-testid="nowplaying-artist"
-							>
-								—
-							</p>
-						</div>
+							<div class="nowplaying__meta">
+								<h2
+									class="nowplaying__title"
+									id="nowplaying-title"
+									data-testid="nowplaying-title"
+								>
+									未在播放
+								</h2>
+								<p
+									class="nowplaying__artist muted"
+									id="nowplaying-artist"
+									data-testid="nowplaying-artist"
+								>
+									—
+								</p>
+							</div>
 
-						<div
-							class="nowplaying__lyrics"
+							<!-- 进度条：复用播放条的元素，但放在卡片里 -->
+							<div class="nowplaying__progress">
+								<span class="mono" id="nowplaying-time-current">0:00</span>
+								<input
+									id="nowplaying-progress"
+									data-testid="nowplaying-progress"
+									type="range"
+									min="0"
+									max="1000"
+									value="0"
+									aria-label="播放进度"
+								/>
+								<span class="mono" id="nowplaying-time-total">0:00</span>
+							</div>
+
+							<!-- 主控制（对齐移动端）：上一首 / 播放 / 下一首 -->
+							<div class="nowplaying__controls">
+								<button
+									class="icon-button icon-only"
+									id="nowplaying-prev"
+									data-testid="nowplaying-prev"
+									title="上一首"
+									aria-label="上一首"
+								>
+									<span class="icon icon--lg">skip_previous</span>
+								</button>
+								<button
+									class="nowplaying__play"
+									id="nowplaying-play"
+									data-testid="nowplaying-play"
+									title="播放/暂停"
+									aria-label="播放/暂停"
+								>
+									<span class="icon icon--xl">play_arrow</span>
+								</button>
+								<button
+									class="icon-button icon-only"
+									id="nowplaying-next"
+									data-testid="nowplaying-next"
+									title="下一首"
+									aria-label="下一首"
+								>
+									<span class="icon icon--lg">skip_next</span>
+								</button>
+							</div>
+
+							<!-- 辅助控制（对齐移动端）：模式 / 音量 -->
+							<div class="nowplaying__secondary">
+								<button
+									class="icon-button icon-only"
+									id="nowplaying-mode"
+									data-testid="nowplaying-mode"
+									title="顺序播放"
+									aria-label="播放模式"
+								>
+									<span class="icon icon--md">repeat</span>
+								</button>
+								<div class="nowplaying__volume">
+									<span class="icon icon--sm">volume_up</span>
+									<input
+										id="nowplaying-volume"
+										data-testid="nowplaying-volume"
+										type="range"
+										min="0"
+										max="100"
+										value="100"
+										aria-label="音量"
+									/>
+								</div>
+							</div>
+						</article>
+
+						<!-- 中卡：歌词 -->
+						<article
+							class="nowplaying__card nowplaying__card--lyrics"
 							id="nowplaying-lyrics-slot"
 							data-testid="nowplaying-lyrics-slot"
-						></div>
+						></article>
 
-						<div
-							class="nowplaying__queue-col"
+						<!-- 右卡：播放队列（可收起） -->
+						<article
+							class="nowplaying__card nowplaying__card--queue"
 							id="nowplaying-queue-column"
 							data-testid="nowplaying-queue-column"
 						>
-							<div class="nowplaying__queue-head">
-								<span>播放队列</span>
-								<span class="muted mono" id="nowplaying-count" data-testid="nowplaying-count"
+							<header class="nowplaying__card-head">
+								<h3 class="nowplaying__card-title">播放队列</h3>
+								<span
+									class="muted mono"
+									id="nowplaying-count"
+									data-testid="nowplaying-count"
 									>0</span
 								>
-							</div>
+							</header>
 							<div
 								class="nowplaying__queue"
 								id="nowplaying-queue-slot"
 								data-testid="nowplaying-queue-slot"
 							></div>
-						</div>
+						</article>
 					</div>
 				</div>
 			</section>

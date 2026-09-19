@@ -41,6 +41,24 @@ function memberTiersAvailable() {
  */
 const isMainlineHost = (url) => !new URL(url).host.includes('mcdn.bilivideo')
 
+/**
+ * 把 B 站的封面 URL 归一化成 HTTPS。
+ *
+ * 渲染进程的 CSP 是 `img-src 'self' data: https:` —— 只允许 HTTPS。
+ * 而 B 站接口返回的 `pic` 字段常常是 **`http://i0.hdslb.com/...`**
+ * 或 **协议相对** `//i0.hdslb.com/...`，两种都会被 CSP 拦下，
+ * 表现是"所有封面都裂成占位符"。
+ *
+ * 所有从 B 站接口出去的封面统一在这里过一遍，
+ * 不要在每个渲染层再各自补救（那是漏网之鱼的温床）。
+ */
+function normalizeCoverUrl(url) {
+	if (!url) return null
+	if (url.startsWith('//')) return `https:${url}`
+	if (url.startsWith('http://')) return `https://${url.slice('http://'.length)}`
+	return url
+}
+
 /** 取视频基本信息（cid / 标题 / 时长） */
 async function getVideoInfo(bvid) {
 	const { bilibiliApiClient } = core
@@ -58,7 +76,7 @@ async function getVideoInfo(bvid) {
 		cid: data.cid,
 		title: data.title,
 		duration: data.duration,
-		cover: data.pic,
+		cover: normalizeCoverUrl(data.pic),
 		owner: data.owner?.name,
 		// 需要 mid 才能把作者落成 `source='bilibili'`
 		// （artists 表有 CHECK 约束：非 local 必须带 remote_id）
@@ -246,7 +264,7 @@ async function searchVideos(keyword, page = 1) {
 			duration: parseDuration(item.duration),
 			/** 原始时长字符串，保留下来便于排查与显示 */
 			durationText: typeof item.duration === 'string' ? item.duration : null,
-			cover: item.pic?.startsWith('//') ? `https:${item.pic}` : item.pic,
+			cover: normalizeCoverUrl(item.pic),
 			play: item.play,
 		}))
 }
@@ -271,7 +289,7 @@ async function listUserSeasons(mid, { pageNum = 1, pageSize = 20 } = {}) {
 		seasonId: entry.meta.season_id,
 		title: entry.meta.name,
 		total: entry.meta.total,
-		cover: entry.meta.cover,
+		cover: normalizeCoverUrl(entry.meta.cover),
 	}))
 }
 
@@ -312,7 +330,7 @@ async function listSeasonArchives(
 				bvid: archive.bvid,
 				aid: archive.aid,
 				title: archive.title,
-				cover: archive.pic,
+				cover: normalizeCoverUrl(archive.pic),
 				duration: archive.duration,
 				pubdate: archive.pubdate,
 				stat: archive.stat,
@@ -355,7 +373,7 @@ async function listFavoriteFolders(mid) {
 		mediaCount: entry.media_count,
 		// 私密收藏夹匿名看不到，登录后才出现在列表里
 		isPrivate: entry.attr !== 0,
-		cover: entry.cover,
+		cover: normalizeCoverUrl(entry.cover),
 		favState: entry.fav_state ?? null,
 	}))
 }
@@ -398,7 +416,7 @@ async function listFavoriteResources(
 				bvid: media.bvid,
 				aid: media.id,
 				title: media.title,
-				cover: media.cover,
+				cover: normalizeCoverUrl(media.cover),
 				duration: media.duration,
 				pubdate: media.pubtime,
 				upperMid: media.upper?.mid != null ? String(media.upper.mid) : null,
@@ -429,4 +447,5 @@ module.exports = {
 	listFavoriteResources,
 	memberTiersAvailable,
 	parseDuration,
+	normalizeCoverUrl,
 }

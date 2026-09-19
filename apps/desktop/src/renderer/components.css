@@ -706,16 +706,25 @@
 	margin-top: 2px;
 }
 
-/* ── 正在播放（阶段 4b）───────────────────────────────── */
+/* ── 正在播放（阶段 4b，2025-09 重做为卡片式三栏）───────────────── */
 /*
- * 移动端的"点迷你播放条展开"落到桌面上就是这一屏：
- * **艺术背景 + 大封面 + 队列**。
+ * ## 设计来源
  *
- * 三件事刻意复用而不是新造：
- *   * 队列是**同一份** DOM（`renderer.js` 的 placeQueue 负责搬运）；
- *   * 封面形状与其他封面一致（圆角正方形，用户明确要求）；
- *   * 播放控制仍然只有播放条那一份 —— 面板里不再放一套按钮，
- *     否则两套按钮的状态同步迟早出问题（而且播放条本来就一直可见）。
+ * 布局对齐**网易云播放页**（用户提供的参考图）：
+ *   左 = 大封面 + 元信息 + 进度 + 主控
+ *   中 = 歌词
+ *   右 = 播放队列（可呼出/收起）
+ *
+ * 视觉对齐**本项目的卡片化语言**（用户要求）：
+ *   每一栏都是一张 `surface-container` 卡片，圆角 24px，
+ *   与设置/音乐库的"功能区卡片"是同一套视觉语言，
+ *   不再是"浮在模糊背景上的孤岛"。
+ *
+ * ## 三件事刻意复用而不是新造
+ *   * 队列 DOM 是**唯一一份**（`renderer.js` 的 placeQueue 负责搬运）；
+ *   * 歌词 DOM 是**唯一一份**（`placeLyrics`）；
+ *   * 播放控制的状态来自 `player.js`（与底部播放条共享 isPlaying / 进度）——
+ *     本卡片里的按钮是**同一组动作的第二个触发点**，不是新播放器。
  */
 .nowplaying {
 	flex: 1 1 auto;
@@ -724,28 +733,29 @@
 	overflow: hidden;
 	display: flex;
 	flex-direction: column;
+	background: var(--surface);
 }
 
 /* 背景：同一张封面放大 + 重度模糊。
-   模糊会让颜色变淡，所以再压一层暗色保证前景可读。 */
+   卡片化之后它只给整页一层色调，不再是"主角"。 */
 .nowplaying__bg {
 	position: absolute;
 	inset: -10%;
 	background-size: cover;
 	background-position: center;
-	filter: blur(48px) saturate(150%);
-	transform: scale(1.15);
-	opacity: 0.55;
+	filter: blur(64px) saturate(140%);
+	transform: scale(1.2);
+	opacity: 0.32;
 	pointer-events: none;
 }
 
 .nowplaying__bg[data-has-art='false'] {
 	background-image: radial-gradient(
-		circle at 30% 20%,
+		circle at 20% 10%,
 		var(--primary) 0%,
-		transparent 60%
+		transparent 55%
 	);
-	opacity: 0.35;
+	opacity: 0.18;
 }
 
 /* 内容层：压在背景之上 */
@@ -757,77 +767,128 @@
 	display: flex;
 	flex-direction: column;
 	padding: var(--sp-md) var(--sp-lg) var(--sp-lg);
+	gap: var(--sp-md);
+}
+
+/* 顶部条：返回 + 标题 + 队列开关
+ *
+ * ⚠️ 不让它跨满整行：跨满整行的话「正在播放」四个字会落在左卡和中卡之间，
+ * 看起来像"没对齐"。改成 flex，标题靠左，与左卡的左边缘对齐。 */
+.nowplaying__topbar {
+	display: flex;
+	align-items: center;
+	gap: var(--sp-sm);
+	flex: none;
+	padding-bottom: var(--sp-xs);
+}
+
+.nowplaying__crumb {
+	flex: 1 1 auto;
+	display: flex;
+	align-items: center;
+	justify-content: flex-start;
+	min-width: 0;
+}
+
+.nowplaying__crumb-label {
+	font-size: var(--fs-title-medium);
+	font-weight: 600;
+	color: var(--on-surface);
+	letter-spacing: 0.02em;
+}
+
+.nowplaying__back {
+	flex: none;
 }
 
 /*
- * ── 三栏（阶段 D）──────────────────────────────────────
- *
- * 对齐**网易云播放页的布局**（用户给的参考图），视觉仍用本项目令牌：
- *   左 = 大封面 + 曲名/歌手   中 = 歌词   右 = 播放队列（可收起）
- *
- * ⚠️ 为什么原来那一版"难看"：它把封面、标题、队列**竖着堆成一列并居中**，
- * 1440px 的窗口里上半屏基本是空的；而且**完全没有歌词** ——
- * 播放页最该出现的东西（歌词）反而只躺在右栏里。
- *
- * 每一栏自己滚动（`overflow-y: auto`），整页不再整体滚动：
- * 长队列与长歌词各滚各的，封面与歌名始终留在原处。
+ * ── 三栏网格 ────────────────────────────────────────────
+ * 对齐网易云：**中栏最宽**（歌词是主角），左右两栏各约 1fr。
+ * 卡片本身就是容器，栏高跟着视口走，不再整体滚动。
  */
 .nowplaying__columns {
 	flex: 1 1 auto;
 	min-height: 0;
 	display: grid;
 	grid-template-columns:
-		minmax(200px, 0.9fr)
-		minmax(240px, 1.4fr)
-		minmax(200px, 0.9fr);
+		minmax(280px, 1fr)
+		minmax(320px, 1.5fr)
+		minmax(260px, 0.95fr);
 	gap: var(--sp-lg);
-	align-items: center;
+	align-items: stretch;
 }
 
-/* 队列那一栏收起时变成两栏（由 renderer.js 切这个类） */
+/* 队列收起 → 两栏，把右栏的空间还给中栏 */
 .nowplaying__columns.is-queue-hidden {
 	grid-template-columns:
-		minmax(220px, 1fr)
-		minmax(260px, 1.6fr);
+		minmax(300px, 1fr)
+		minmax(320px, 1.7fr);
 }
 
-.nowplaying__columns.is-queue-hidden .nowplaying__queue-col {
+.nowplaying__columns.is-queue-hidden .nowplaying__card--queue {
 	display: none;
 }
 
-.nowplaying__left {
-	min-width: 0;
-	display: flex;
-	flex-direction: column;
-	align-items: center;
-}
-
-.nowplaying__lyrics,
-.nowplaying__queue-col {
+/*
+ * 卡片本体（所有栏共用）。
+ *
+ * 与设置/音乐库的"功能区卡片"是**同一套令牌**：
+ * `surface-container` 底 + `--r-xxl`(24px) 圆角 + 内边距。
+ * 不再让内容"浮在模糊背景上" —— 那是上一版看起来"潦草"的根因。
+ */
+.nowplaying__card {
 	min-height: 0;
-	max-height: 100%;
-	overflow-y: auto;
-}
-
-.nowplaying__queue-col {
 	display: flex;
 	flex-direction: column;
+	padding: var(--sp-lg);
+	background: var(--surface-container);
+	border-radius: var(--r-xxl);
+	box-shadow: 0 2px 12px rgb(0 0 0 / 8%);
+	overflow: hidden;
 }
 
-.nowplaying__back {
-	align-self: flex-start;
+.nowplaying__card-head {
+	flex: none;
+	display: flex;
+	align-items: baseline;
+	justify-content: space-between;
+	padding-bottom: var(--sp-sm);
+	border-bottom: 1px solid var(--outline-variant);
+	margin-bottom: var(--sp-sm);
+}
+
+.nowplaying__card-title {
+	margin: 0;
+	font-size: var(--fs-title-medium);
+	font-weight: 600;
+	color: var(--on-surface);
+}
+
+/* 左卡：封面 + 元信息 + 进度 + 主控（垂直堆叠）
+ *
+ * ⚠️ 不要 `space-between`：那会把封面顶到卡片顶、音量推到卡片底，
+ * 中间元素散成一串孤岛（截图里看起来"没排完"）。
+ * 用 `flex-start` 堆叠 + `margin-top: auto` 把辅助控制推到底部：
+ * 上半屏是封面与标题（视觉主角），下半屏是播放控制（操作区），边界清楚。
+ */
+.nowplaying__card--left {
+	align-items: center;
+	justify-content: flex-start;
+	gap: var(--sp-md);
+	text-align: center;
+	padding: var(--sp-xl) var(--sp-lg);
 }
 
 /*
  * 大封面。
  *
- * ⚠️ **圆角正方形**，不是圆形 —— 用户明确要求过
- * 「封面缩略图和曲绘封面都要是圆角的正方形」。
- * 圆角用 `--r-xxl`(24px)：尺寸越大圆角越显眼，24px 在 240px 的方块上
- * 刚好是"圆角方形"而不是"接近圆"。
+ * ⚠️ **圆角正方形**（用户明确要求），`--r-xxl` 24px。
+ * 卡片化之后封面才是视觉主角，但**不能占满整卡** —— 上一版 280px
+ * 让进度条与按钮挤到卡片下沿，看起来像"没排完"。
+ * 改成 `min(240px, 32vh)`：保留视觉冲击，同时给下方控件留出呼吸空间。
  */
 .nowplaying__art {
-	width: min(240px, 34vh);
+	width: min(240px, 32vh);
 	aspect-ratio: 1;
 	flex: none;
 	display: grid;
@@ -836,7 +897,7 @@
 	border-radius: var(--r-xxl);
 	background: var(--surface-container-highest);
 	color: var(--on-surface-variant);
-	box-shadow: 0 12px 40px rgb(0 0 0 / 32%);
+	box-shadow: 0 8px 24px rgb(0 0 0 / 20%);
 }
 
 .nowplaying__art img {
@@ -846,46 +907,183 @@
 	display: block;
 }
 
+.nowplaying__meta {
+	flex: none;
+	min-width: 0;
+	max-width: 100%;
+}
+
 /*
- * ⚠️ 这里**不能**用 display: -webkit-box 搭配 -webkit-line-clamp 做多行省略。
- *
- * .nowplaying__inner 是 flex 容器，而**弹性项会被 blockify**：
- * display: -webkit-box 被算成 flow-root，line-clamp 随之失效，
- * 标题高度塌成 **0** —— 文字在 DOM 里、字号和颜色都对，就是**看不见**。
- * 是靠巡检的体检表量出高度 0 才定位到的（光看截图只看到"这里缺一行"）。
+ * ⚠️ 不能用 display: -webkit-box + line-clamp：
+ * flex 父级会把它 blockify 成 flow-root，line-clamp 失效，
+ * 标题高度塌成 0（这个仓库踩过，用 `overflow-wrap` 代替）。
  */
 .nowplaying__title {
-	margin: var(--sp-sm) 0 0;
+	margin: 0 0 var(--sp-xs);
 	font-size: var(--fs-title-large);
 	font-weight: 600;
 	line-height: var(--lh-title-large);
-	text-align: center;
-	max-width: 720px;
-	/* 长标题自动换行、不截断 —— 标题是这一屏的主角 */
 	overflow-wrap: anywhere;
+	color: var(--on-surface);
 }
 
 .nowplaying__artist {
 	margin: 0;
 	font-size: var(--fs-body-large);
-	text-align: center;
+	color: var(--on-surface-variant);
 }
 
-.nowplaying__queue-head {
+/* 进度条 */
+.nowplaying__progress {
+	flex: none;
 	width: 100%;
-	max-width: 720px;
+	display: grid;
+	grid-template-columns: auto 1fr auto;
+	align-items: center;
+	gap: var(--sp-sm);
+	font-size: var(--fs-body-small);
+	color: var(--on-surface-variant);
+}
+
+.nowplaying__progress input[type='range'] {
+	width: 100%;
+	accent-color: var(--primary);
+}
+
+/* 主控制：上一首 / 播放 / 下一首（对齐移动端） */
+.nowplaying__controls {
+	flex: none;
 	display: flex;
-	align-items: baseline;
+	align-items: center;
+	justify-content: center;
+	gap: var(--sp-lg);
+}
+
+/*
+ * 中间那颗主按钮：**filled 大圆按钮**（对齐移动端 96px 的主按钮，
+ * 桌面端缩到 64px），是整张左卡的视觉重心。
+ */
+.nowplaying__play {
+	width: 64px;
+	height: 64px;
+	border: none;
+	border-radius: 50%;
+	background: var(--primary);
+	color: var(--on-primary);
+	display: grid;
+	place-items: center;
+	cursor: pointer;
+	box-shadow: 0 4px 16px rgb(0 0 0 / 24%);
+	transition:
+		transform var(--motion-duration-fast) ease,
+		box-shadow var(--motion-duration-fast) ease;
+}
+
+.nowplaying__play:hover {
+	transform: scale(1.04);
+	box-shadow: 0 6px 20px rgb(0 0 0 / 28%);
+}
+
+.nowplaying__play:active {
+	transform: scale(0.98);
+}
+
+/* 辅助控制：模式 + 音量（对齐移动端的二级按钮行）
+ * `margin-top: auto` 把它推到底部，与上方的播放控制拉开。 */
+.nowplaying__secondary {
+	flex: none;
+	width: 100%;
+	display: flex;
+	align-items: center;
 	justify-content: space-between;
-	margin-top: var(--sp-md);
-	padding: 0 var(--sp-xs);
-	font-size: var(--fs-title-medium);
-	font-weight: 600;
+	gap: var(--sp-md);
+	margin-top: auto;
+}
+
+.nowplaying__volume {
+	flex: 1 1 auto;
+	display: flex;
+	align-items: center;
+	gap: var(--sp-xs);
+	max-width: 200px;
+	color: var(--on-surface-variant);
+}
+
+.nowplaying__volume input[type='range'] {
+	flex: 1 1 auto;
+	accent-color: var(--primary);
+}
+
+/* 中卡：歌词（占满整卡，工具条从右栏搬过来时自然落底） */
+.nowplaying__card--lyrics {
+	padding: 0; /* 歌词面板自带 padding，外层卡片不再叠加 */
+}
+
+/*
+ * 歌词面板被搬进中卡后，内部结构：
+ *   头部（行号 + 偏移控件）→ 顶部
+ *   内容（歌词列表 / 空状态）→ 中间垂直居中
+ *   工具条（重新匹配 / 独立窗口）→ 底部
+ *
+ * 原右栏里这三段是"顶对齐堆叠"，直接搬过来会显得**上面满、下面空**。
+ */
+.nowplaying__card--lyrics > .panel {
+	flex: 1 1 auto;
+	min-height: 0;
+	display: flex;
+	flex-direction: column;
+}
+
+.nowplaying__card--lyrics .lyrics-panel {
+	flex: 1 1 auto;
+	min-height: 0;
+	background: transparent; /* 让外层卡片底色透出来 */
+	display: flex;
+	flex-direction: column;
+}
+
+/*
+ * 歌词滚动区（含列表或空状态）：
+ * 空状态时内容垂直居中（歌词为空时提示不要顶在上面）；
+ * 有歌词时保持自然流（大量歌词从顶部开始排）。
+ */
+.nowplaying__card--lyrics .lyrics-panel__scroll {
+	flex: 1 1 auto;
+	min-height: 0;
+	display: flex;
+	flex-direction: column;
+}
+
+.nowplaying__card--lyrics .lyrics-panel__empty {
+	flex: 1 1 auto;
+	display: flex;
+	flex-direction: column;
+	justify-content: center;
+	align-items: center;
+	min-height: 0;
+}
+
+/* 歌词面板的工具条（重新匹配 / 独立窗口 / 状态）贴卡片底部 */
+.nowplaying__card--lyrics .lyrics-toolbar {
+	flex: none;
+	justify-content: center;
+	padding: var(--sp-sm) var(--sp-md);
+	border-top: 1px solid var(--outline-variant);
+	margin-top: auto;
+	gap: var(--sp-sm);
+	flex-wrap: wrap;
+}
+
+/* 右卡：播放队列（卡片头部 + 队列滚动区） */
+.nowplaying__card--queue {
+	padding: var(--sp-md);
+	gap: 0;
 }
 
 .nowplaying__queue {
-	width: 100%;
-	max-width: 720px;
+	flex: 1 1 auto;
+	min-height: 0;
+	overflow-y: auto;
 }
 
 /* 播放条的封面与标题区可点：展开「正在播放」（阶段 4b） */

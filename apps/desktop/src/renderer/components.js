@@ -28,6 +28,24 @@
 	}
 
 	/**
+	 * 把封面 URL 归一化成 HTTPS。
+	 *
+	 * 渲染进程的 CSP 是 `img-src 'self' data: https:`，而 B 站接口的 `pic`
+	 * 字段常常是 `http://i0.hdslb.com/...` —— 数据库里也可能已经存了这种
+	 * 历史值（在 `bilibili-api.cjs` 修好之前落库的）。
+	 *
+	 * **渲染层兜底**：API 层已经归一化新数据，这里是给旧数据与任何漏网
+	 * 之鱼的最后一道防线。所有要塞进 `<img src>` 的封面统一从这里过。
+	 */
+	function coverSrc(url) {
+		if (!url) return null
+		if (url.startsWith('//')) return `https:${url}`
+		if (url.startsWith('http://'))
+			return `https://${url.slice('http://'.length)}`
+		return url
+	}
+
+	/**
 	 * 按名字算一个稳定的色相（0–359）。
 	 *
 	 * 收藏夹没有封面，移动端的做法是**首字 + 渐变底色**。颜色必须**稳定**：
@@ -70,7 +88,7 @@
 
 		if (coverUrl) {
 			const img = document.createElement('img')
-			img.src = coverUrl
+			img.src = coverSrc(coverUrl)
 			img.alt = ''
 			img.loading = 'lazy'
 			// 封面加载失败时**退回首字**，而不是留一个破图图标
@@ -473,6 +491,7 @@
 		icon,
 		iconHtml,
 		hueOf,
+		coverSrc,
 		art,
 		listRow,
 		mediaCard,
