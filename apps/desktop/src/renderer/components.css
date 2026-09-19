@@ -259,11 +259,43 @@
 	flex: none;
 }
 
+/*
+ * 设置分类列表。
+ *
+ * 阶段 6b 之后它整个在卡片里，所以这里**不再需要自己的内外边距**
+ * （卡片已经给了 `--sp-md`）。原来那个 `padding: 0 var(--sp-sm) var(--sp-lg)`
+ * 会在卡片里再缩一圈、底部还多留一大截。
+ */
 .settings-categories {
 	display: flex;
 	flex-direction: column;
-	gap: 2px;
-	padding: 0 var(--sp-sm) var(--sp-lg);
+	/* 行紧贴，让分隔线正好落在两行之间；靠线分隔而不是靠间隙 */
+	gap: 0;
+	padding: 0;
+}
+
+/*
+ * 行与行之间的**内缩分隔线**。
+ *
+ * 安卓端的设置列表是"卡片内按行分隔"，而且分隔线**内缩到内容**
+ * （不顶到卡片边缘、也不顶到行首的图标）。
+ *
+ * ⚠️ 用 `::before` 而不是 `border-top`：border 会横跨整行宽度
+ * （包括行的左右内边距），视觉上就变成了一条通栏线 —— 那正是
+ * 阶段 6b 要消灭的东西。`::before` 才能做到左右都内缩。
+ */
+.settings-categories .list-row {
+	position: relative;
+}
+
+.settings-categories .list-row + .list-row::before {
+	content: '';
+	position: absolute;
+	top: 0;
+	left: var(--sp-sm);
+	right: var(--sp-sm);
+	height: 1px;
+	background: var(--outline-variant);
 }
 
 /*
