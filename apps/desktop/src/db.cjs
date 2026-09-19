@@ -365,10 +365,41 @@ function getPlaylist(id) {
 }
 
 function listPlaylists() {
-	// playlists 本身没有 sort_key（那是 playlist_tracks 的列），按置顶 + 创建时间排
+	/*
+	 * playlists 本身没有 sort_key（那是 playlist_tracks 的列），按置顶 + 创建时间排。
+	 *
+	 * ⚠️ `cover_url` 用 `COALESCE(自己的, 第一首曲目的)`：
+	 * 用户要求"没设封面就默认用**第一个视频**的封面"。
+	 * * "第一个视频" = 播放列表里显示在最上面的那一首 —— 本仓库的约定是
+	 *   `sort_key` **越大越靠前**（见 `getPlaylistTracks` 的 `ORDER BY sort_key DESC`），
+	 *   所以子查询取 `sort_key DESC LIMIT 1`。
+	 * * 自己设过封面就以自己的为准（自定义优先于默认）。
+	 */
 	return sqlite.getAllSync(
-		'SELECT * FROM playlists ORDER BY is_pinned DESC, created_at DESC',
+		`SELECT p.*,
+		        COALESCE(
+		          p.cover_url,
+		          (SELECT t.cover_url
+		             FROM playlist_tracks pt
+		             JOIN tracks t ON t.id = pt.track_id
+		            WHERE pt.playlist_id = p.id
+		              AND t.cover_url IS NOT NULL
+		              AND t.cover_url != ''
+		            ORDER BY pt.sort_key DESC
+		            LIMIT 1)
+		        ) AS cover_url
+		   FROM playlists p
+		  ORDER BY p.is_pinned DESC, p.created_at DESC`,
 	)
+}
+
+/** 设置 / 清除歌单封面（`coverUrl = null` 即恢复默认 = 第一首曲目的封面） */
+function setPlaylistCover(playlistId, coverUrl) {
+	const result = sqlite.runSync(
+		'UPDATE playlists SET cover_url = ?, updated_at = ? WHERE id = ?',
+		[coverUrl ?? null, Date.now(), playlistId],
+	)
+	return Number(result?.changes ?? 0) > 0
 }
 
 /** 插入一首 B 站曲目（含 bilibili_metadata），已存在则返回既有记录 */
@@ -1174,6 +1205,7 @@ module.exports = {
 	listPlayHistoryByDate,
 	updateTrackCoverByBvid,
 	listTracksMissingCover,
+	setPlaylistCover,
 	listPlayHistoryForDay,
 	getTrackPlayStats,
 	getPlayHistorySummary,

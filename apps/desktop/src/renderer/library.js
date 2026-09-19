@@ -526,6 +526,8 @@
 		// 共享视图是常驻节点，从它切回来（例如直接搜索、点左栏歌单）时要显式让位
 		if (!embedded) window.bbUI?.showContent?.()
 
+		const removal = removalContext(tracks.length)
+
 		if (!embedded) {
 			const head = document.createElement('div')
 			head.className = 'view-head'
@@ -552,10 +554,45 @@
 			meta.className = 'muted'
 			meta.textContent = `${tracks.length} 首`
 			head.appendChild(meta)
+
+			/*
+			 * 歌单详情右上角的「更多」（阶段 C-2d 起）。
+			 *
+			 * 用户确认：自定义封面的入口放在**这里**（对齐安卓端 —— 本地歌单详情
+			 * 右上角本来就有「更多」）。以后新增的歌单级动作（重命名/排序/共享…）
+			 * 也都进这个菜单，不要再往页面上加按钮。
+			 *
+			 * 只有"正在看一个真实的歌单"时才给 —— 搜索结果、欢迎视图没有歌单可操作。
+			 */
+			if (window.bbState.get().view === 'playlist' && removal.playlistId) {
+				const playlistId = removal.playlistId
+				const more = document.createElement('button')
+				more.className = 'icon-only icon-button'
+				more.dataset.testid = 'playlist-more'
+				more.title = '更多'
+				more.setAttribute('aria-label', '更多操作')
+				more.innerHTML = window.bbComponents.iconHtml('more_vert', 'icon--md')
+				more.addEventListener('click', () => {
+					window.bbComponents.menu(more, [
+						{
+							label: '设置封面…',
+							icon: 'palette',
+							testid: 'playlist-set-cover',
+							onSelect: () => void pickPlaylistCover(playlistId),
+						},
+						{
+							label: '恢复默认封面',
+							icon: 'restart_alt',
+							testid: 'playlist-clear-cover',
+							onSelect: () => void clearPlaylistCover(playlistId),
+						},
+					])
+				})
+				head.appendChild(more)
+			}
 			container.appendChild(head)
 		}
 
-		const removal = removalContext(tracks.length)
 		if (!embedded && removal.readOnly) {
 			const note = document.createElement('p')
 			note.className = 'muted share-hint'
@@ -984,6 +1021,46 @@
 			setStatus(error.message, 'bad')
 		} finally {
 			if (button.isConnected) button.disabled = false
+		}
+	}
+
+	/**
+	 * 设置歌单封面（阶段 C-2d）：弹系统文件框选本地图片。
+	 *
+	 * 主进程会把图**复制**进数据目录并写 `playlists.cover_url`
+	 * （`bbplayer-cover://…`），这里只负责刷新界面 —— 侧栏与卡片网格的封面
+	 * 都来自 `listPlaylists()`，所以刷新一次就都跟上了。
+	 */
+	async function pickPlaylistCover(playlistId) {
+		try {
+			const result = await window.bbplayer.pickPlaylistCover(playlistId)
+			if (result?.ok === false) {
+				setStatus(`设置封面失败：${result.error}`, 'bad')
+				return
+			}
+			// 用户在系统文件框里按了取消 —— 不是错误，也不必提示
+			if (result?.data?.canceled) return
+			await refreshPlaylists()
+			await openPlaylist(playlistId)
+			setStatus('封面已更新', 'ok')
+		} catch (error) {
+			setStatus(error.message, 'bad')
+		}
+	}
+
+	/** 恢复默认封面（= 列表里第一首曲目的封面） */
+	async function clearPlaylistCover(playlistId) {
+		try {
+			const result = await window.bbplayer.clearPlaylistCover(playlistId)
+			if (result?.ok === false) {
+				setStatus(`恢复失败：${result.error}`, 'bad')
+				return
+			}
+			await refreshPlaylists()
+			await openPlaylist(playlistId)
+			setStatus('已恢复默认封面', 'ok')
+		} catch (error) {
+			setStatus(error.message, 'bad')
 		}
 	}
 

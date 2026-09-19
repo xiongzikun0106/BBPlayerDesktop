@@ -165,6 +165,18 @@ protocol.registerSchemesAsPrivileged([
 			corsEnabled: true,
 		},
 	},
+	{
+		// 歌单自定义封面（阶段 C-2d）：页面不能读本地文件，
+		// 所以由主进程持文件、用这个协议把图片回给页面（见 cover-store.cjs）
+		scheme: 'bbplayer-cover',
+		privileges: {
+			standard: true,
+			secure: true,
+			supportFetchAPI: true,
+			bypassCSP: true,
+			corsEnabled: true,
+		},
+	},
 ])
 
 let mainWindow = null
@@ -402,6 +414,13 @@ void app.whenReady().then(() => {
 	// 协议处理器：所有 bbplayer-audio:// 请求都走主进程代理。
 	// ⚠️ 必须在 createWindow() 之前注册，否则会静默失效（实测）。
 	protocol.handle('bbplayer-audio', handleAudioRequest)
+
+	// 歌单自定义封面的协议（同样的理由：页面不能碰文件系统）
+	const {
+		SCHEME: COVER_SCHEME,
+		handleCoverRequest,
+	} = require('./cover-store.cjs')
+	protocol.handle(COVER_SCHEME, handleCoverRequest)
 
 	// 数据库：建库（幂等）
 	const { registerIpcHandlers, ensureDatabase } = require('./ipc-handlers.cjs')

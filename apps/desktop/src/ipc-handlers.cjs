@@ -7,10 +7,11 @@
 const path = require('node:path')
 const fs = require('node:fs')
 
-const { ipcMain, nativeTheme, BrowserWindow } = require('electron')
+const { ipcMain, nativeTheme, BrowserWindow, dialog } = require('electron')
 
 const bilibiliApi = require('./bilibili-api.cjs')
 const db = require('./db.cjs')
+const coverStore = require('./cover-store.cjs')
 const {
 	requestLog,
 	resolveAudio,
@@ -214,6 +215,47 @@ function registerIpcHandlers() {
 		try {
 			const items = await bilibiliApi.searchVideos(keyword)
 			return { ok: true, data: items }
+		} catch (error) {
+			return { ok: false, error: error.message }
+		}
+	})
+
+	/**
+	 * 歌单自定义封面（阶段 C-2d）：弹系统文件选择框 → 复制进数据目录 → 写库。
+	 *
+	 * 用户确认的方案是**从本地选图**。选中的图会被**复制**进 `<数据目录>/covers/`
+	 * （而不是记住原路径：用户把原图删掉/移走之后，封面就会变成破图），
+	 * 返回 `bbplayer-cover://…` 给渲染层直接当 `src` 用。
+	 */
+	ipcMain.handle('playlist:pickCover', async (_event, playlistId) => {
+		try {
+			const picked = await dialog.showOpenDialog({
+				title: '选择歌单封面',
+				properties: ['openFile'],
+				filters: [
+					{
+						name: '图片',
+						extensions: ['png', 'jpg', 'jpeg', 'webp', 'gif', 'bmp'],
+					},
+				],
+			})
+			if (picked.canceled || picked.filePaths.length === 0) {
+				return { ok: true, data: { canceled: true } }
+			}
+			const url = coverStore.saveCoverFromFile(playlistId, picked.filePaths[0])
+			db.setPlaylistCover(playlistId, url)
+			return { ok: true, data: { canceled: false, coverUrl: url } }
+		} catch (error) {
+			return { ok: false, error: error.message }
+		}
+	})
+
+	/** 恢复默认封面（= 第一首曲目的封面） */
+	ipcMain.handle('playlist:clearCover', (_event, playlistId) => {
+		try {
+			coverStore.removeCoverFiles(playlistId)
+			db.setPlaylistCover(playlistId, null)
+			return { ok: true, data: { cleared: true } }
 		} catch (error) {
 			return { ok: false, error: error.message }
 		}

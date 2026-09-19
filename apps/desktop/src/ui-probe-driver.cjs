@@ -3921,6 +3921,169 @@ async function run(window) {
 	// 收尾：把桩还原（这一段是套件最后一段，还原只是为了"别把状态留脏"）
 	bilibiliApi.getVideoInfo = realGetVideoInfo
 
+	// ---------------------------------------------------------------
+	// 14. 歌单自定义封面（阶段 C-2d）
+	// ---------------------------------------------------------------
+	//
+	// 用户确认的方案：**从本地选图**（入口在歌单详情右上角的「更多」菜单里），
+	// 而且「没设就默认第一个视频的封面」。
+	//
+	// 这条要证明三件事（缺一件功能就是残的）：
+	//   1. **默认回落**：没设封面时显示的是**第一首**曲目的封面；
+	//   2. **自定义生效**：选了图之后库里存 `bbplayer-cover://…`；
+	//   3. **自定义协议真的能把图给页面** —— 最容易"看着对、其实读不出"的一环
+	//      （CSP / 协议特权 / 路径校验任一处理错，<img> 就是空的）。
+	//      所以直接建一个 Image 指向它，等 load 且 naturalWidth > 0。
+	console.log('\n[ui] 14) 歌单自定义封面')
+	const os = require('node:os')
+	const probeCoverPath = path.join(os.tmpdir(), 'bbplayer-probe-cover.png')
+	fs.writeFileSync(
+		probeCoverPath,
+		Buffer.from(
+			'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8AAAwAB/AGtE0kAAAAASUVORK5CYII=',
+			'base64',
+		),
+	)
+	const { dialog } = require('electron')
+	// ⚠️ 存一份**绑定过**的原函数：直接存 `dialog.showOpenDialog` 会被 lint 判为
+	// "未绑定的方法引用"（`unbound-method`），而绑定后还原的行为完全一样
+	const realShowOpenDialog = dialog.showOpenDialog.bind(dialog)
+	dialog.showOpenDialog = async () => ({
+		canceled: false,
+		filePaths: [probeCoverPath],
+	})
+
+	const coverPlaylist = JSON.parse(
+		await evaluate(
+			window,
+			`(async () => {
+				const created = await window.bbplayer.createPlaylist({ title: '探针封面歌单2' })
+				const playlistId = created?.data?.id ?? created?.data?.playlist?.id ?? null
+				if (playlistId == null) return JSON.stringify({ failed: 'create' })
+				await window.bbplayer.addTracksToPlaylist({
+					playlistId,
+					tracks: [
+						{ bvid: 'BVfirstcover1', title: '第一首（有封面）', cover: 'https://probe.invalid/first.jpg', duration: 100 },
+						{ bvid: 'BVsecondcover', title: '第二首', cover: 'https://probe.invalid/second.jpg', duration: 100 },
+					],
+				})
+				const list = await window.bbplayer.listPlaylists()
+				const row = (list?.data ?? []).find((p) => p.id === playlistId)
+				return JSON.stringify({ playlistId, defaultCover: row?.cover_url ?? null })
+			})()`,
+		),
+	)
+	check(
+		'没设封面时默认回落**第一首**曲目的封面（不是第二首、也不是空）',
+		String(coverPlaylist.defaultCover ?? '').includes('first.jpg'),
+		String(coverPlaylist.defaultCover),
+	)
+
+	await evaluate(
+		window,
+		`window.bbLibrary.openPlaylist(${JSON.stringify(coverPlaylist.playlistId)})`,
+	)
+	await sleep(1500)
+	const moreMenu = JSON.parse(
+		await evaluate(
+			window,
+			`(async () => {
+				const more = document.querySelector('[data-testid="playlist-more"]')
+				if (!more) return JSON.stringify({ hasMore: false })
+				more.click()
+				await new Promise((r) => setTimeout(r, 250))
+				const items = [...document.querySelectorAll('.menu__item')].map(
+					(node) => node.textContent.trim(),
+				)
+				window.bbComponents.closeMenu()
+				return JSON.stringify({ hasMore: true, items })
+			})()`,
+		),
+	)
+	check(
+		'歌单详情右上角有「更多」，含「设置封面…」与「恢复默认封面」',
+		moreMenu.hasMore &&
+			moreMenu.items.some((t) => t.includes('设置封面')) &&
+			moreMenu.items.some((t) => t.includes('恢复默认')),
+		JSON.stringify(moreMenu),
+	)
+
+	// 点「设置封面…」→ 主进程弹框（已桩）→ 复制进数据目录 → 写库
+	await evaluate(
+		window,
+		`(async () => {
+			document.querySelector('[data-testid="playlist-more"]').click()
+			await new Promise((r) => setTimeout(r, 300))
+			document.querySelector('[data-testid="playlist-set-cover"]').click()
+			await new Promise((r) => setTimeout(r, 1500))
+			return true
+		})()`,
+	)
+	await sleep(1500)
+	const readCover = async () =>
+		JSON.parse(
+			await evaluate(
+				window,
+				`(async () => {
+					const list = await window.bbplayer.listPlaylists()
+					const row = (list?.data ?? []).find((p) => p.id === ${JSON.stringify(coverPlaylist.playlistId)})
+					return JSON.stringify({ coverUrl: row?.cover_url ?? null })
+				})()`,
+			),
+		)
+	const customCover = await readCover()
+	check(
+		'选图之后库里存的是自定义封面（bbplayer-cover://…）',
+		String(customCover.coverUrl ?? '').startsWith('bbplayer-cover://'),
+		String(customCover.coverUrl),
+	)
+
+	// ⚠️ 最关键的一条：这个自定义协议**真的**能把图给页面吗？
+	const protocolWorks = JSON.parse(
+		await evaluate(
+			window,
+			`(async () => {
+				const list = await window.bbplayer.listPlaylists()
+				const row = (list?.data ?? []).find((p) => p.id === ${JSON.stringify(coverPlaylist.playlistId)})
+				const url = row?.cover_url ?? ''
+				if (!url) return JSON.stringify({ loaded: false, reason: 'no url' })
+				const img = new Image()
+				const loaded = await new Promise((resolve) => {
+					img.onload = () => resolve(true)
+					img.onerror = () => resolve(false)
+					img.src = url
+					setTimeout(() => resolve(false), 4000)
+				})
+				return JSON.stringify({ loaded, naturalWidth: img.naturalWidth })
+			})()`,
+		),
+	)
+	check(
+		'自定义协议真的能把封面图喂给页面（图片解码成功）',
+		protocolWorks.loaded === true && protocolWorks.naturalWidth > 0,
+		JSON.stringify(protocolWorks),
+	)
+
+	// 恢复默认 → 又回到第一首曲目的封面
+	await evaluate(
+		window,
+		`(async () => {
+			document.querySelector('[data-testid="playlist-more"]').click()
+			await new Promise((r) => setTimeout(r, 300))
+			document.querySelector('[data-testid="playlist-clear-cover"]').click()
+			await new Promise((r) => setTimeout(r, 1500))
+			return true
+		})()`,
+	)
+	await sleep(1500)
+	const restored = await readCover()
+	check(
+		'「恢复默认封面」之后又回到第一首曲目的封面',
+		String(restored.coverUrl ?? '').includes('first.jpg'),
+		String(restored.coverUrl),
+	)
+	dialog.showOpenDialog = realShowOpenDialog
+
 	return finish(window)
 }
 

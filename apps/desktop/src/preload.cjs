@@ -29,6 +29,12 @@ contextBridge.exposeInMainWorld('bbplayer', {
 	/** 把曲目加入歌单（阶段 6c）；重复项被静默忽略，返回 {added,skipped,total} */
 	addTracksToPlaylist: (payload) =>
 		ipcRenderer.invoke('db:addTracksToPlaylist', payload),
+	/** 歌单自定义封面：弹系统文件框选图，复制进数据目录并写库（阶段 C-2d） */
+	pickPlaylistCover: (playlistId) =>
+		ipcRenderer.invoke('playlist:pickCover', playlistId),
+	/** 恢复默认封面（= 第一首曲目的封面） */
+	clearPlaylistCover: (playlistId) =>
+		ipcRenderer.invoke('playlist:clearCover', playlistId),
 
 	// ---------- B 站 ----------
 	search: (keyword) => ipcRenderer.invoke('bili:search', keyword),
