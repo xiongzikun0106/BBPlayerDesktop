@@ -501,6 +501,14 @@ Temp\  AppData\  /tmp/
 
 ### 6.1 阶段 6 进展
 
-阶段 6 的实施进度、每项的根因与提交号、以及**尚未完成的清单**，
-记在 [`DESKTOP_UI_PLAN_STAGE6_PROGRESS.md`](./DESKTOP_UI_PLAN_STAGE6_PROGRESS.md)。
+阶段 6 的实施进度、每项的根因与提交号，记在
+[`DESKTOP_UI_PLAN_STAGE6_PROGRESS.md`](./DESKTOP_UI_PLAN_STAGE6_PROGRESS.md)。
 施工单与两份安卓端代码研究报告在 [`DESKTOP_UI_PLAN_STAGE6.md`](./DESKTOP_UI_PLAN_STAGE6.md)。
+
+**用户清单里的 16 项已全部落地**（结构/视觉 1、8、9、11；功能 4a、4b、5、7、
+12/13、14、15；内核 16；细节 2、3、6、10）。桌面歌词按用户要求留到以后版本。
+
+两类"知道但故意没做"的事也记在那个进展文件里：
+「近期歌单」实际是「最近**修改**过的歌单」（改成真·最近播放要新建表 + 播放埋点），
+以及根 `oxlint.config.mts` 把所有 `.js` 排除、导致渲染进程从未被 lint
+（改它会影响移动端，属待用户拍板的决策）。

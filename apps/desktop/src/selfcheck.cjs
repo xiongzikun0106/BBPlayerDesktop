@@ -201,6 +201,27 @@ async function run(window, { app }) {
 							(icon.getBoundingClientRect().width / size) * 100,
 						)
 					})(),
+					/*
+					 * 热力图是**新的渲染进程模块**（renderer/heatmap.js）。
+					 *
+					 * ⚠️ 必须显式断言它存在：调用点写的是
+					 * window.bbHeatmap?.render(...)（可选链），
+					 * 漏打包时**不会报错、不会崩**，主页只是少一块 ——
+					 * 与图标字体那条是同一类风险（新资源 + 静默降级）。
+					 */
+					heatmapReady: typeof window.bbHeatmap?.render === 'function',
+					heatmapCells: (() => {
+						if (typeof window.bbHeatmap?.render !== 'function') return -1
+						const box = document.createElement('div')
+						box.style.width = '900px'
+						document.body.appendChild(box)
+						try {
+							window.bbHeatmap.render(box, { '2026-01-01': 4 })
+							return box.querySelectorAll('.heatmap__cell').length
+						} finally {
+							box.remove()
+						}
+					})(),
 				}))()`,
 				true,
 			)
@@ -247,6 +268,13 @@ async function run(window, { app }) {
 				'图标渲染成单个字形（合字生效）',
 				typeof renderer.iconGlyphs === 'number' && renderer.iconGlyphs <= 180,
 				`宽度/字号 = ${renderer.iconGlyphs}%（≤180 视为单个字形）`,
+			)
+			// 新的渲染进程模块也要在产物里真的可用 —— 调用点是可选链，
+			// 漏打包不会报错，主页只会**少一块**（静默降级）
+			record(
+				'热力图模块已随产物打包且能画出网格',
+				renderer.heatmapReady === true && renderer.heatmapCells > 300,
+				`ready=${renderer.heatmapReady}，格子 ${renderer.heatmapCells} 个`,
 			)
 			// 自检模式本身属于探针模式，所以 bbProbe **应该**存在
 			record(
