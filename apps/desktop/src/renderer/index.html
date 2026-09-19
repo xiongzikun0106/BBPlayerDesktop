@@ -941,6 +941,23 @@
 					</p>
 
 					<!--
+						关于页的主操作：去仓库看看。
+						用户复审时提的「预留个点击前往 github 的按钮」。
+						⚠️ 链接走 `bbplayer.openExternal`，主进程有**白名单**校验 ——
+						不给它拼任意 URL 的能力。
+					-->
+					<div class="row-actions">
+						<button
+							class="btn--filled"
+							id="settings-about-github"
+							data-testid="settings-about-github"
+						>
+							<span class="icon icon--sm">open_in_new</span>
+							<span>前往 GitHub</span>
+						</button>
+					</div>
+
+					<!--
 						「诊断信息」是**实现细节唯一的去处**（阶段 0 定下的规矩）。
 						主流程里不出现密钥环 / 明文 / 格式 / 绝对路径这些东西：
 						用户不需要在保存密码的同一屏里读到「未加密存储」，

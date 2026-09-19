@@ -830,6 +830,37 @@ function registerIpcHandlers() {
 	})
 
 	/**
+	 * 用**系统默认浏览器**打开一个链接（关于页的「前往 GitHub」）。
+	 *
+	 * ⚠️ 必须带**白名单**：这个 handler 会拉起系统浏览器，
+	 * 而它接收的是渲染进程传来的字符串。不加限制的话，
+	 * 一个被注入的渲染脚本就能让用户弹出任意 URL
+	 * （钓鱼页、`file:` 协议、自定义协议拉起别的应用…）。
+	 *
+	 * 白名单只放**确实需要外链**的几个站，且强制 https。
+	 * 以后要加外链，往这里加 —— 不要在渲染进程里拼 URL 绕过它。
+	 */
+	const EXTERNAL_ALLOWLIST = [
+		'https://github.com/xiongzikun0106/BBPlayerDesktop',
+		'https://github.com/xiongzikun0106/BBPlayer',
+	]
+	ipcMain.handle('app:openExternal', (_event, url) => {
+		try {
+			const target = String(url ?? '')
+			const allowed = EXTERNAL_ALLOWLIST.some(
+				// 允许带路径（如 /releases、/issues），但**不允许**换域名或换协议
+				(prefix) => target === prefix || target.startsWith(`${prefix}/`),
+			)
+			if (!allowed) throw new Error('这个链接不在允许打开的名单里')
+			const { shell } = require('electron')
+			void shell.openExternal(target)
+			return { ok: true, data: { opened: target } }
+		} catch (error) {
+			return { ok: false, error: error.message }
+		}
+	})
+
+	/**
 	 * 诊断信息：**实现细节唯一的去处**。
 	 *
 	 * 主流程里不出现「密钥环 / 明文 / 格式 / 绝对路径」，但用户有权在自己想看的

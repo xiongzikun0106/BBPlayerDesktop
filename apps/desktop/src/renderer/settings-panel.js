@@ -1182,6 +1182,25 @@
 	document
 		.getElementById('settings-general-open-folder')
 		?.addEventListener('click', () => void window.bbplayer.backupOpenFolder?.())
+	/*
+	 * 关于页的「前往 GitHub」。
+	 *
+	 * URL 写死在渲染进程这一侧，主进程还有**白名单**兜底 ——
+	 * 两处都指向同一个仓库地址，改动时两边要一起改
+	 * （否则表现为"点了没反应 + 一条错误状态"）。
+	 */
+	document
+		.getElementById('settings-about-github')
+		?.addEventListener('click', () => {
+			void (async () => {
+				const result = await window.bbplayer.openExternal?.(
+					'https://github.com/xiongzikun0106/BBPlayerDesktop',
+				)
+				if (result && result.ok === false) {
+					setStatus(els.backupStatus, `打不开链接：${result.error}`, 'bad')
+				}
+			})()
+		})
 	document
 		.getElementById('settings-general-shortcuts')
 		?.addEventListener('click', () => {

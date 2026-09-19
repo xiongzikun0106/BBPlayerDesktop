@@ -223,6 +223,13 @@ contextBridge.exposeInMainWorld('bbplayer', {
 	/** 重启应用（恢复备份后需要） */
 	relaunch: () => ipcRenderer.invoke('app:relaunch'),
 	/**
+	 * 用系统浏览器打开链接（关于页的「前往 GitHub」）。
+	 *
+	 * ⚠️ 主进程侧有**白名单**校验 —— 不是任意 URL 都能开，
+	 * 所以渲染进程即使被注入也拉不起别的网址。
+	 */
+	openExternal: (url) => ipcRenderer.invoke('app:openExternal', url),
+	/**
 	 * 主题（阶段 1）。
 	 *
 	 * 主进程把设计令牌解析成 CSS 变量下发；渲染进程只负责应用。

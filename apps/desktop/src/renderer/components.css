@@ -598,6 +598,108 @@
 	background: color-mix(in srgb, var(--error) 12%, transparent);
 }
 
+/* ── 诊断信息（关于页）─────────────────────────────────── */
+/*
+ * ⚠️ 这一块原来**完全没有样式** —— 一个裸 `<details>` 套一个裸 `<dl>`，
+ * 四项 `dt/dd` 直接平铺在页面底色上。用户复审时的话是
+ * 「相关页面这里写的一大坨…和前面完全不是一个画风…太潦草了」。
+ *
+ * 内容本身没问题（「实现细节只允许出现在这里」是阶段 0 定的规矩，
+ * 见 index.html 的注释），**要修的是呈现**：
+ * 让它和设置页其它地方一样，是"卡片内的键值行 + 内缩分隔线"。
+ */
+.settings-diagnostics {
+	margin-top: var(--sp-md);
+	padding: var(--sp-sm) var(--sp-md);
+	background: var(--surface-container-high);
+	border-radius: var(--r-md);
+}
+
+.settings-diagnostics > summary {
+	cursor: pointer;
+	padding: var(--sp-xs) 0;
+	font-size: var(--fs-title-small);
+	font-weight: 600;
+	color: var(--on-surface);
+	/* 去掉浏览器默认的三角，用图标字体的箭头代替（同一套语言） */
+	list-style: none;
+}
+
+.settings-diagnostics > summary::-webkit-details-marker {
+	display: none;
+}
+
+.settings-diagnostics > summary::before {
+	content: 'chevron_right';
+	font-family: 'Material Symbols Rounded';
+	font-size: 18px;
+	vertical-align: middle;
+	margin-right: var(--sp-xs);
+	transition: transform var(--motion-duration-fast) ease;
+	display: inline-block;
+}
+
+.settings-diagnostics[open] > summary::before {
+	transform: rotate(90deg);
+}
+
+/*
+ * 键值行：`dt` 左、`dd` 右。
+ *
+ * 用 `grid` 而不是 `dl` 的默认流：默认流里 `dt`/`dd` 各自占一整行，
+ * 于是"标签一行、值一行"来回换行，四项就成了一坨。
+ * 两列网格让每一对成为**一行**。
+ */
+.settings-diagnostics__list {
+	display: grid;
+	grid-template-columns: minmax(96px, max-content) 1fr;
+	gap: 0 var(--sp-md);
+	margin: 0;
+	padding: 0;
+}
+
+.settings-diagnostics__list dt,
+.settings-diagnostics__list dd {
+	margin: 0;
+	padding: var(--sp-sm) 0;
+	font-size: var(--fs-body-medium);
+	/* 行与行之间的分隔由下面那条伪元素画，这里只做垂直居中 */
+	display: flex;
+	align-items: center;
+}
+
+.settings-diagnostics__list dt {
+	color: var(--on-surface-variant);
+}
+
+.settings-diagnostics__list dd {
+	color: var(--on-surface);
+	overflow-wrap: anywhere;
+}
+
+/* 内缩分隔线：与设置分类列表用同一套做法（`::before` 而不是 border） */
+.settings-diagnostics__list dt:not(:nth-of-type(1)),
+.settings-diagnostics__list dd:not(:nth-of-type(1)) {
+	position: relative;
+}
+
+.settings-diagnostics__list dt:not(:nth-of-type(1))::before,
+.settings-diagnostics__list dd:not(:nth-of-type(1))::before {
+	content: '';
+	position: absolute;
+	top: 0;
+	left: 0;
+	right: 0;
+	height: 1px;
+	background: var(--outline-variant);
+}
+
+/* 值里的输入框（后端地址）不要撑破网格 */
+.settings-diagnostics__list input {
+	width: 100%;
+	min-width: 0;
+}
+
 /* ── 空状态 ────────────────────────────────────────────── */
 /*
  * 空状态是**被设计过的**界面，不是留白：一个淡图标 + 一句话 +

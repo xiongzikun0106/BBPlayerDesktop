@@ -1098,6 +1098,78 @@ async function run(window) {
 		'诊断信息默认折叠（不主动糊到用户脸上）',
 		diagnostics.collapsed === true,
 	)
+
+	/*
+	 * 关于页的两件事（用户复审时提的）：
+	 *   1. 「预留个点击前往 github 的按钮」；
+	 *   2. 「这里写的一大坨…和前面完全不是一个画风…太潦草了」（指诊断信息）。
+	 *
+	 * ⚠️ 第 1 条要验证**真的调了白名单里的地址**，而不是"按钮在"。
+	 * 做法：在主进程桩掉 `app:openExternal` 并记下参数 ——
+	 * 这样既不真的拉起浏览器，又能验证 URL 正确（顺带验证白名单生效）。
+	 */
+	/*
+	 * ⚠️ 顺序很重要：白名单测试必须**打在真实 handler 上**，
+	 * 所以它要在下面那个桩**之前**跑。
+	 * （第一版放在桩之后，而桩那里把 handler 删掉了 ——
+	 * 于是 `invoke` 直接抛"没有 handler"，后面的断言全没执行。）
+	 */
+	const blocked = await evaluate(
+		window,
+		`window.bbplayer.openExternal('https://example.invalid/phishing')`,
+	)
+	check(
+		'openExternal 的白名单拦截了未授权的地址',
+		blocked?.ok === false,
+		blocked?.ok === false ? String(blocked.error) : JSON.stringify(blocked),
+	)
+
+	const { ipcMain } = require('electron')
+	/** @type {string|null} 桩记下的 URL */
+	let openedUrl = null
+	ipcMain.removeHandler('app:openExternal')
+	ipcMain.handle('app:openExternal', (_event, url) => {
+		openedUrl = String(url ?? '')
+		return { ok: true, data: { opened: openedUrl } }
+	})
+	await click(window, '[data-testid="settings-about-github"]')
+	await sleep(500)
+	check(
+		'关于页有「前往 GitHub」按钮，点击打开的是**仓库地址**',
+		openedUrl === 'https://github.com/xiongzikun0106/BBPlayerDesktop',
+		openedUrl ? `打开了 ${String(openedUrl)}` : '点了按钮但没调用 openExternal',
+	)
+	/*
+	 * 诊断信息的画风：不能是"裸 dl 平铺"。
+	 * 判据用**计算样式**而不是类名 —— 类名在、样式没生效是最常见的假绿。
+	 */
+	const diagnosticsStyle = await evaluate(
+		window,
+		`(() => {
+			const box = document.querySelector('[data-testid="settings-diagnostics"]')
+			const list = box?.querySelector('dl')
+			if (!box || !list) return { ok: false, reason: '找不到诊断信息容器' }
+			const bs = getComputedStyle(box)
+			const ls = getComputedStyle(list)
+			return {
+				ok: true,
+				background: bs.backgroundColor,
+				radius: Number.parseFloat(bs.borderRadius) || 0,
+				display: ls.display,
+				columns: ls.gridTemplateColumns,
+			}
+		})()`,
+	)
+	check(
+		'诊断信息是「卡片内的键值行」而不是裸 dl 平铺',
+		diagnosticsStyle.ok === true &&
+			diagnosticsStyle.background !== 'rgba(0, 0, 0, 0)' &&
+			diagnosticsStyle.radius >= 8 &&
+			diagnosticsStyle.display === 'grid',
+		diagnosticsStyle.ok
+			? `底色=${diagnosticsStyle.background} 圆角=${diagnosticsStyle.radius} display=${diagnosticsStyle.display} 列=${diagnosticsStyle.columns}`
+			: JSON.stringify(diagnosticsStyle),
+	)
 	check(
 		'诊断信息里查得到凭据存储方式',
 		/已加密|未加密/.test(String(diagnostics.credential)),
