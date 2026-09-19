@@ -2158,20 +2158,65 @@ async function run(window) {
 	// 菜单项里必须有这几个核心播放动作，且**标了快捷键**
 	const playMenu = appMenu?.items.find((item) => item.label === '播放')
 	const playItems = playMenu ? playMenu.submenu.items.map((i) => i.label) : []
+	/*
+	 * ⚠️ 检查**标签里有没有快捷键文字**，而不是 `item.accelerator`。
+	 *
+	 * 我们**刻意不设** `accelerator`：设了之后 Electron 会在菜单层
+	 * 拦截那些键，把 `keys.register` 的处理器挤掉。快捷键只作为
+	 * 标签文字展示，既保留可发现性又不与渲染进程的快捷键体系冲突。
+	 */
 	const hasAccel = playMenu
 		? playMenu.submenu.items.some(
-				(i) => i.accelerator && i.label.includes('播放'),
+				(i) => i.label.includes('播放') && /Space|Ctrl|Shift/.test(i.label),
 			)
 		: false
 	check(
 		'「播放」菜单里有播放/暂停、上一首、下一首，且标了快捷键',
 		playItems.some((l) => l.includes('播放')) &&
-			playItems.includes('上一首') &&
-			playItems.includes('下一首') &&
+			playItems.some((l) => l.includes('上一首')) &&
+			playItems.some((l) => l.includes('下一首')) &&
 			hasAccel,
 		`[${playItems.join(' / ')}] 有快捷键=${hasAccel}`,
 	)
 
+	/*
+	 * 端到端：**点菜单项**，验证渲染进程真的执行了。
+	 *
+	 * ⚠️ 这是唯一能证明"主进程→渲染进程那条桥通了"的断言 ——
+	 * 只检查"菜单里有某一项"完全不能说明点了它有反应。
+	 *
+	 * ⚠️⚠️ 必须选**不切视图、不动焦点**的项：
+	 *
+	 *   1. 一开始用「播放 / 暂停」→ 失败。因为它依赖队列里已经有歌，
+	 *      而这一段跑得很靠前（队列还是空的），按空格本来就无事发生。
+	 *   2. 改用它「前往 › 搜索」→ 桥的断言过了，但**后面 4 条键盘断言全挂**
+	 *      （Space 暂停 / ← 快退 / Ctrl+Q ×2）。原因是切到搜索页后
+	 *      **焦点落在搜索框上**，Space 和 ← 都被输入框吃掉了。
+	 *
+	 * 现在用「播放队列 / 歌词」（Ctrl+Q）：它只切右栏面板，
+	 * 不换视图、不动焦点 —— 而且效果与播放状态无关，任何时候都可观测。
+	 */
+	const menuPanelBefore = await evaluate(
+		window,
+		`document.querySelector('[data-panel].is-active')?.dataset?.panel ?? null`,
+	)
+	const menuPanelItem = appMenu?.items
+		.find((item) => item.label === '播放')
+		?.submenu.items.find((i) => i.label.includes('播放队列'))
+	menuPanelItem?.click?.()
+	await sleep(800)
+	const menuPanelAfter = await evaluate(
+		window,
+		`document.querySelector('[data-panel].is-active')?.dataset?.panel ?? null`,
+	)
+	check(
+		'点菜单项**真的**作用到了界面（主进程→渲染进程的桥通了）',
+		Boolean(menuPanelItem) && menuPanelBefore !== menuPanelAfter,
+		`${menuPanelBefore} → ${menuPanelAfter}`,
+	)
+	// 再点一次还原右栏面板
+	menuPanelItem?.click?.()
+	await sleep(600)
 	console.log('\n[ui] 1.7b) 浮动状态胶囊会自己消失（每一种）')
 	const pillFade = JSON.parse(
 		await evaluate(

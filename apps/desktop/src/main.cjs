@@ -195,10 +195,21 @@ function buildPlaybackMenu() {
 		const win = BrowserWindow.getFocusedWindow() ?? mainWindow
 		win?.webContents?.send('menu:action', combo)
 	}
-	/** 生成一个"点它等于按某个快捷键"的菜单项 */
+	/*
+	 * 生成一个"点它等于按某个快捷键"的菜单项。
+	 *
+	 * ⚠️⚠️ 快捷键**只写在标签里，绝不设 `accelerator`**。
+	 *
+	 * 设了 `accelerator` 之后 Electron 会在**菜单层**拦截这些键 ——
+	 * 实测把「播放 / 暂停 / 上一首 / 下一首 / 快退 / 快进 / 切换面板」
+	 * 这些键从渲染进程手里抢走了，`keys.register` 的处理器收不到 keydown，
+	 * 于是 **UI 探针一下子挂了 4 条**（Space 暂停、← 快退、Ctrl+Q ×2）。
+	 *
+	 * 渲染进程已经有完整的快捷键体系（`keyboard.js`），菜单不该再抢一遍。
+	 * 把快捷键写成标签文字既保留了可发现性，又不与它冲突。
+	 */
 	const key = (label, combo, accelerator) => ({
-		label,
-		accelerator,
+		label: accelerator ? `${label}   ${accelerator}` : label,
 		click: () => send(combo),
 	})
 
