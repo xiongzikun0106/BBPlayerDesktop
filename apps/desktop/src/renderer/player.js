@@ -577,12 +577,46 @@
 			// 语义属性：探针计数用它，改视觉类名不会让它失效（见 ui() 里的注释）
 			li.dataset.queueIndex = String(index)
 			li.dataset.testid = `queue-item-${index}`
-			li.title = track.title
+			li.title = track.artist ? `${track.title} — ${track.artist}` : track.title
 
-			const span = document.createElement('span')
-			span.className = 'queue-list__title'
-			span.textContent = track.title
-			li.appendChild(span)
+			/*
+			 * 队列行 = **序号 + 曲绘封面 + 标题/歌手 + 时长 + 拖拽把手**（阶段 D-1b）。
+			 *
+			 * 原来是"序号 + 一行纯文字"。用户给的参考图里队列行有封面、歌手、时长；
+			 * 而且我们自己的组件约定就是"列表行 = 曲绘封面 + 主标题 + 副标题"
+			 * （阶段 1c 定的），队列这一处一直是个例外。
+			 */
+			li.appendChild(
+				window.bbComponents.art({
+					title: track.title,
+					coverUrl: track.cover ?? track.coverUrl ?? track.cover_url ?? null,
+					tag: 'span',
+					extraClass: 'queue-list__art',
+				}),
+			)
+
+			const main = document.createElement('span')
+			main.className = 'queue-list__main'
+			const title = document.createElement('span')
+			title.className = 'queue-list__title'
+			title.textContent = track.title
+			main.appendChild(title)
+
+			const artist = document.createElement('span')
+			artist.className = 'queue-list__artist'
+			artist.textContent =
+				track.artist ||
+				track.artist_name ||
+				track.upperName ||
+				track.author ||
+				'—'
+			main.appendChild(artist)
+			li.appendChild(main)
+
+			const time = document.createElement('span')
+			time.className = 'queue-list__time mono'
+			time.textContent = formatTime(track.duration)
+			li.appendChild(time)
 
 			li.addEventListener('click', () => {
 				playAt(index)

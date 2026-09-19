@@ -2579,9 +2579,10 @@ async function run(window) {
 				const mount = document.getElementById('lyrics-panel')
 				const slot = document.getElementById('nowplaying-lyrics-slot')
 				return JSON.stringify({
-					inSlot: Boolean(mount && slot && mount.parentElement === slot),
-					// 只有一个（没有被复制成两份）
-					count: document.querySelectorAll('#lyrics-panel').length,
+					// 用 contains 而不是比较父节点：面板外面还有一层 .panel 壳
+					// （里面装着"重新匹配 / 独立窗口"那条工具条），搬的是整个壳
+					inSlot: Boolean(mount && slot && slot.contains(mount)),
+					count: document.querySelectorAll('[data-testid="panel-lyrics"]').length,
 					rect: slot ? Math.round(slot.getBoundingClientRect().width) : 0,
 				})
 			})()`,
@@ -2891,28 +2892,33 @@ async function run(window) {
 	 *      （Space 暂停 / ← 快退 / Ctrl+Q ×2）。原因是切到搜索页后
 	 *      **焦点落在搜索框上**，Space 和 ← 都被输入框吃掉了。
 	 *
-	 * 现在用「播放队列 / 歌词」（Ctrl+Q）：它只切右栏面板，
-	 * 不换视图、不动焦点 —— 而且效果与播放状态无关，任何时候都可观测。
+	 * 现在用「呼出 / 收起播放列表」（Ctrl+Q，阶段 D 起）：它切换的是
+	 * 「正在播放」页里那一栏播放列表的显隐 —— 不换视图、不动焦点，
+	 * 而且效果与播放状态无关，任何时候都可观测。
 	 */
-	const menuPanelBefore = await evaluate(
-		window,
-		`document.querySelector('[data-panel].is-active')?.dataset?.panel ?? null`,
-	)
+	const readQueueColumn = async () =>
+		await evaluate(
+			window,
+			`(() => {
+				const columns = document.getElementById('nowplaying-columns')
+				return columns ? columns.classList.contains('is-queue-hidden') : null
+			})()`,
+		)
+	const bridgeBefore = await readQueueColumn()
 	const menuPanelItem = appMenu?.items
 		.find((item) => item.label === '播放')
-		?.submenu.items.find((i) => i.label.includes('播放队列'))
+		?.submenu.items.find((i) => i.label.includes('播放列表'))
 	menuPanelItem?.click?.()
 	await sleep(800)
-	const menuPanelAfter = await evaluate(
-		window,
-		`document.querySelector('[data-panel].is-active')?.dataset?.panel ?? null`,
-	)
+	const bridgeAfter = await readQueueColumn()
 	check(
 		'点菜单项**真的**作用到了界面（主进程→渲染进程的桥通了）',
-		Boolean(menuPanelItem) && menuPanelBefore !== menuPanelAfter,
-		`${menuPanelBefore} → ${menuPanelAfter}`,
+		Boolean(menuPanelItem) &&
+			bridgeBefore !== null &&
+			bridgeBefore !== bridgeAfter,
+		`播放列表栏 is-queue-hidden：${bridgeBefore} → ${bridgeAfter}`,
 	)
-	// 再点一次还原右栏面板
+	// 再点一次还原
 	menuPanelItem?.click?.()
 	await sleep(600)
 	console.log('\n[ui] 1.7b) 浮动状态胶囊会自己消失（每一种）')
@@ -3098,29 +3104,55 @@ async function run(window) {
 	)
 
 	// ---------------------------------------------------------------
-	// 6. 快捷键：Ctrl+Q 切换右栏面板
+	// 6. 快捷键：Ctrl+Q 呼出 / 收起播放列表（阶段 D）
 	// ---------------------------------------------------------------
-	console.log('\n[ui] 6) 快捷键：Ctrl+Q 切换队列/歌词面板')
-	const panelBefore = (await uiState(window)).activePanel
+	//
+	// ⚠️ 语义变了：原来它是"切换右栏的队列/歌词两个页签"，而歌词页签已经去掉
+	// （歌词搬进了「正在播放」页的中栏）。现在它与播放条上那个按钮、顶部菜单
+	// 那一项**共用同一份实现**：不在播放页就先进去并把播放列表栏显示出来，
+	// 已经在播放页就切换那一栏的显隐。
+	console.log('\n[ui] 6) 快捷键：Ctrl+Q 呼出/收起播放列表')
+	const readColumns = async () =>
+		JSON.parse(
+			await evaluate(
+				window,
+				`(() => {
+					const columns = document.getElementById('nowplaying-columns')
+					return JSON.stringify({
+						// ⚠️ 面板是否在前台要看**中栏那个 section 的 hidden**，
+						// 不是 bbState.view（那是"列表视图"：playlist/search，
+						// 与"中栏是谁在前台"是两回事）—— 第一版就读错了字段。
+						viewHidden: document.getElementById('view-nowplaying')?.hidden ?? null,
+						hidden: columns?.classList.contains('is-queue-hidden') ?? null,
+						rows: document.querySelectorAll('[data-queue-index]').length,
+					})
+				})()`,
+			),
+		)
+	const columnsBefore = await readColumns()
 	await press(window, 'ctrl+q')
-	const switched = await waitFor(
-		window,
-		`window.bbTest.ui().activePanel !== ${JSON.stringify(panelBefore)}`,
-		5000,
-	)
+	await sleep(600)
+	const columnsAfter = await readColumns()
 	check(
-		'Ctrl+Q 切换面板',
-		switched.ok,
-		`${panelBefore} -> ${(await uiState(window)).activePanel}`,
+		'Ctrl+Q 呼出播放列表（并进入「正在播放」页）',
+		columnsAfter.viewHidden === false &&
+			columnsAfter.hidden === false &&
+			columnsAfter.rows > 0,
+		`面板隐藏=${columnsBefore.viewHidden} → ${columnsAfter.viewHidden}；列表栏隐藏=${columnsBefore.hidden} → ${columnsAfter.hidden}；队列 ${columnsAfter.rows} 项`,
 	)
-	await shot(window, 'ui-05-lyrics-panel')
+	await shot(window, 'ui-05-nowplaying-queue')
 	await press(window, 'ctrl+q')
-	const switchedBack = await waitFor(
-		window,
-		`window.bbTest.ui().activePanel === ${JSON.stringify(panelBefore)}`,
-		5000,
+	await sleep(600)
+	const columnsBack = await readColumns()
+	check(
+		'再按一次收起播放列表栏（队列 DOM 仍在，只是那一栏藏起来）',
+		columnsBack.viewHidden === false &&
+			columnsBack.hidden === true &&
+			columnsBack.rows === columnsAfter.rows,
+		`列表栏隐藏=${columnsBack.hidden} 队列 ${columnsBack.rows} 项`,
 	)
-	check('Ctrl+Q 再按切回', switchedBack.ok)
+	await press(window, 'ctrl+q')
+	await sleep(600)
 
 	// ---------------------------------------------------------------
 	// 7. 搜索
@@ -3313,16 +3345,34 @@ async function run(window) {
 		)
 	}
 
-	// 切到歌词面板确认可见
-	await evaluate(window, `window.bbUI.switchPanel('lyrics')`)
-	await sleep(600)
-	check('切到歌词面板', (await uiState(window)).activePanel === 'lyrics')
+	// 歌词已经搬进「正在播放」页的中栏（右栏不再有歌词页签）——
+	// 这里进那一页确认歌词面板随页可见
+	await evaluate(window, `window.bbUI.setActiveNav?.('nowplaying')`)
+	await sleep(800)
+	const lyricsVisible = JSON.parse(
+		await evaluate(
+			window,
+			`(() => {
+				const slot = document.getElementById('nowplaying-lyrics-slot')
+				const panel = document.querySelector('.panel[data-panel="lyrics"]')
+				const rect = panel?.getBoundingClientRect()
+				return JSON.stringify({
+					inSlot: Boolean(slot && panel && slot.contains(panel)),
+					hidden: panel?.hidden ?? null,
+					displayed: rect ? rect.width > 100 && rect.height > 100 : false,
+					tabGone: !document.querySelector('[data-testid="tab-lyrics"]'),
+				})
+			})()`,
+		),
+	)
+	check(
+		'进「正在播放」页：歌词面板在中栏里且**真的画出来**（右栏已无歌词页签）',
+		lyricsVisible.inSlot &&
+			lyricsVisible.displayed &&
+			lyricsVisible.tabGone === true,
+		JSON.stringify(lyricsVisible),
+	)
 	await shot(window, 'ui-08-lyrics')
-
-	// 快捷键 Ctrl+Q 切回队列
-	await press(window, 'ctrl+q')
-	await sleep(400)
-	check('Ctrl+Q 切回队列面板', (await uiState(window)).activePanel === 'queue')
 
 	// 快捷键注册表快照（便于人工核对冲突）
 	const keyList = JSON.parse(

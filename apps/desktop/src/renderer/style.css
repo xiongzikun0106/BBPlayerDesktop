@@ -1156,6 +1156,54 @@ body {
 	white-space: nowrap;
 }
 
+/* ── 队列行：封面 / 歌手 / 时长（阶段 D-1b）────────────── */
+/*
+ * 行结构：序号(`::before`) → 曲绘封面 → 标题+歌手 → 时长 → 拖拽把手(`::after`)。
+ * 封面比曲目表里的 44px 小一档：队列行更密，44px 会把行高撑起来。
+ */
+.queue-list__art {
+	width: 32px;
+	height: 32px;
+	border-radius: var(--r-sm);
+	font-size: var(--fs-body-medium);
+}
+
+.queue-list__main {
+	flex: 1 1 auto;
+	min-width: 0;
+	display: flex;
+	flex-direction: column;
+}
+
+.queue-list__artist,
+.queue-list__time {
+	font-size: var(--fs-body-small);
+	color: var(--on-surface-variant);
+}
+
+.queue-list__artist {
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+/* 时长推到右侧（把手再跟在它后面） */
+.queue-list__time {
+	margin-left: auto;
+	flex: none;
+	font-variant-numeric: tabular-nums;
+}
+
+.queue-list__item.is-playing .queue-list__artist,
+.queue-list__item.is-playing .queue-list__time {
+	color: color-mix(in srgb, var(--on-secondary-container) 76%, transparent);
+}
+
+/* 有内容之后，把手不再需要自己那一个 auto 外边距（见上） */
+.queue-list__item::after {
+	margin-left: var(--sp-xs);
+}
+
 /* ══════════════════════════════════════════════════════════
    底部播放条
    ────────────────────────────────────────────────────────── */

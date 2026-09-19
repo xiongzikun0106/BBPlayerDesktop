@@ -589,7 +589,7 @@ async function run(window) {
 	await sleep(4000)
 	await shot(window, '11-search-results', '搜索结果')
 
-	console.log('\n=== 6) 右栏（队列 / 歌词）===')
+	console.log('\n=== 6) 右栏（播放队列）===')
 	// 播放一首，让队列有"正在播放"
 	await click(window, '[data-testid="nav-library"]')
 	await sleep(800)
@@ -601,9 +601,19 @@ async function run(window) {
 	await click(window, '[data-testid="rightbar-toggle"]')
 	await sleep(600)
 	await shot(window, '12-rightbar-queue', '右栏 › 播放队列')
-	await click(window, '[data-testid="tab-lyrics"]')
-	await sleep(2500)
-	await shot(window, '13-rightbar-lyrics', '右栏 › 歌词')
+	/*
+	 * ⚠️ 这里原来拍的是 `13-rightbar-lyrics`（右栏 › 歌词）。
+	 * 阶段 D 之后**右栏没有歌词页签了** —— 歌词搬进了「正在播放」页的中栏
+	 * （同一个功能两个入口是用户明确反对的）。
+	 * 所以这一张改成拍"点播放条上那个按钮呼出播放列表"之后的样子：
+	 * 也就是用户给的网易云参考图里、他圈出按钮的那张。
+	 * 「队列收起」的那一版在 8b 的 31-nowplaying 里（默认就是收起）。
+	 */
+	await click(window, '[data-testid="playbar-queue"]')
+	await sleep(900)
+	await shot(window, '13-nowplaying-playlist', '正在播放 › 呼出播放列表')
+	await click(window, '[data-testid="nowplaying-close"]')
+	await sleep(700)
 
 	console.log('\n=== 6b) 多选 ===')
 	// 收起右栏，免得它把中栏挤窄（多选工具条要在一屏里看全）
@@ -611,6 +621,13 @@ async function run(window) {
 	await sleep(400)
 	await click(window, '[data-testid="rightbar-toggle"]')
 	await sleep(600)
+	/*
+	 * ⚠️ 从「正在播放」退回来会落到**音乐库的卡片网格**（那就是"播放列表"页签的
+	 * 默认内容），而不是刚才那个歌单详情 —— 多选工具条在详情里。
+	 * 所以这里要重新进一次详情，否则下面点不到「多选」。
+	 */
+	await click(window, '[data-testid^="playlist-card-"]')
+	await sleep(1300)
 	await evaluate(
 		window,
 		`(() => {

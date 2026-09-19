@@ -83,6 +83,9 @@
 			tab.classList.toggle('is-active', tab.dataset.panel === panel)
 		}
 		for (const section of document.querySelectorAll('.panel')) {
+			// ⚠️ 歌词面板被搬进「正在播放」中栏时**不能**跟着右栏页签显隐 ——
+			// 否则用户在播放页点一下右栏的「播放队列」，中栏的歌词会整块消失。
+			if (section.dataset.panel === 'lyrics' && isLyricsInNowPlaying()) continue
 			section.classList.toggle('is-active', section.dataset.panel === panel)
 		}
 		// 切面板的意图就是"我要看它"，所以顺手把栏展开 ——
@@ -242,29 +245,42 @@
 	 */
 	let lyricsPanelHome = null
 	/**
-	 * 歌词挂载点当前是不是在「正在播放」的中栏里。
+	 * 歌词面板（整个 `.panel[data-panel="lyrics"]`）当前是不是在「正在播放」中栏里。
 	 *
-	 * ⚠️ 搬的是**挂载点 `#lyrics-panel`**（`lyrics-panel.js` 往里渲染的那层），
-	 * 不是外层那个 `.panel` 壳。第一版搞错了对象：外层壳**没有 `id`**，
-	 * 只有 `data-panel="lyrics"`，于是 `getElementById('panel-lyrics')` 一直是
-	 * null —— `placeLyrics` 直接 return、中栏永远空着，而所有断言都"通过"，
-	 * 只有截图看得出中栏是空的。
+	 * ⚠️ 搬的是**整个面板壳**，不只是 `#lyrics-panel` 挂载点 ——
+	 * 壳里还有「重新匹配 / 独立窗口 / 状态」那条工具条，只搬挂载点会让它们
+	 * 失去入口（用户点不到）。
+	 *
+	 * ⚠️ 也别把它当成 `#panel-lyrics`：那个元素**没有 `id`**，只有
+	 * `data-panel="lyrics"`。第一版就是按 id 找的 → 恒为 null → 函数直接 return →
+	 * **中栏永远空着**，而所有既有断言照样通过（没人在看中栏）。
 	 */
-	function lyricsMountPoint() {
-		return document.getElementById('lyrics-panel')
+	function lyricsPanelEl() {
+		return document.querySelector('.panel[data-panel="lyrics"]')
+	}
+	function isLyricsInNowPlaying() {
+		const panel = lyricsPanelEl()
+		return Boolean(
+			panel && panel.parentElement?.id === 'nowplaying-lyrics-slot',
+		)
 	}
 	function placeLyrics(intoNowPlaying) {
-		const mount = lyricsMountPoint()
-		if (!mount) return
-		if (!lyricsPanelHome) lyricsPanelHome = mount.parentElement
+		const panel = lyricsPanelEl()
+		if (!panel) return
+		if (!lyricsPanelHome) lyricsPanelHome = panel.parentElement
 		if (intoNowPlaying) {
 			const slot = document.getElementById('nowplaying-lyrics-slot')
-			if (slot && mount.parentElement !== slot) slot.appendChild(mount)
+			if (!slot) return
+			if (panel.parentElement !== slot) slot.appendChild(panel)
+			// 右栏那个壳靠 `is-active` 显隐；搬到中栏后它必须一直可见
+			panel.classList.add('is-active')
 			return
 		}
-		if (lyricsPanelHome && mount.parentElement !== lyricsPanelHome) {
-			lyricsPanelHome.appendChild(mount)
+		if (lyricsPanelHome && panel.parentElement !== lyricsPanelHome) {
+			lyricsPanelHome.appendChild(panel)
 		}
+		// 回到右栏：显隐交回给页签（右栏现在只有"播放队列"一页，所以是隐藏）
+		panel.classList.remove('is-active')
 	}
 
 	/**
@@ -353,6 +369,11 @@
 	document
 		.getElementById('nowplaying-close')
 		?.addEventListener('click', () => setNowPlaying(false))
+
+	// 播放条上的「呼出 / 收起播放列表」（位置见 index.html 的注释：参考图里圈的那个）
+	document
+		.getElementById('playbar-queue')
+		?.addEventListener('click', () => toggleQueueColumn())
 
 	// 页内动作：共享歌单面板
 	document.getElementById('library-share')?.addEventListener('click', () => {
@@ -449,9 +470,34 @@
 			window.bbSettings?.open()
 		},
 	)
-	keys.register('ctrl+q', { description: '队列/歌词面板切换' }, () => {
-		const current = window.bbState.get().rightPanel
-		switchPanel(current === 'queue' ? 'lyrics' : 'queue')
+	/**
+	 * 「呼出 / 收起播放列表」（阶段 D）。
+	 *
+	 * 参考图里用户圈的就是这个动作：传输条上一个按钮，点了右侧的播放列表栏
+	 * 出现/消失。语义（**播放条按钮、`Ctrl+Q`、顶部菜单那一项三者共用这一份实现**）：
+	 *   * 不在「正在播放」页 → 先进那一页，并把播放列表栏**显示出来**
+	 *     （用户按它就是想看队列）；
+	 *   * 已经在那一页 → 切换播放列表栏的显隐。
+	 *
+	 * ⚠️ 原来 `Ctrl+Q` 是"切换右栏的队列/歌词两个页签"。歌词页签已经去掉
+	 * （歌词搬进了播放页中栏），那个语义不再存在。
+	 */
+	function toggleQueueColumn() {
+		const columns = document.getElementById('nowplaying-columns')
+		const button = document.getElementById('playbar-queue')
+		if (!columns) return
+		if (currentView !== 'nowplaying') {
+			setNowPlaying(true)
+			columns.classList.remove('is-queue-hidden')
+		} else {
+			columns.classList.toggle('is-queue-hidden')
+		}
+		const hidden = columns.classList.contains('is-queue-hidden')
+		if (button) button.setAttribute('aria-pressed', String(!hidden))
+	}
+
+	keys.register('ctrl+q', { description: '呼出/收起播放列表' }, () => {
+		toggleQueueColumn()
 	})
 
 	// —— 功能 ——

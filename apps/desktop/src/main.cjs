@@ -241,7 +241,7 @@ function buildPlaybackMenu() {
 				key('静音切换', 'ctrl+m', 'Ctrl+M'),
 				{ type: 'separator' },
 				key('切换播放模式', 'ctrl+r', 'Ctrl+R'),
-				key('播放队列 / 歌词', 'ctrl+q', 'Ctrl+Q'),
+				key('呼出 / 收起播放列表', 'ctrl+q', 'Ctrl+Q'),
 			],
 		},
 		{

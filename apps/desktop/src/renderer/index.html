@@ -1065,7 +1065,7 @@
 						   复制一份会让 testid 重复、拖拽落到错误的树上 —— 界面却看着正常。
 					-->
 					<div
-						class="nowplaying__columns"
+						class="nowplaying__columns is-queue-hidden"
 						id="nowplaying-columns"
 						data-testid="nowplaying-columns"
 					>
@@ -1120,13 +1120,18 @@
 
 			</main>
 
-			<!-- ── 右栏：播放队列 / 歌词 ─────────────────────────── -->
+			<!-- ── 右栏：播放队列 ────────────────────────────────── -->
+			<!--
+				⚠️ 右栏只剩**播放队列**（阶段 D-2）。
+				原来还有一个「歌词」页签，但歌词已经搬进「正在播放」页的中栏
+				（见 renderer.js 的 placeLyrics），页签背后的容器是个空壳 ——
+				用户点进去只会看到空白。同一个功能也不该有两个入口。
+			-->
 			<aside class="rightbar" data-testid="rightbar">
 				<div class="tabs" data-testid="rightbar-tabs">
 					<button class="tab is-active" data-panel="queue" data-testid="tab-queue">
 						播放队列
 					</button>
-					<button class="tab" data-panel="lyrics" data-testid="tab-lyrics">歌词</button>
 				</div>
 
 				<!--
@@ -1221,6 +1226,18 @@
 						data-testid="btn-next"
 						title="下一首"
 					><span class="icon icon--md">skip_next</span></button>
+					<!--
+						「呼出 / 收起播放列表」（阶段 D-1b）。
+						位置按用户给的网易云参考图：**传输控制条上、「下一首」右边**
+						（用户在那张图上特意圈出了这个按钮，并说明"它是呼出播放列表的"）。
+					-->
+					<button
+						id="playbar-queue"
+						class="icon-only"
+						data-testid="playbar-queue"
+						title="呼出 / 收起播放列表"
+						aria-label="呼出 / 收起播放列表"
+					><span class="icon icon--md">queue_music</span></button>
 				</div>
 
 				<div class="playbar__progress">
