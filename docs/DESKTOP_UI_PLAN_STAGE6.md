@@ -161,7 +161,41 @@ lyrics_hit_rate_test_molde/src/baseline/...ts      aaab00b5231b  13087 bytes   �
 **桌面端的自动歌词匹配目前 100% 放弃** —— 这解释了所有截图里的「暂无歌词」。
 阈值扫描建议 **0.40–0.45**（89% 命中 / 100% 可用 / 0% 误采用）。
 
-移植范围：`v2/matcher.ts` + `v2/normalize.ts` + `v2/keyword.ts`
+**✅ 6a 已完成**（`e035063c`）。移植后的实测（我用 harness 自己重跑的）：
+
+```
+策略                  召回   端到端命中  可用    自动采用  误自动采用  过度拒绝
+core-merged           99.0%   0.0%   0.0%    0.0%    0.0%   99.0%   ← 旧（冻结基线）
+prod-merged@mobile    99.0%  87.0% 100.0%  100.0%    0.0%    0.0%   ← 新生产实现
+prod-merged@v2        99.0%  88.0% 100.0%  100.0%    0.0%    0.0%
+```
+
+`prod-merged@mobile` 与参考实现 `v2-merged@mobile` **逐位相同** → 移植等价。
+
+⚠️ **提交前拦下一个正确性风险**：`AUTO_MATCH_THRESHOLD`（0.75→0.45）
+**被桌面端外链歌单导入器共用**（`track-matcher.cjs:210`）。
+两套打分函数不同却共用一个阈值，调一套会悄悄改另一套。
+已给导入器写回自己的 `0.75 / 0.45`（行为一字不变），`verify:desktop:import` 25/25。
+
+⚠️ 顺带修掉 `scripts/verify-lyrics.mts` 一条**失效的代理断言**：
+A1 原本用 `normalizeViaScore` 间接验证归一化，标题证据改成
+`max(Dice, 覆盖率)` 后代理失效（`Die` 是标题完整子串 → 覆盖率 1.0）。
+改成直接断言 `normalizeTitle`。**代理断言会在实现换算法后悄悄测错东西。**
+
+**已知遗留（如实记录）**：
+
+- `durationSimilarity` 曲线（3s/20s → 5s/120s）**仍与导入器共用**，
+  会略微放宽导入的时长判定；新曲线对"带前奏的视频"更合理，
+  但**没有针对导入的评测数据**支撑。已在代码注释里标明。
+- `containmentRatio` 存在"短候选是标题完整子串就拿满分"的过度匹配通道
+  （本数据集误采用 0%，但通道真实存在）。
+- 那 10 个排序失败用例依旧（全是同名翻唱，属"可用"档，非危险错误）。
+
+**顺带修掉**：收藏夹「作者」列永远「—」。真因是**两套渲染器认两套字段名** ——
+`library.js` 只读 `track.artist`/`artist_name`，而收藏夹预览喂进来的是接口字段
+`upperName`。已用真实接口确认接口 10/10 条都带 `upper`，所以不是接口的问题。
+
+原始移植范围：`v2/matcher.ts` + `v2/normalize.ts` + `v2/keyword.ts`
 → `packages/core/src/services/lyricMatcher.ts`。
 验证：`node run.mts` 重跑证明数字；**并跑移动端测试确认无回退**（该文件移动端共用）。
 
