@@ -435,6 +435,26 @@ async function run(window) {
 				const filled = ranges.filter(
 					(r) => r.style.getPropertyValue('--range-fill') !== '',
 				)
+				/*
+				 * 开关必须是**滑动开关**，不能是勾选框。
+				 *
+				 * 用户截图圈出来抱怨过「所有这种按钮全部都写错了，是左右切换的
+				 * 动画但你样式又写成了勾选确认的框」。根因是 style.css 里通用的
+				 * input[type=checkbox]（特异性 0-1-1）压过了 .switch（0-1-0），
+				 * 把它画成 20×20 圆角方块 + 对勾。
+				 *
+				 * 判据用**几何**而不是类名：胶囊轨道必然又宽又矮且圆角接近半高
+				 * （52×32，圆角 16）；勾选框是 20×20、圆角 5。
+				 */
+				const switches = [
+					...document.querySelectorAll("input[type='checkbox'].switch"),
+				]
+				const badSwitchCount = switches.filter((el) => {
+					const s = getComputedStyle(el)
+					const r = el.getBoundingClientRect()
+					const radius = Number.parseFloat(s.borderRadius) || 0
+					return r.width < 44 || r.height < 28 || radius < r.height / 2 - 2
+				}).length
 				return JSON.stringify({
 					buttonCount: buttons.length,
 					defaultLooking: defaultLooking.length,
@@ -442,6 +462,8 @@ async function run(window) {
 					notNormalized,
 					rangeCount: ranges.length,
 					rangesFilled: filled.length,
+					switchCount: switches.length,
+					badSwitchCount,
 				})
 			})()`,
 		),
@@ -1412,6 +1434,70 @@ async function run(window) {
 	await click(window, '[data-testid="nav-settings"]')
 	await sleep(900)
 
+	/*
+	 * 开关形状**在这里**量，不在 1.6 节。
+	 *
+	 * ⚠️ 第一版把它放在 1.6 节（首屏就量），结果断言失败说"2/2 个开关
+	 * 形状不对"—— 而截图里明明是正常的滑动开关。原因是那时设置面板
+	 * 还 `hidden`，`getBoundingClientRect()` 全是 0，几何判据必然不成立。
+	 * **元素在 DOM 里 ≠ 它被渲染了**，这个坑在本仓库已经反复出现。
+	 *
+	 * ⚠️ 而且**要进子页才量得到**：点进设置后停在**分类列表**，
+	 * 而开关在子页里，在那里量仍然是 0。所以显式进「歌词」子页，
+	 * 量完再退回分类列表（紧接着的断言要用它）。
+	 */
+	await click(window, '[data-testid="settings-cat-lyrics"]')
+	await sleep(700)
+	const switchShape = JSON.parse(
+		await evaluate(
+			window,
+			`(() => {
+				const switches = [...document.querySelectorAll("input[type='checkbox'].switch")]
+				const measured = switches.filter((el) => {
+					const r = el.getBoundingClientRect()
+					return r.width > 0 && r.height > 0
+				})
+				const bad = measured.filter((el) => {
+					const s = getComputedStyle(el)
+					const r = el.getBoundingClientRect()
+					const radius = Number.parseFloat(s.borderRadius) || 0
+					return r.width < 44 || r.height < 28 || radius < r.height / 2 - 2
+				})
+				return JSON.stringify({
+					total: switches.length,
+					measured: measured.length,
+					bad: bad.length,
+					sample: measured[0]
+						? {
+								w: Math.round(measured[0].getBoundingClientRect().width),
+								h: Math.round(measured[0].getBoundingClientRect().height),
+								radius: Math.round(
+									Number.parseFloat(getComputedStyle(measured[0]).borderRadius) || 0,
+								),
+							}
+						: null,
+				})
+			})()`,
+		),
+	)
+	check(
+		'开关量得到（不是"元素在但没渲染"那种假绿）',
+		switchShape.measured > 0,
+		`${switchShape.measured}/${switchShape.total} 个开关有尺寸` +
+			(switchShape.sample
+				? `，样本 ${switchShape.sample.w}×${switchShape.sample.h} 圆角 ${switchShape.sample.radius}`
+				: ''),
+	)
+	check(
+		'开关是**滑动开关**而不是勾选框（胶囊轨道 + 大圆角）',
+		switchShape.measured > 0 && switchShape.bad === 0,
+		switchShape.bad === 0
+			? `${switchShape.measured} 个开关形状正确（宽矮胶囊 + 大圆角）`
+			: `${switchShape.bad}/${switchShape.measured} 个开关形状像勾选框`,
+	)
+	// 退回分类列表 —— 紧接着的断言要看的就是它
+	await click(window, '[data-testid="settings-back"]')
+	await sleep(500)
 	const settingsState = JSON.parse(
 		await evaluate(
 			window,

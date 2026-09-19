@@ -494,8 +494,20 @@
 /*
  * 原生 `<input type="checkbox">` 在设置里被当成开关用，是"默认 HTML 样式"
  * 最明显的一处。M3 的开关是 52×32 的轨道 + 可长大的圆形滑块。
+ *
+ * ⚠️⚠️ 选择器**必须**写成 `input[type='checkbox'].switch`（特异性 0-2-1），
+ * 不能只写 `.switch`（0-1-0）。
+ *
+ * 原因：`style.css` 里有一条通用的 `input[type='checkbox']`（特异性 **0-1-1**），
+ * 它把控件画成 20×20 圆角方块，并在 `:checked::after` 里画一个**对勾**。
+ * 属性选择器的特异性更高，**加载顺序救不了** —— 于是全应用每一个开关
+ * 都被它覆盖成"勾选确认框"。
+ *
+ * 这个 bug 是用户在截图里圈出来发现的（"所有这种按钮全部都写错了，
+ * 是左右切换的动画但你样式又写成了勾选确认的框"），
+ * 光看代码完全正常（`.switch` 写对了），是**特异性**在作祟。
  */
-.switch {
+input[type='checkbox'].switch {
 	appearance: none;
 	flex: none;
 	position: relative;
@@ -511,7 +523,7 @@
 		border-color var(--motion-duration-fast) ease;
 }
 
-.switch::after {
+input[type='checkbox'].switch::after {
 	content: '';
 	position: absolute;
 	left: 5px;
@@ -521,6 +533,9 @@
 	height: 16px;
 	border-radius: 50%;
 	background: var(--outline);
+	/* 覆盖通用 checkbox 的对勾（那条规则也在 ::after 上画东西） */
+	border: none;
+	transform: none;
 	transition:
 		left var(--motion-duration-fast) ease,
 		width var(--motion-duration-fast) ease,
@@ -528,35 +543,35 @@
 		background var(--motion-duration-fast) ease;
 }
 
-.switch:hover::after {
+input[type='checkbox'].switch:hover::after {
 	width: 20px;
 	height: 20px;
 }
 
-.switch:checked {
+input[type='checkbox'].switch:checked {
 	background: var(--primary);
 	border-color: var(--primary);
 }
 
-.switch:checked::after {
+input[type='checkbox'].switch:checked::after {
 	left: 25px;
 	width: 24px;
 	height: 24px;
 	background: var(--on-primary);
 }
 
-.switch:checked:hover::after {
+input[type='checkbox'].switch:checked:hover::after {
 	left: 23px;
 	width: 28px;
 	height: 28px;
 }
 
-.switch:focus-visible {
+input[type='checkbox'].switch:focus-visible {
 	outline: 2px solid var(--primary);
 	outline-offset: 2px;
 }
 
-.switch:disabled {
+input[type='checkbox'].switch:disabled {
 	opacity: 0.5;
 	cursor: not-allowed;
 }

@@ -29,21 +29,40 @@
 ;(function () {
 	'use strict'
 
-	/** `ok` 是"一次性"反馈，读几秒就够；`busy`/`bad` 要留到用户看见 */
-	const AUTO_FADE_MS = 4500
+	/**
+	 * 各类型停留多久。
+	 *
+	 * ⚠️ **每一种都要淡出。** 原实现只让 `ok` / `warn` 淡出，
+	 * `idle` / `busy` / `bad` 永远挂着 —— 用户实测反馈"胶囊不会消失，
+	 * 会一直出现"，截图里能同时看到两条（一条失败提示、一条状态）。
+	 *
+	 * 分档而不是一刀切，是因为它们的"读多久才够"确实不同：
+	 *   * `bad` 是错误，用户需要看清原因 → 留久一点；
+	 *   * `busy` 是"进行中"，正常会被结果覆盖；万一卡住也不该永久占屏；
+	 *   * `idle` / `ok` / `warn` 是即时状态，读几秒就够。
+	 */
+	const FADE_MS = {
+		bad: 9000,
+		busy: 9000,
+		ok: 4500,
+		warn: 4500,
+		idle: 3500,
+	}
+
+	/** 从类名取出当前类型（`status--ok` → `ok`） */
+	function currentKind() {
+		for (const kind of Object.keys(FADE_MS)) {
+			if (status.classList.contains(`status--${kind}`)) return kind
+		}
+		// 没有类型类（例如刚被清空）→ 按 idle 处理
+		return 'idle'
+	}
 
 	const host = document.querySelector('[data-testid="status-host"]')
 	const status = document.getElementById('status')
 	if (!host || !status) return
 
 	let timer = null
-
-	function isTransient() {
-		return (
-			status.classList.contains('status--ok') ||
-			status.classList.contains('status--warn')
-		)
-	}
 
 	function isEmpty() {
 		return (status.textContent ?? '').trim() === ''
@@ -61,11 +80,12 @@
 
 	function scheduleFade() {
 		if (timer) clearTimeout(timer)
-		if (!isTransient()) return
+		// 没内容就没什么可淡出的
+		if (isEmpty()) return
 		timer = setTimeout(() => {
 			// ⚠️ 只加类名，**不清文本**：探针还要读（见文件头注释）
 			host.classList.remove('is-visible')
-		}, AUTO_FADE_MS)
+		}, FADE_MS[currentKind()] ?? 4500)
 	}
 
 	const observer = new MutationObserver(() => {
