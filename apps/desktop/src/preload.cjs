@@ -33,6 +33,11 @@ contextBridge.exposeInMainWorld('bbplayer', {
 	// ---------- B 站 ----------
 	search: (keyword) => ipcRenderer.invoke('bili:search', keyword),
 	videoInfo: (bvid) => ipcRenderer.invoke('bili:videoInfo', bvid),
+	/**
+	 * 后台补封面：传一批**缺封面**的 bvid，主进程串行拉 `pic` 并写库。
+	 * 返回 `{ updated: [{ bvid, cover }], failures }`。
+	 */
+	backfillCovers: (bvids) => ipcRenderer.invoke('covers:backfill', { bvids }),
 	userSeasons: (mid) => ipcRenderer.invoke('bili:userSeasons', mid),
 	seasonArchives: (mid, seasonId) =>
 		ipcRenderer.invoke('bili:seasonArchives', mid, seasonId),

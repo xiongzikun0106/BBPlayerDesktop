@@ -227,6 +227,38 @@ function registerIpcHandlers() {
 		}
 	})
 
+	/**
+	 * 后台补封面（阶段 C-2c）。
+	 *
+	 * `tracks.cover_url` 为空的曲目按 bvid 拉一次 `view` 拿 `pic` 写回。
+	 *
+	 * ⚠️ **串行 + 间隔**：B 站的 view 接口有频控，并发拉几十条会直接吃 412。
+	 * 一次最多 60 条（渲染层只把当前列表里缺封面的 bvid 传进来），
+	 * 单条失败只记下、不影响其它（收藏夹里常有已失效视频）。
+	 */
+	ipcMain.handle('covers:backfill', async (_event, payload) => {
+		const wanted = Array.isArray(payload?.bvids)
+			? [...new Set(payload.bvids.filter(Boolean))].slice(0, 60)
+			: []
+		const updated = []
+		const failures = []
+		for (const bvid of wanted) {
+			try {
+				const info = await bilibiliApi.getVideoInfo(bvid)
+				if (info?.cover && db.updateTrackCoverByBvid(bvid, info.cover) > 0) {
+					updated.push({ bvid, cover: info.cover })
+				}
+			} catch (error) {
+				failures.push({ bvid, error: error.message })
+			}
+			await new Promise((resolve) => setTimeout(resolve, 120))
+		}
+		return {
+			ok: true,
+			data: { requested: wanted.length, updated, failures },
+		}
+	})
+
 	ipcMain.handle('bili:userSeasons', async (_event, mid) => {
 		try {
 			return { ok: true, data: await bilibiliApi.listUserSeasons(mid) }

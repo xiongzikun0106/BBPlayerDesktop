@@ -387,7 +387,70 @@ function upsertTrack({
 		'SELECT * FROM tracks WHERE unique_key = ?',
 		[uniqueKey],
 	)
-	if (existing) return existing
+	/*
+	 * ⚠️ 命中已有行**不能直接 `return existing`** —— 那样它根本不是 upsert。
+	 *
+	 * 原来的写法就是直接 return，后果是：一首歌只要**第一次**以"没有封面 /
+	 * 没有作者 / 时长为 0"的方式落库（不同的导入路径带的字段不一样），
+	 * 后面即使接口明确返回了这些字段也**永远不会补上** —— 重新导入也没用。
+	 * 用户看到的就是"曲目表的封面全是标题首字"，而且怎么折腾都不变。
+	 *
+	 * 只补**原值为空、新值非空**的字段：不覆盖已有数据（已有值可能是用户
+	 * 自己的选择，或来自更可信的来源）。
+	 */
+	if (existing) {
+		const patches = []
+		const args = []
+		if (coverUrl && !existing.cover_url) {
+			patches.push('cover_url = ?')
+			args.push(coverUrl)
+		}
+		if (duration && !existing.duration) {
+			patches.push('duration = ?')
+			args.push(duration)
+		}
+		if (!existing.artist_id && artistName) {
+			const artistId = upsertArtist({
+				name: artistName,
+				remoteId: artistRemoteId,
+			})
+			if (artistId) {
+				patches.push('artist_id = ?')
+				args.push(artistId)
+			}
+		}
+		if (patches.length > 0) {
+			patches.push('updated_at = ?')
+			args.push(Date.now())
+			sqlite.runSync(`UPDATE tracks SET ${patches.join(', ')} WHERE id = ?`, [
+				...args,
+				existing.id,
+			])
+		}
+
+		// 老行可能没有 bilibili_metadata（由别的路径插入的）—— 没有它就没有
+		// bvid，播放与"按 bvid 找曲目"都会失效，这里顺手补上
+		if (bvid) {
+			// ⚠️ `bilibili_metadata` 的主键是 `track_id`，**没有 `id` 列**
+			// （第一版写成 `SELECT id FROM bilibili_metadata` → 一条已有曲目
+			// 再导入时直接 `no such column: id`，"加入歌单"整条路径报错）
+			const meta = sqlite.getFirstSync(
+				'SELECT track_id FROM bilibili_metadata WHERE track_id = ?',
+				[existing.id],
+			)
+			if (!meta) {
+				sqlite.runSync(
+					`INSERT INTO bilibili_metadata (track_id, bvid, cid, is_multi_page, video_is_valid)
+					 VALUES (?, ?, ?, ?, 1)`,
+					[existing.id, bvid, cid ?? null, isMultiPage ? 1 : 0],
+				)
+			}
+		}
+
+		return sqlite.getFirstSync('SELECT * FROM tracks WHERE id = ?', [
+			existing.id,
+		])
+	}
 
 	const now = Date.now()
 	const artistId = upsertArtist({ name: artistName, remoteId: artistRemoteId })
@@ -1005,6 +1068,37 @@ function listPlayHistoryForDay(dateStr, { limit = 200 } = {}) {
 	)
 }
 
+/**
+ * 按 bvid 补一条曲目的封面（只补空值，不覆盖已有封面）。
+ *
+ * ⚠️ 只在 `cover_url` 为空时写：已有封面可能是用户自定义的，或来自更可信的来源。
+ * @returns {number} 真正改动的行数
+ */
+function updateTrackCoverByBvid(bvid, coverUrl) {
+	if (!bvid || !coverUrl) return 0
+	const result = sqlite.runSync(
+		`UPDATE tracks SET cover_url = ?, updated_at = ?
+		 WHERE (cover_url IS NULL OR cover_url = '')
+		   AND id = (SELECT track_id FROM bilibili_metadata WHERE bvid = ?)`,
+		[coverUrl, Date.now(), String(bvid)],
+	)
+	return Number(result?.changes ?? 0)
+}
+
+/** 找出**缺封面**的曲目（按 bvid 去重，供后台回填） */
+function listTracksMissingCover({ limit = 200 } = {}) {
+	return sqlite.getAllSync(
+		`SELECT bm.bvid
+		 FROM tracks t
+		 JOIN bilibili_metadata bm ON bm.track_id = t.id
+		 WHERE (t.cover_url IS NULL OR t.cover_url = '')
+		   AND bm.bvid IS NOT NULL
+		 GROUP BY bm.bvid
+		 LIMIT ?`,
+		[limit],
+	)
+}
+
 /** 汇总统计（用于界面上的概览） */
 function getPlayHistorySummary() {
 	const row = sqlite.getFirstSync(
@@ -1078,6 +1172,8 @@ module.exports = {
 	listMostPlayed,
 	listResumeCandidates,
 	listPlayHistoryByDate,
+	updateTrackCoverByBvid,
+	listTracksMissingCover,
 	listPlayHistoryForDay,
 	getTrackPlayStats,
 	getPlayHistorySummary,

@@ -426,6 +426,67 @@
 		ui.selectButton.classList.toggle('is-active', selectMode)
 	}
 
+	/*
+	 * 后台补封面（阶段 C-2c）。
+	 *
+	 * 用户的原话：「没有做拉取视频封面作为歌曲封面的功能（正方形），导致左侧歌曲
+	 * 预览全部是标题第一个字」。真根因有**两层**：
+	 *   1. `db.upsertTrack` 命中已有行就直接 return —— 首次以"没封面"落库的曲目
+	 *      永远不会被补上（已在 `db.cjs` 修）；
+	 *   2. **没有任何回填路径** —— 库里已经存在的那些无封面曲目不会自己好。
+	 * 这里补的是第二层：列表渲染完，把**这一屏里缺封面**的 bvid 交给主进程
+	 * （串行 + 间隔拉 `pic`、写库），拿到之后就地把首字方块换成图片。
+	 *
+	 * ⚠️ 就地替换而不是重渲染整张表：重渲染会丢掉滚动位置与**多选状态**，
+	 * 而用户可能正一边选歌一边等封面。
+	 */
+	let coverBackfillRunning = false
+	const coverBackfillTried = new Set()
+
+	async function backfillCovers(tracks, table) {
+		if (coverBackfillRunning) return
+		const missing = []
+		for (const track of tracks) {
+			const bvid = track?.bvid
+			if (!bvid || coverBackfillTried.has(bvid)) continue
+			if (track.cover || track.coverUrl || track.cover_url) continue
+			coverBackfillTried.add(bvid)
+			missing.push(bvid)
+		}
+		if (missing.length === 0) return
+
+		coverBackfillRunning = true
+		try {
+			const result = await window.bbplayer.backfillCovers(missing.slice(0, 60))
+			const updated = result?.data?.updated ?? []
+			if (updated.length === 0) return
+			const byBvid = new Map(updated.map((item) => [item.bvid, item.cover]))
+			for (const row of table.querySelectorAll('tbody tr')) {
+				const cover = byBvid.get(row.dataset.bvid)
+				if (!cover) continue
+				const art = row.querySelector('.list-row__art')
+				if (!art) continue
+				art.textContent = ''
+				const img = document.createElement('img')
+				img.src = cover
+				img.alt = ''
+				img.loading = 'lazy'
+				// 加载失败仍退回首字方块（而不是留一个破图图标）
+				img.addEventListener('error', () => {
+					const fallback = window.bbComponents.art({
+						title: row.querySelector('.col-title__text')?.textContent ?? '',
+					})
+					art.replaceChildren(...fallback.childNodes)
+				})
+				art.appendChild(img)
+			}
+		} catch {
+			// 补封面是"尽力而为"：失败不影响列表本身
+		} finally {
+			coverBackfillRunning = false
+		}
+	}
+
 	/**
 	 * 渲染一张曲目表。
 	 *
@@ -886,6 +947,9 @@
 			selectButton,
 		}
 		syncSelectionUi()
+
+		// 缺封面的行交给主进程后台补（拿到后就地替换，见 backfillCovers 的注释）
+		void backfillCovers(tracks, table)
 	}
 
 	/**

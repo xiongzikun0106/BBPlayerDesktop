@@ -3669,6 +3669,26 @@ async function run(window) {
 		barRevealed,
 	)
 
+	// ⚠️ 桩要打在**模块**上，不能打在 `bili:videoInfo` 那个 IPC 通道上：
+	// `covers:backfill` 在主进程内部直接调 `bilibiliApi.getVideoInfo`，
+	// 根本不经过那条通道 —— 第一版就是这么写错的，结果是桩完全没生效，
+	// 断言红得像是"功能坏了"（其实是测试没打中）。
+	// 主进程与探针共用同一份 require 缓存，所以替换导出对象上的方法就生效。
+	//
+	// ⚠️ 桩要**尽早**打（放在收藏夹那一段之前）：补封面是渲染列表时**自动**触发的，
+	// 晚打的话前面那些表会去打真实接口。
+	const bilibiliApi = require('./bilibili-api.cjs')
+	const realGetVideoInfo = bilibiliApi.getVideoInfo
+	bilibiliApi.getVideoInfo = async (bvid) => ({
+		title: '回填封面用 ' + bvid,
+		cover: 'https://probe.invalid/cover-' + bvid + '.jpg',
+		cid: 1,
+		pages: 1,
+		duration: 100,
+		owner: '探针UP',
+		ownerMid: '1',
+	})
+
 	// ---------------------------------------------------------------
 	// 11b. 收藏夹展开预览 = 与正式歌单**同一个**渲染器（阶段 B-1）
 	// ---------------------------------------------------------------
@@ -3682,11 +3702,19 @@ async function run(window) {
 	//   2. 60 条**全部渲染**（不再被砍到 50）；
 	//   3. 双击预览里的行**真的能播**（修之前点了没反应）。
 	let resourceCalls = 0
+	/*
+	 * ⚠️ 这 60 条**要带封面**。
+	 *
+	 * 第一版写成 `cover: null`，于是渲染完预览就触发了一次"补封面"：60 条假 bvid
+	 * 去打**真实** `view` 接口，既慢又全部失败；更糟的是那个 single-flight 守卫
+	 * （`coverBackfillRunning`）在此期间会**直接 return**，把后面第 13 段
+	 * 真正要验的回填请求挡掉 —— 表现是"封面功能坏了"，其实是测试自己制造的干扰。
+	 */
 	const fakeEntries = Array.from({ length: 60 }, (_, i) => ({
 		bvid: 'BVprobe' + String(i + 1).padStart(6, '0'),
 		title: '探针曲目 ' + (i + 1),
 		upperName: '探针UP ' + (i + 1),
-		cover: null,
+		cover: 'https://probe.invalid/preview-' + (i + 1) + '.jpg',
 		duration: 200 + i,
 	}))
 	ipcMain.removeHandler('bili:favoriteResources')
@@ -3811,6 +3839,87 @@ async function run(window) {
 		loggedInPanel.loginShown === false && loggedInPanel.logoutShown === true,
 		`登录可见=${loggedInPanel.loginShown} 退出可见=${loggedInPanel.logoutShown}`,
 	)
+
+	// ---------------------------------------------------------------
+	// 13. 歌曲封面：缺的能**自动补上**（阶段 C-2c）
+	// ---------------------------------------------------------------
+	//
+	// 用户的原话：「没有做拉取视频封面作为歌曲封面的功能（正方形），导致左侧歌曲
+	// 预览全部是标题第一个字」。真根因有两层，这里一次验完：
+	//   1. 造两条**没有封面**的曲目（`addTracksToPlaylist` 只给 cover=null）——
+	//      它们落库时 `cover_url` 就是空的，这正是那个 bug 的产物；
+	//   2. 打开这个歌单 → 渲染层应当**自动**把缺封面的 bvid 交给主进程回填，
+	//      拿到封面后**就地**把首字方块换成图片，并且**库里也真的写进去了**。
+	//
+	// ⚠️ 桩 `bili:videoInfo` 而不是打真实接口：这条断言要的是"链路通不通"，
+	// 不是"B 站今天有没有限流"。
+	console.log('\n[ui] 13) 歌曲封面自动回填')
+	// ⚠️ 桩要打在**模块**上，不能打在 `bili:videoInfo` 那个 IPC 通道上：
+
+	const coverSetup = JSON.parse(
+		await evaluate(
+			window,
+			`(async () => {
+				const created = await window.bbplayer.createPlaylist({ title: '探针封面歌单' })
+				const playlistId = created?.data?.id ?? created?.data?.playlist?.id ?? null
+				if (playlistId == null) return JSON.stringify({ failed: 'create' })
+				await window.bbplayer.addTracksToPlaylist({
+					playlistId,
+					tracks: [
+						{ bvid: 'BVnocover0001', title: '无封面曲目 A', duration: 100 },
+						{ bvid: 'BVnocover0002', title: '无封面曲目 B', duration: 120 },
+					],
+				})
+				// 先确认库里**确实**是空的（否则这条断言测不到东西）
+				const rows = await window.bbplayer.getPlaylistTracks(playlistId)
+				const before = (rows?.data ?? []).map((row) => row.cover_url ?? null)
+				window.bbLibrary.openPlaylist(playlistId)
+				return JSON.stringify({ playlistId, before })
+			})()`,
+		),
+	)
+	check(
+		'造出两条**库里没有封面**的曲目（复现那个 bug 的产物）',
+		coverSetup.before?.length === 2 && coverSetup.before.every((c) => !c),
+		JSON.stringify(coverSetup),
+	)
+
+	// 回填是后台串行的（每条间隔 120ms），所以轮询等它落地
+	const coverBackfilled = await waitFor(
+		window,
+		`(() => {
+			const imgs = [...document.querySelectorAll('[data-testid="track-table"] tbody tr .list-row__art img')]
+			return imgs.length === 2 ? { ok: true, src: imgs[0].getAttribute('src') } : false
+		})()`,
+		20_000,
+	)
+	check(
+		'缺封面的行**自动**换成了封面图（首字方块消失）',
+		coverBackfilled.ok &&
+			String(coverBackfilled.value?.src ?? '').includes(
+				'cover-BVnocover0001.jpg',
+			),
+		JSON.stringify(coverBackfilled.value),
+	)
+
+	const coverPersisted = JSON.parse(
+		await evaluate(
+			window,
+			`(async () => {
+				const rows = await window.bbplayer.getPlaylistTracks(${JSON.stringify(coverSetup.playlistId)})
+				const covers = (rows?.data ?? []).map((row) => row.cover_url ?? null)
+				return JSON.stringify({ covers })
+			})()`,
+		),
+	)
+	check(
+		'封面**写回了数据库**（不是只改了界面）',
+		coverPersisted.covers?.length === 2 &&
+			coverPersisted.covers.every((c) => String(c).includes('probe.invalid')),
+		JSON.stringify(coverPersisted),
+	)
+	// 收尾：把桩还原（这一段是套件最后一段，还原只是为了"别把状态留脏"）
+	bilibiliApi.getVideoInfo = realGetVideoInfo
 
 	return finish(window)
 }
