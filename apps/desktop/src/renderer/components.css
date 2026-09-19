@@ -547,6 +547,57 @@
 	cursor: pointer;
 }
 
+/* ── 弹出菜单（阶段 6c）───────────────────────────────── */
+/*
+ * 锚定在「⋯」按钮上的短菜单。
+ *
+ * ⚠️ `position: fixed` + 由 JS 写 top/left，而不是 `absolute` 挂在按钮旁边：
+ * 表格行在可滚动容器里，`absolute` 会跟着父级裁剪与滚动偏移一起动，
+ * 菜单就会跑到别的地方去。`fixed` 用视口坐标，滚动时菜单也不动 ——
+ * 点开之后马上滚动的场景很少，这个取舍比"跟着滚"简单且不容易错。
+ */
+.menu {
+	position: fixed;
+	z-index: 40;
+	min-width: 168px;
+	padding: var(--sp-xs);
+	background: var(--surface-container-high);
+	border-radius: var(--r-md);
+	box-shadow: 0 6px 24px rgb(0 0 0 / 28%);
+	display: flex;
+	flex-direction: column;
+	gap: 2px;
+}
+
+.menu__item {
+	display: flex;
+	align-items: center;
+	gap: var(--sp-sm);
+	width: 100%;
+	padding: 8px var(--sp-sm);
+	background: transparent;
+	border: none;
+	border-radius: var(--r-sm);
+	color: var(--on-surface);
+	font: inherit;
+	text-align: left;
+	cursor: pointer;
+	white-space: nowrap;
+}
+
+.menu__item:hover {
+	background: var(--surface-container-highest);
+}
+
+/* 危险操作（删除）用错误色，与安卓端的 `danger` 项一致 */
+.menu__item--danger {
+	color: var(--error);
+}
+
+.menu__item--danger:hover {
+	background: color-mix(in srgb, var(--error) 12%, transparent);
+}
+
 /* ── 空状态 ────────────────────────────────────────────── */
 /*
  * 空状态是**被设计过的**界面，不是留白：一个淡图标 + 一句话 +

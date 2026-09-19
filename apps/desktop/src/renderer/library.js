@@ -483,49 +483,60 @@
 			// ⚠️ 原来只有「移除」才给一个操作列，于是搜索结果 / 收藏夹里的曲目
 			// **完全没有行内动作** —— 想"下一首就听这首"只能先整单加进队列再拖，
 			// 而拖拽当时还不存在。用户明确要求了「下一首播放」。
+			//
+			// 阶段 6c：这两个图标合成**一个「⋯」**，点开弹出菜单。
+			// 安卓端就是这么做的（远程列表 4 项、本地歌单 7 项），
+			// 理由见 `components.js` 里 `menu()` 的注释。
 			const actionsCell = document.createElement('td')
 			actionsCell.className = 'col-actions'
 
-			const playNextButton = document.createElement('button')
-			playNextButton.className = 'track-action'
-			playNextButton.dataset.testid = `track-play-next-${index}`
-			playNextButton.dataset.action = 'play-next'
-			playNextButton.innerHTML = window.bbComponents.iconHtml(
-				// ⚠️ 是 `queue_play_next`，**不是** `play_next` —— Material Symbols 里
-				// 没有后者。名字写错时 Google Fonts **不报错**，只是把那个图标从
-				// 子集里悄悄去掉；于是合字不生效，界面渲染出字面的 "play_next"
-				// 九个字母（实测 144px 宽）压在时长列上。
-				// 现在 build-icon-font.mjs 会逐个校验名字，见那里的注释。
-				'queue_play_next',
+			const moreButton = document.createElement('button')
+			moreButton.className = 'track-action'
+			moreButton.dataset.testid = `track-more-${index}`
+			moreButton.dataset.action = 'more'
+			moreButton.innerHTML = window.bbComponents.iconHtml(
+				'more_vert',
 				'icon--sm',
 			)
-			playNextButton.title = '下一首播放'
-			playNextButton.setAttribute('aria-label', '下一首播放')
-			playNextButton.addEventListener('click', (event) => {
+			moreButton.title = '更多操作'
+			moreButton.setAttribute('aria-label', '更多操作')
+			moreButton.addEventListener('click', (event) => {
+				// 不要让单击冒泡到行的「选中」逻辑上
 				event.stopPropagation()
-				const result = window.bbPlayer.playNextInsert(track)
-				setStatus(
-					result.ok ? `「${track.title}」将在下一首播放` : '没能加入队列',
-					result.ok ? 'ok' : 'bad',
-				)
+				/*
+				 * 菜单项与安卓端对齐，但**按上下文裁剪**：
+				 *   * 「下一首播放」—— 任何列表都成立（远程列表的第一项就是它）；
+				 *   * 「从歌单移除」—— 只有可写的本地歌单才有（收藏夹/搜索结果
+				 *     不是本地列表，移动端那边也没有删除）；
+				 *   * 「查看 up 主作品」—— 需要 mid，当前曲目对象不一定有，
+				 *     有才放进去（移动端同样有这个前置条件）。
+				 */
+				const items = [
+					{
+						label: '下一首播放',
+						icon: 'queue_play_next',
+						testid: `menu-play-next-${index}`,
+						onSelect: () => {
+							const result = window.bbPlayer.playNextInsert(track)
+							setStatus(
+								result.ok ? `「${track.title}」将在下一首播放` : '没能加入队列',
+								result.ok ? 'ok' : 'bad',
+							)
+						},
+					},
+				]
+				if (removal.canRemove) {
+					items.push({
+						label: '从歌单移除',
+						icon: 'delete',
+						danger: true,
+						testid: `menu-remove-${index}`,
+						onSelect: () => void removeTrackFromPlaylist(track, moreButton),
+					})
+				}
+				window.bbComponents.menu(moreButton, items)
 			})
-			actionsCell.appendChild(playNextButton)
-
-			if (removal.canRemove) {
-				const remove = document.createElement('button')
-				remove.className = 'track-action track-action--danger'
-				remove.dataset.testid = `track-remove-${index}`
-				remove.dataset.action = 'remove'
-				remove.innerHTML = window.bbComponents.iconHtml('delete', 'icon--sm')
-				remove.title = '从这个歌单移除这首曲目'
-				remove.setAttribute('aria-label', '从歌单移除')
-				remove.addEventListener('click', (event) => {
-					// 不要让单击冒泡到行的「选中」逻辑上
-					event.stopPropagation()
-					void removeTrackFromPlaylist(track, remove)
-				})
-				actionsCell.appendChild(remove)
-			}
+			actionsCell.appendChild(moreButton)
 
 			// ⚠️ 列数必须与表头一致，否则表格会错位。
 			// 表头在下面按同样的条件决定要不要加「操作」列。

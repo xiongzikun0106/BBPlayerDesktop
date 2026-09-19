@@ -229,6 +229,99 @@
 		return node
 	}
 
+	/**
+	 * 锚定在某个元素上的**弹出菜单**（阶段 6c）。
+	 *
+	 * 安卓端曲目行右侧那个「⋮」点开的就是这个：一个挨着按钮弹出的短菜单，
+	 * 而不是把两个图标并排摊在行里。
+	 *
+	 * 为什么并排图标不好（用户复审时点名了）：
+	 *   * 每多一个操作就多一个图标，列会越来越宽、越来越吵；
+	 *   * 行里放不下之后只能把低频操作藏起来，而"藏哪了"又成了新问题；
+	 *   * 危险操作（删除）与高频操作（下一首）并排，很容易点错。
+	 *
+	 * 菜单项结构（与安卓端 `TrackMenuItem` 对齐）：
+	 *   `{ label, icon, danger, testid, onSelect }`
+	 *
+	 * ⚠️ 关闭时机有三条，缺一条都会"菜单关不掉"：
+	 *   1. 选中某一项之后；
+	 *   2. 点菜单外面（用一次性的 `pointerdown` 捕获监听）；
+	 *   3. 按 Esc。
+	 *
+	 * ⚠️ 同一时刻**只允许一个**菜单：新菜单打开前先关掉旧的，
+	 * 否则连点几个「…」会叠出好几层。
+	 */
+	let openMenu = null
+
+	function closeMenu() {
+		if (!openMenu) return
+		openMenu.remove()
+		openMenu = null
+		document.removeEventListener('pointerdown', onMenuOutside, true)
+		document.removeEventListener('keydown', onMenuKey, true)
+	}
+
+	function onMenuOutside(event) {
+		if (openMenu && !openMenu.contains(event.target)) closeMenu()
+	}
+
+	function onMenuKey(event) {
+		if (event.key === 'Escape') {
+			event.stopPropagation()
+			closeMenu()
+		}
+	}
+
+	function menu(anchor, items) {
+		if (!anchor) return null
+		closeMenu()
+		const list = (items ?? []).filter(Boolean)
+		if (list.length === 0) return null
+
+		const box = document.createElement('div')
+		box.className = 'menu'
+		box.dataset.testid = 'track-menu'
+
+		for (const item of list) {
+			const button = document.createElement('button')
+			button.className = 'menu__item'
+			if (item.danger) button.classList.add('menu__item--danger')
+			if (item.testid) button.dataset.testid = item.testid
+			if (item.icon) button.appendChild(icon(item.icon, 'icon--sm'))
+			const label = document.createElement('span')
+			label.textContent = item.label
+			button.appendChild(label)
+			button.addEventListener('click', (event) => {
+				event.stopPropagation()
+				closeMenu()
+				item.onSelect?.()
+			})
+			box.appendChild(button)
+		}
+
+		// 先挂到 body 再量尺寸：隐藏元素量不出宽高，也就没法决定往哪翻
+		document.body.appendChild(box)
+		const rect = anchor.getBoundingClientRect()
+		const size = box.getBoundingClientRect()
+		const margin = 8
+		// 默认贴着按钮右下；下方放不下就翻到上方；右边溢出就右对齐
+		let top = rect.bottom + 4
+		if (top + size.height > window.innerHeight - margin) {
+			top = Math.max(margin, rect.top - size.height - 4)
+		}
+		let left = rect.right - size.width
+		if (left < margin)
+			left = Math.min(rect.left, window.innerWidth - size.width - margin)
+		box.style.top = `${Math.round(top)}px`
+		box.style.left = `${Math.round(left)}px`
+
+		openMenu = box
+		// `capture: true` —— 否则行自己的 click 会先把事件吃掉
+		document.addEventListener('pointerdown', onMenuOutside, true)
+		document.addEventListener('keydown', onMenuKey, true)
+		return box
+	}
+
 	window.bbComponents = {
 		icon,
 		iconHtml,
@@ -237,5 +330,7 @@
 		listRow,
 		empty,
 		toast,
+		menu,
+		closeMenu,
 	}
 })()

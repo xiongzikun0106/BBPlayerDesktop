@@ -1397,11 +1397,16 @@ async function run(window) {
 		await evaluate(
 			window,
 			`(() => {
-				const playNext = document.querySelector('[data-action="play-next"]')
 				const queueRows = [...document.querySelectorAll('[data-queue-index]')]
+				// 阶段 6c：操作列从"两个图标并排"改成**一个「⋯」**
+				// （安卓端的做法）。所以这里量的是「⋯」按钮，
+				// 而「下一首播放」现在在菜单**里面**。
 				return JSON.stringify({
-					playNextButtons: document.querySelectorAll('[data-action="play-next"]').length,
-					playNextTitle: playNext?.getAttribute('title') ?? null,
+					moreButtons: document.querySelectorAll('[data-action="more"]').length,
+					moreLabel:
+						document
+							.querySelector('[data-action="more"]')
+							?.getAttribute('aria-label') ?? null,
 					queueRowsDraggable: queueRows.filter((el) => el.draggable).length,
 					queueRows: queueRows.length,
 				})
@@ -1409,11 +1414,58 @@ async function run(window) {
 		),
 	)
 	check(
-		'每行曲目都有「下一首播放」按钮',
-		listFeatureUi.playNextButtons > 0 &&
-			listFeatureUi.playNextTitle === '下一首播放',
-		`${listFeatureUi.playNextButtons} 个，title=${listFeatureUi.playNextTitle}`,
+		'每行曲目都有「⋯」更多操作按钮（不再是两个图标并排）',
+		listFeatureUi.moreButtons > 0 && listFeatureUi.moreLabel === '更多操作',
+		`${listFeatureUi.moreButtons} 个，aria-label=${listFeatureUi.moreLabel}`,
 	)
+
+	/*
+	 * 点开第一个「⋯」，验证菜单**真的弹出来**且含关键项。
+	 *
+	 * ⚠️ 只断言"按钮在"是不够的 —— 按钮在但点了没反应，
+	 * 用户看到的是一个坏掉的操作列。所以这里走一遍真实的打开路径。
+	 */
+	await click(window, '[data-action="more"]')
+	await sleep(300)
+	const menuState = JSON.parse(
+		await evaluate(
+			window,
+			`(() => {
+				const box = document.querySelector('[data-testid="track-menu"]')
+				const rect = box?.getBoundingClientRect()
+				const items = box
+					? [...box.querySelectorAll('.menu__item')].map((b) => b.textContent.trim())
+					: []
+				return JSON.stringify({
+					opened: Boolean(box),
+					visible: Boolean(rect && rect.width > 60 && rect.height > 20),
+					items,
+					hasPlayNext: items.some((t) => t.includes('下一首播放')),
+				})
+			})()`,
+		),
+	)
+	check(
+		'点「⋯」弹出菜单，且含「下一首播放」（点不开的按钮等于坏按钮）',
+		menuState.opened && menuState.visible && menuState.hasPlayNext,
+		`打开=${menuState.opened} 可见=${menuState.visible} 项=[${menuState.items.join(' / ')}]`,
+	)
+
+	// 点菜单外面应当关掉它（否则菜单会一直挂在屏幕上）
+	await evaluate(
+		window,
+		`(() => {
+			document.body.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true }))
+			return true
+		})()`,
+	)
+	await sleep(200)
+	const menuClosed = await evaluate(
+		window,
+		`!document.querySelector('[data-testid="track-menu"]')`,
+	)
+	check('点菜单外面能关掉菜单', menuClosed === true)
+
 	check(
 		'队列行可以拖拽（更改播放顺序）',
 		listFeatureUi.queueRows > 0 &&
