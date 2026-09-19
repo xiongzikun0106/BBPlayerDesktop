@@ -700,6 +700,140 @@
 	min-width: 0;
 }
 
+/* ── 对话框（阶段 6c）─────────────────────────────────── */
+/*
+ * 居中卡片，宽度按宽屏放大。
+ *
+ * 安卓端的「添加到歌单」是居中 Dialog（不是底部弹层），桌面端保持同一形态 ——
+ * 底部抽屉在桌面没有心智模型，而居中对话框两端都成立。
+ */
+.modal__card--dialog {
+	width: min(440px, calc(100vw - 48px));
+	max-height: min(70vh, 560px);
+	display: flex;
+	flex-direction: column;
+}
+
+/* 单选列表：一行一个歌单，右侧一个圆形单选标记 */
+.dialog-list {
+	display: flex;
+	flex-direction: column;
+	gap: 0;
+	margin: 0;
+	padding: 0;
+	list-style: none;
+	overflow-y: auto;
+	min-height: 96px;
+}
+
+.dialog-option {
+	display: flex;
+	align-items: center;
+	gap: var(--sp-sm);
+	width: 100%;
+	padding: var(--sp-sm);
+	background: transparent;
+	border: none;
+	border-radius: var(--r-sm);
+	color: var(--on-surface);
+	font: inherit;
+	text-align: left;
+	cursor: pointer;
+}
+
+.dialog-option:hover {
+	background: var(--surface-container-high);
+}
+
+/*
+ * 单选标记：**圆**（不是方框）。
+ *
+ * ⚠️ 用 CSS 画而不是图标字体：`radio_button_unchecked` / `radio_button_checked`
+ * 不在图标子集里，而重建子集需要联网。CSS 画一个圆既零依赖、又能精确控制
+ * 尺寸与"选中态内点"的比例。**关键是它必须是圆的** —— 方框会被读成复选框，
+ * 而这里的语义是"选一个目的地"（单选）。
+ */
+.dialog-option__mark {
+	flex: none;
+	width: 18px;
+	height: 18px;
+	border-radius: var(--r-full);
+	border: 2px solid var(--on-surface-variant);
+	position: relative;
+	transition:
+		border-color var(--motion-duration-fast) ease,
+		background var(--motion-duration-fast) ease;
+}
+
+.dialog-option__mark::after {
+	content: '';
+	position: absolute;
+	inset: 3px;
+	border-radius: var(--r-full);
+	background: transparent;
+	transition: background var(--motion-duration-fast) ease;
+}
+
+.dialog-option.is-selected .dialog-option__mark {
+	border-color: var(--primary);
+}
+
+.dialog-option.is-selected .dialog-option__mark::after {
+	background: var(--primary);
+}
+
+.dialog-option__main {
+	flex: 1;
+	min-width: 0;
+	display: flex;
+	flex-direction: column;
+}
+
+.dialog-option__title {
+	font-size: var(--fs-body-large);
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.dialog-option__sub {
+	font-size: var(--fs-body-small);
+	color: var(--on-surface-variant);
+}
+
+/* 脚注（"只显示你拥有的本地歌单"）与动作行 */
+.dialog-note {
+	margin: var(--sp-sm) 0 0;
+	font-size: var(--fs-body-small);
+	color: var(--on-surface-variant);
+}
+
+.modal__actions {
+	display: flex;
+	align-items: center;
+	gap: var(--sp-sm);
+	padding: var(--sp-sm) var(--sp-md) var(--sp-md);
+	border-top: 1px solid var(--outline-variant);
+}
+
+/* 「创建歌单」靠左，取消/确认靠右 —— 与安卓端的 space-between 一致 */
+.modal__actions .modal__actions-spacer {
+	margin-left: auto;
+}
+
+/* 内联新建歌单那一行 */
+.dialog-new-row {
+	display: flex;
+	align-items: center;
+	gap: var(--sp-sm);
+	margin-top: var(--sp-sm);
+}
+
+.dialog-new-row input {
+	flex: 1 1 auto;
+	min-width: 0;
+}
+
 /* ── 空状态 ────────────────────────────────────────────── */
 /*
  * 空状态是**被设计过的**界面，不是留白：一个淡图标 + 一句话 +

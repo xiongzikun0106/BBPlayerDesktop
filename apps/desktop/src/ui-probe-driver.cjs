@@ -2045,6 +2045,94 @@ async function run(window) {
 			addResult.artistId > 0,
 		`title=「${addResult.titleStored}」 artist_id=${addResult.artistId}`,
 	)
+	// ---------------------------------------------------------------
+	// 1.7d 「添加到歌单」弹层（阶段 6c）
+	//
+	// 走**完整流程**：从「⋯」菜单打开 → 选中 → 确认 → 真的加进去。
+	// 只断言"弹层能打开"是不够的 —— 打开但选不中、或确认没反应，
+	// 用户看到的是一个走不通的功能。
+	console.log('\n[ui] 1.7d) 添加到歌单：完整流程')
+	const addFlow = JSON.parse(
+		await evaluate(
+			window,
+			`(async () => {
+				const wait = (ms) => new Promise((r) => setTimeout(r, ms))
+				const result = { ok: false, reason: '未开始' }
+				const more = document.querySelector('[data-action="more"]')
+				if (!more) { result.reason = '没有 ⋯ 按钮'; return JSON.stringify(result) }
+				more.click()
+				await wait(250)
+				const addItem = document.querySelector('[data-testid^="menu-add-to-playlist-"]')
+				if (!addItem) { result.reason = '菜单里没有「添加到歌单」'; return JSON.stringify(result) }
+				addItem.click()
+				await wait(700)
+				const dialog = document.querySelector('[data-testid="add-to-playlist"]')
+				if (!dialog) { result.reason = '弹层没打开'; return JSON.stringify(result) }
+				result.dialogVisible = dialog.getBoundingClientRect().width > 200
+				const noteText = dialog.querySelector('.dialog-note').textContent
+				result.noteSaysLocal = noteText.indexOf('本地歌单') >= 0
+				const options = dialog.querySelectorAll('.dialog-option')
+				result.optionCount = options.length
+				const okButton = dialog.querySelector('[data-testid="add-to-playlist-ok"]')
+				result.disabledBefore = okButton.disabled
+				if (options.length === 0) { result.reason = '弹层里没有可选的本地歌单'; return JSON.stringify(result) }
+				const target = options[0]
+				const playlistId = Number(target.dataset.playlistId)
+				const beforeResult = await window.bbplayer.getPlaylistTracks(playlistId)
+				result.before = (beforeResult.data || []).length
+				target.click()
+				await wait(250)
+				result.selected = target.classList.contains('is-selected')
+				result.disabledAfter = okButton.disabled
+				okButton.click()
+				await wait(1400)
+				const afterResult = await window.bbplayer.getPlaylistTracks(playlistId)
+				result.after = (afterResult.data || []).length
+				result.closed = !document.querySelector('[data-testid="add-to-playlist"]')
+				result.statusText = (document.getElementById('status').textContent || '').trim()
+				result.ok = true
+				return JSON.stringify(result)
+			})()`,
+		),
+	)
+	check(
+		'「添加到歌单」弹层能打开、有脚注说明、且列得出本地歌单',
+		addFlow.ok &&
+			addFlow.dialogVisible &&
+			addFlow.noteSaysLocal &&
+			addFlow.optionCount > 0,
+		JSON.stringify(addFlow),
+	)
+	check(
+		'没选歌单时「确认」禁用，选中后启用（不会空提交）',
+		addFlow.ok &&
+			addFlow.disabledBefore === true &&
+			addFlow.selected === true &&
+			addFlow.disabledAfter === false,
+		`选前禁用=${addFlow.disabledBefore} 选中=${addFlow.selected} 选后禁用=${addFlow.disabledAfter}`,
+	)
+	/*
+	 * ⚠️ 这里**不能**只断言"曲目数 +1"。
+	 *
+	 * 第一行曲目本来就属于当前打开的这个歌单，所以从它的「⋯」加进同一个歌单，
+	 * 正确行为是**幂等忽略**（曲目数不变），而我的第一版断言写死了 +1 →
+	 * 一次正确的行为被判成失败。
+	 *
+	 * 所以两个分支都要认，而且**两者都必须有明确证据**：
+	 *   * 真的加了 → 曲目数 +1；
+	 *   * 已经在里面 → 状态文案必须说清"本来就在这个歌单里"，
+	 *     不能只是"什么都没发生"。
+	 */
+	const grew = addFlow.ok && addFlow.after === addFlow.before + 1
+	const deduped =
+		addFlow.ok &&
+		addFlow.after === addFlow.before &&
+		/本来就在这个歌单里/.test(String(addFlow.statusText))
+	check(
+		'点「确认」走通了写库（新增 +1，或幂等忽略并**说清原因**）',
+		(grew || deduped) && addFlow.closed === true,
+		`曲目数 ${addFlow.before} → ${addFlow.after}，关闭=${addFlow.closed}，状态「${addFlow.statusText}」`,
+	)
 	console.log('\n[ui] 1.7b) 浮动状态胶囊会自己消失（每一种）')
 	const pillFade = JSON.parse(
 		await evaluate(

@@ -524,6 +524,14 @@
 							)
 						},
 					},
+					{
+						// 安卓端远程列表的第 3 项就是它（顺序也照抄：
+						// 下一首播放 → … → 添加到歌单 → …）
+						label: '添加到歌单',
+						icon: 'playlist_add',
+						testid: `menu-add-to-playlist-${index}`,
+						onSelect: () => openAddToPlaylistDialog([track]),
+					},
 				]
 				if (removal.canRemove) {
 					items.push({
@@ -580,6 +588,215 @@
 	 * 只读角色（`share_role === 'subscriber'`）在 `removalContext` 里就已经
 	 * 被挡掉了，所以这个函数只可能在可写歌单上被调用。
 	 */
+	/**
+	 * 「添加到歌单」对话框（阶段 6c）。
+	 *
+	 * ## 对齐安卓端
+	 *
+	 * * **居中 Dialog**（不是底部弹层）；
+	 * * 歌单列表 + **单选**（语义是"选一个目的地"，不是多选）；
+	 * * 左侧「创建歌单」、右侧「取消 / 确认」；
+	 * * 脚注解释为什么不显示某些歌单。
+	 *
+	 * ## ⚠️ 这里**主动修掉**移动端的一个断点
+	 *
+	 * 安卓端从本弹层点「创建歌单」，创建成功后会 `closeAll()` 关闭**所有**弹层 ——
+	 * 既不把用户刚选中的歌加进新歌单，也不回到这个弹层。**用户白选一场。**
+	 *
+	 * 桌面端改成**内联新建**：在同一个对话框里输入名字 → 创建 → **自动选中
+	 * 新歌单并保留已选曲目**，用户再点「确认」即可。少一次往返，也不丢选择。
+	 */
+	function openAddToPlaylistDialog(tracks) {
+		const items = (tracks ?? []).filter((t) => t?.bvid)
+		if (items.length === 0) {
+			setStatus('这些曲目没有可加入的 BV 号', 'bad')
+			return
+		}
+		let selectedId = null
+		let playlists = []
+
+		const view = window.bbComponents.dialog({
+			testid: 'add-to-playlist',
+			title: '添加到歌单',
+		})
+
+		const listBox = document.createElement('ul')
+		listBox.className = 'dialog-list'
+		listBox.dataset.testid = 'add-to-playlist-list'
+		view.body.appendChild(listBox)
+
+		const note = document.createElement('p')
+		note.className = 'dialog-note'
+		/*
+		 * 与安卓端同一句意思，但换成桌面端更清楚的措辞 ——
+		 * 安卓端写「与远程同步或订阅的共享歌单不会显示」，用户不知道**为什么**。
+		 */
+		note.textContent =
+			'只显示你自己的本地歌单。与 B 站同步的歌单、以及订阅来的共享歌单不可写入，所以不在这里。'
+		view.body.appendChild(note)
+
+		const newRow = document.createElement('div')
+		newRow.className = 'dialog-new-row'
+		newRow.hidden = true
+		const newInput = document.createElement('input')
+		newInput.type = 'text'
+		newInput.placeholder = '新歌单名字'
+		newInput.dataset.testid = 'add-to-playlist-new-name'
+		const newConfirm = document.createElement('button')
+		newConfirm.className = 'btn--filled'
+		newConfirm.dataset.testid = 'add-to-playlist-new-confirm'
+		newConfirm.textContent = '创建'
+		newRow.append(newInput, newConfirm)
+		view.body.appendChild(newRow)
+
+		const createButton = document.createElement('button')
+		createButton.className = 'text-button'
+		createButton.dataset.testid = 'add-to-playlist-create'
+		createButton.textContent = '创建歌单'
+		const spacer = document.createElement('span')
+		spacer.className = 'modal__actions-spacer'
+		const cancelButton = document.createElement('button')
+		cancelButton.className = 'text-button'
+		cancelButton.dataset.testid = 'add-to-playlist-cancel'
+		cancelButton.textContent = '取消'
+		const okButton = document.createElement('button')
+		okButton.className = 'btn--filled'
+		okButton.dataset.testid = 'add-to-playlist-ok'
+		okButton.textContent = '确认'
+		okButton.disabled = true
+		view.actions.append(createButton, spacer, cancelButton, okButton)
+
+		/** 与安卓端同一个过滤：只有自己的本地歌单可写 */
+		const writable = (playlist) => playlist?.type === 'local'
+
+		function render() {
+			listBox.textContent = ''
+			if (playlists.length === 0) {
+				listBox.appendChild(
+					window.bbComponents.empty({
+						testid: 'add-to-playlist-empty',
+						iconName: 'playlist_add',
+						title: '还没有本地歌单',
+						hint: '点左下角「创建歌单」新建一个。',
+					}),
+				)
+			}
+			for (const playlist of playlists) {
+				const li = document.createElement('li')
+				const button = document.createElement('button')
+				button.className = 'dialog-option'
+				button.dataset.testid = `add-to-playlist-option-${playlist.id}`
+				button.dataset.playlistId = String(playlist.id)
+				if (playlist.id === selectedId) button.classList.add('is-selected')
+				const mark = document.createElement('span')
+				mark.className = 'dialog-option__mark'
+				const main = document.createElement('span')
+				main.className = 'dialog-option__main'
+				const title = document.createElement('span')
+				title.className = 'dialog-option__title'
+				title.textContent = playlist.title ?? '(未命名)'
+				const sub = document.createElement('span')
+				sub.className = 'dialog-option__sub'
+				sub.textContent = `${playlist.itemCount ?? 0} 首`
+				main.append(title, sub)
+				button.append(mark, main)
+				button.addEventListener('click', () => {
+					selectedId = playlist.id
+					for (const other of listBox.querySelectorAll('.dialog-option')) {
+						other.classList.toggle(
+							'is-selected',
+							Number(other.dataset.playlistId) === selectedId,
+						)
+					}
+					okButton.disabled = false
+				})
+				li.appendChild(button)
+				listBox.appendChild(li)
+			}
+			okButton.disabled = selectedId == null
+		}
+
+		async function refreshList() {
+			try {
+				const result = await window.bbplayer.listPlaylists()
+				playlists = (result?.data ?? []).filter(writable)
+			} catch {
+				playlists = []
+			}
+			render()
+		}
+
+		createButton.addEventListener('click', () => {
+			newRow.hidden = !newRow.hidden
+			if (!newRow.hidden) newInput.focus()
+		})
+
+		async function createInline() {
+			const title = newInput.value.trim()
+			if (!title) {
+				setStatus('歌单名字不能为空', 'bad')
+				return
+			}
+			const created = await window.bbplayer.createPlaylist({ title })
+			if (created?.ok === false) {
+				setStatus(`创建失败：${created.error}`, 'bad')
+				return
+			}
+			// ⚠️ 这两步就是"修断点"的关键：**重新拉列表 + 自动选中新歌单**。
+			// 安卓端在这里直接 closeAll()，用户选中的曲目就丢了。
+			await refreshList()
+			const newId = created?.data?.id ?? created?.data?.playlist?.id ?? null
+			if (newId != null) {
+				selectedId = newId
+				newRow.hidden = true
+				newInput.value = ''
+				render()
+			}
+			setStatus(`已创建「${title}」，已为你选中`, 'ok')
+		}
+		newConfirm.addEventListener('click', () => void createInline())
+		newInput.addEventListener('keydown', (event) => {
+			if (event.key === 'Enter') {
+				event.preventDefault()
+				void createInline()
+			}
+		})
+
+		cancelButton.addEventListener('click', () => view.close())
+		okButton.addEventListener('click', () => {
+			void (async () => {
+				if (selectedId == null) return
+				const result = await window.bbplayer.addTracksToPlaylist({
+					playlistId: selectedId,
+					tracks: items.map((t) => ({
+						bvid: t.bvid,
+						title: t.title,
+						artist: t.artist ?? t.upperName ?? null,
+						cover: t.cover ?? t.coverUrl ?? null,
+						duration: t.duration ?? 0,
+					})),
+				})
+				if (result?.ok === false) {
+					setStatus(`加入歌单失败：${result.error}`, 'bad')
+					return
+				}
+				const { added = 0, skipped = 0 } = result?.data ?? {}
+				// 分开报「新增」与「已在歌单里」—— 安卓端只 toast 一句"添加成功"，
+				// 用户不知道有几首没进去。
+				setStatus(
+					skipped > 0
+						? `已加入 ${added} 首，${skipped} 首本来就在这个歌单里`
+						: `已加入 ${added} 首`,
+					'ok',
+				)
+				view.close()
+				void refreshPlaylists()
+			})()
+		})
+
+		void refreshList()
+	}
+
 	async function removeTrackFromPlaylist(track, button) {
 		const playlistId = window.bbState.get().selectedPlaylistId
 		if (!playlistId || track?.id == null) {

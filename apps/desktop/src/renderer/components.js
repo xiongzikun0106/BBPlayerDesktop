@@ -322,6 +322,78 @@
 		return box
 	}
 
+	/**
+	 * **居中的对话框**（阶段 6c）。
+	 *
+	 * 安卓端的「添加到歌单」用的是 `Dialog`（居中卡片），**不是**底部弹层 ——
+	 * 它的 `AnimatedModalOverlay` 是 `justifyContent: center`。所以桌面端也居中，
+	 * 只把宽度按宽屏放大。
+	 *
+	 * 返回 `{ root, body, actions, close }`，调用方自己往 `body` 放内容、
+	 * 往 `actions` 放按钮 —— 组件只管框架与关闭语义。
+	 *
+	 * ⚠️ 关闭时机与 `menu()` 一样有三条（确认/取消、点遮罩、按 Esc）。
+	 * 少一条就会"关不掉"，而**模态关不掉比菜单关不掉严重得多**。
+	 */
+	function dialog({ testid, title, onClose } = {}) {
+		const root = document.createElement('div')
+		root.className = 'modal is-open'
+		if (testid) root.dataset.testid = testid
+
+		const card = document.createElement('div')
+		card.className = 'modal__card modal__card--dialog'
+
+		const head = document.createElement('div')
+		head.className = 'modal__head'
+		const h2 = document.createElement('h2')
+		h2.textContent = title ?? ''
+		head.appendChild(h2)
+		const closeButton = document.createElement('button')
+		closeButton.className = 'icon-only modal__close'
+		if (testid) closeButton.dataset.testid = `${testid}-close`
+		closeButton.title = '关闭'
+		closeButton.setAttribute('aria-label', '关闭')
+		closeButton.appendChild(icon('close', 'icon--md'))
+		head.appendChild(closeButton)
+		card.appendChild(head)
+
+		const body = document.createElement('div')
+		body.className = 'modal__body'
+		card.appendChild(body)
+
+		const actions = document.createElement('div')
+		actions.className = 'modal__actions'
+		card.appendChild(actions)
+
+		root.appendChild(card)
+		document.body.appendChild(root)
+
+		function onKey(event) {
+			if (event.key === 'Escape') {
+				event.stopPropagation()
+				close()
+			}
+		}
+		/** 只有点在遮罩本身（不是卡片内部）才关 */
+		function onBackdrop(event) {
+			if (event.target === root) close()
+		}
+		let closed = false
+		function close() {
+			if (closed) return
+			closed = true
+			root.remove()
+			document.removeEventListener('keydown', onKey, true)
+			document.removeEventListener('pointerdown', onBackdrop, true)
+			onClose?.()
+		}
+		closeButton.addEventListener('click', close)
+		document.addEventListener('keydown', onKey, true)
+		document.addEventListener('pointerdown', onBackdrop, true)
+
+		return { root, card, body, actions, close }
+	}
+
 	window.bbComponents = {
 		icon,
 		iconHtml,
@@ -332,5 +404,6 @@
 		toast,
 		menu,
 		closeMenu,
+		dialog,
 	}
 })()
