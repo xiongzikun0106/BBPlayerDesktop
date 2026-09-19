@@ -514,7 +514,13 @@ body {
  */
 .topbar {
 	padding: var(--sp-sm) var(--sp-md);
-	border-bottom: 1px solid var(--outline-variant);
+	/*
+	 * ⚠️ 这里**不用通栏细线**分层（原来是 border-bottom）。
+	 *
+	 * 通栏线从 `.main` 的 x=0 拉过去，而内容是内缩 16px 的 ——
+	 * 两者永远错开 16px。用户复审时一眼指出「各个用于划分页面功能
+	 * 之间的横线没有对齐」。安卓端也不靠这条线分层，靠**面与留白**。
+	 */
 	display: flex;
 	flex-direction: row;
 	align-items: center;
@@ -627,12 +633,30 @@ body {
  * 修法不是去挪 toast（它的位置是对的：悬浮在播放条上方最显眼），
  * 而是让**列表自己**在底部留出安全距离 —— 滚动到底时最后一行仍完全可读。
  */
+/*
+ * 内容区就是一张**卡片**（阶段 6b）。
+ *
+ * 安卓端靠"面 + 留白"分层，不靠通栏细线；而功能块是圆角面。
+ * 桌面端在这里用一个统一的面承载整个功能区：
+ *   * 左右外边距与 `.page-head` / 页签条的内缩量一致 → **天然对齐**；
+ *   * 圆角 `--r-lg` → 没有直角过渡；
+ *   * 与它上面的功能条（如收藏夹的 UID 条）是**两张同宽的卡片**，
+ *     竖向排开就是用户要的"各个功能页面呈小卡片"。
+ *
+ * ⚠️ 为什么不做成"每个内部分组一张卡"：`#content` 的子节点是各模块
+ * 自己 append 的扁平结构（没有分组容器），硬拆需要改十几个模块、
+ * 且每个模块的分组语义还不一样。一张统一的面已经能给出对齐 + 圆角 +
+ * 卡片感，风险也小得多。
+ */
 .content {
 	flex: 1 1 auto;
 	min-height: 0;
 	overflow-y: auto;
+	margin: var(--sp-sm) var(--sp-md) var(--sp-md);
 	padding: var(--sp-md);
 	padding-bottom: 72px;
+	background: var(--surface-container);
+	border-radius: var(--r-lg);
 }
 
 .view-head {
@@ -1457,9 +1481,15 @@ input[type='range']:focus-visible {
 	display: flex;
 	align-items: center;
 	gap: var(--sp-xs);
-	padding: var(--sp-xs) var(--sp-md);
-	border-bottom: 1px solid var(--outline-variant);
-	background: var(--surface);
+	/*
+	 * 它是一条**功能条**，所以自己就是一张卡片（圆角面），
+	 * 而不是"内容 + 底下一条通栏线"。左右外边距与内容区对齐 ——
+	 * 这正是「先对齐、再加小圆角、各功能区成小卡片」的字面做法。
+	 */
+	margin: 0 var(--sp-md) var(--sp-sm);
+	padding: var(--sp-xs) var(--sp-sm);
+	background: var(--surface-container);
+	border-radius: var(--r-lg);
 	flex-wrap: wrap;
 }
 
@@ -2116,7 +2146,11 @@ input[type='range']:focus-visible {
 	flex: 1 1 auto;
 	min-height: 0;
 	overflow-y: auto;
+	/* 与 `#content` / `#view-settings` 同一张卡片面 —— 同层级容器必须一致 */
+	margin: var(--sp-sm) var(--sp-md) var(--sp-md);
 	padding: var(--sp-md);
+	background: var(--surface-container);
+	border-radius: var(--r-lg);
 }
 
 /*

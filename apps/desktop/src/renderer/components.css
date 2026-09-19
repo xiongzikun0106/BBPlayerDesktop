@@ -148,12 +148,66 @@
  *
  * ⚠️ 不用下划线做选中（那是浏览器/IDE 的惯用法，移动端没有）。
  */
+/* ── 卡片（阶段 6b）───────────────────────────────────── */
+/*
+ * 安卓端的视觉语言里**几乎没有直角过渡**：功能块是圆角面（`surfaceVariant`
+ * + radius 12），靠面与留白分层，而不是靠通栏的细线。
+ *
+ * 桌面端原来用的是另一种做法：顶部栏、页签条、UID 条各有一条
+ * `border-bottom` **通栏**细线，而内容是内缩 16px 的 ——
+ * 于是**线和字永远差 16px**。用户复审时一眼指出
+ * 「各个用于划分页面功能之间的横线没有对齐」。
+ *
+ * 卡片化顺带把这个对齐问题**从结构上消掉**：卡片的左右边缘就是内容的
+ * 内缩位置，两者不可能不齐。
+ *
+ * 几何约定（与安卓端的单条目卡一致）：
+ *   * 圆角 `--r-lg`（小圆角，不是大圆角也不是直角）
+ *   * 底色 `--surface-container`（比赛表面亮一档，靠面分层）
+ *   * **不描边** —— 描边会让一屏里出现很多细线，正是要避免的东西
+ */
+.card {
+	background: var(--surface-container);
+	border-radius: var(--r-lg);
+	padding: var(--sp-md);
+}
+
+/* 只做容器、不要内边距的卡片（内容自己带内边距） */
+.card--flush {
+	padding: 0;
+	overflow: hidden;
+}
+
+/*
+ * 功能区的标题（卡片里的小标题）
+ *
+ * 安卓端的分区标题是 `titleMedium + bold`，卡片化之后标题应当在卡片**内部**，
+ * 而不是像原来那样飘在通栏线上面。
+ */
+.card__title {
+	margin: 0 0 var(--sp-sm);
+	font-size: var(--fs-title-medium);
+	font-weight: 600;
+	color: var(--on-surface);
+}
+
+.card__hint {
+	margin: calc(-1 * var(--sp-xs)) 0 var(--sp-sm);
+	font-size: var(--fs-body-small);
+	color: var(--on-surface-variant);
+}
+
+/*
+ * 页签条：**不再有通栏底线**。
+ *
+ * 选中态本来就是填充胶囊（阶段 1 定的），已经有了足够的视觉边界，
+ * 底下再压一条通栏细线既多余、又会与内容错位 16px。
+ */
 .view-tabs {
 	display: flex;
 	align-items: center;
 	gap: var(--sp-xxs);
-	padding: var(--sp-xs) var(--sp-md) 0;
-	border-bottom: 1px solid var(--outline-variant);
+	padding: var(--sp-xs) var(--sp-md) var(--sp-sm);
 }
 
 .view-tabs[hidden] {
@@ -181,12 +235,23 @@
  * 与 `#content` / `#view-share` 互斥显示（见 renderer.js 的 showMainPane）——
  * 三个都是 `.main` 的 flex 子项，同时可见会把中栏挤成上下两半。
  */
+/*
+ * 设置页与内容区用**同一张卡片面**（阶段 6b）。
+ *
+ * ⚠️ 之前只有 `#content` 被卡片化，设置页和共享页漏了 ——
+ * 结果深色主题下设置页仍是"平铺一大片"，正是用户抱怨的那一坨。
+ * **同一层级的容器必须长得一样**，否则一屏里就有两套语言。
+ */
 .settings-view {
 	flex: 1 1 auto;
 	min-height: 0;
 	overflow-y: auto;
 	display: flex;
 	flex-direction: column;
+	margin: var(--sp-sm) var(--sp-md) var(--sp-md);
+	padding: var(--sp-md);
+	background: var(--surface-container);
+	border-radius: var(--r-lg);
 }
 
 /* 返回按钮在页面的标题区里（`.page-head`），与标题同一行 */
