@@ -17,6 +17,7 @@ import {
 	buildLyricsSearchKeyword,
 	lyricCandidatesLookLikeInstrumental,
 	neteaseLyricsApiClient,
+	normalizeTitle,
 	rankLyricsCandidates,
 	registerCorePorts,
 	toLyricsCandidates,
@@ -165,10 +166,23 @@ function testNormalizeTitle(): void {
 		'"Song" 与 "Another Song" 不应判为同一标题',
 		!normalizeViaScore('Song', 'Another Song'),
 	)
+	/*
+	 * ⚠️ 这条**直接断言 `normalizeTitle`**，不再用 `normalizeViaScore` 代理。
+	 *
+	 * 原来的写法是"如果归一化正确，那么 `Live and Let Die` 与 `Die` 的打分
+	 * 就不该相等" —— 一个间接代理。标题证据改成
+	 * `max(Dice 相似度, 候选歌名的覆盖率)` 之后代理失效了：
+	 * `Die` 是标题的**完整子串**，覆盖率 1.0 → 判为相同。
+	 * 但归一化本身没坏（`normalizeTitle('Live and Let Die')` 没有被截断）。
+	 *
+	 * 教训：**代理断言会在被测实现换了算法之后悄悄测错东西**。
+	 * 能直接断言被测函数就直接断言。
+	 */
 	check(
 		'"Live and Let Die" 不能被噪声词削成 "Die"',
-		normalizeViaScore('Live and Let Die', 'Live and Let Die') &&
-			!normalizeViaScore('Live and Let Die', 'Die'),
+		normalizeTitle('Live and Let Die') !== normalizeTitle('Die') &&
+			normalizeTitle('Live and Let Die').toLowerCase().includes('die'),
+		`normalizeTitle = 「${normalizeTitle('Live and Let Die')}」`,
 	)
 }
 

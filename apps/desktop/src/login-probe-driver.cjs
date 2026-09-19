@@ -473,6 +473,46 @@ async function run(window) {
 			preview.ok && preview.value.rows > 0,
 			preview.ok ? `${preview.value.rows} 行` : JSON.stringify(preview.value),
 		)
+		/*
+		 * 「作者」列不能整列都是「—」。
+		 *
+		 * 这一列曾经**永远是「—」**：`library.js` 的曲目表只认
+		 * `track.artist` / `track.artist_name`，而收藏夹预览喂进来的对象
+		 * 带的是接口的 **`upperName`**（`bilibili-api.cjs:405` 从
+		 * `media.upper.name` 映射）。两套渲染器认两套字段名。
+		 *
+		 * 用真实接口验证过：`/x/v3/fav/resource/list` 的 media **10/10 条**
+		 * 都带 `upper`，所以不是接口的问题。
+		 *
+		 * ⚠️ 断言要**同时**看两件事：至少有一些行有作者（不是全「—」），
+		 * 且确实量到了行（防止"0 行所以没有「—」"的假绿）。
+		 */
+		const artistColumn = JSON.parse(
+			await evaluate(
+				window,
+				`(() => {
+					const cells = [
+						...document.querySelectorAll('[data-testid^="favorite-table-"] td.col-artist'),
+					]
+					const texts = cells.map((c) => (c.textContent ?? '').trim())
+					const named = texts.filter((t) => t && t !== '—')
+					return JSON.stringify({
+						total: texts.length,
+						named: named.length,
+						sample: named.slice(0, 3),
+						allDash: texts.length > 0 && named.length === 0,
+					})
+				})()`,
+			),
+		)
+		check(
+			'收藏夹预览的「作者」列真的读到了作者（不是整列「—」）',
+			artistColumn.total > 0 && !artistColumn.allDash,
+			`${artistColumn.named}/${artistColumn.total} 行有作者` +
+				(artistColumn.sample.length > 0
+					? `，例如 ${artistColumn.sample.join(' / ')}`
+					: ''),
+		)
 		await shot(window, 'login-08-favorites-preview')
 
 		// ---------- 12. 导入为歌单（增量幂等）----------

@@ -448,7 +448,27 @@
 			tr.appendChild(titleCell)
 
 			for (const [text, cls] of [
-				[track.artist || track.artist_name || '—', 'col-artist'],
+				/*
+				 * ⚠️ 字段名要**同时认两套**。
+				 *
+				 * 走数据库的曲目带 `artist` / `artist_name`；
+				 * 而直接从 B 站接口来的条目（收藏夹预览、搜索结果）带的是
+				 * **`upperName`** —— 那是 `bilibili-api.cjs:405` 从
+				 * `media.upper.name` 映射来的。
+				 *
+				 * 原来只认前两个，于是收藏夹预览的「作者」列**永远是「—」**
+				 * （用了真实接口验证过：`/x/v3/fav/resource/list` 返回的
+				 * media 10/10 条都带 `upper`，所以不是接口的问题，
+				 * 是本渲染器不认这个字段名）。
+				 */
+				[
+					track.artist ||
+						track.artist_name ||
+						track.upperName ||
+						track.author ||
+						'—',
+					'col-artist',
+				],
 				[window.bbPlayer.formatTime(track.duration), 'col-duration'],
 			]) {
 				const td = document.createElement('td')

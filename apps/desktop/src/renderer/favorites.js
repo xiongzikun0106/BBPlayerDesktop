@@ -197,7 +197,11 @@
 			for (const [text, cls] of [
 				[String(index + 1), 'col-index'],
 				[entry.title || '(无标题)', 'col-title'],
-				[entry.upperName || '—', 'col-artist'],
+				// 与 library.js 的曲目表一样同时认两套字段名
+				[
+					entry.upperName || entry.artist || entry.artist_name || '—',
+					'col-artist',
+				],
 				[window.bbPlayer.formatTime(entry.duration), 'col-duration'],
 			]) {
 				const td = document.createElement('td')

@@ -207,7 +207,25 @@ async function matchTrack(track) {
 		normalizeArtist: core.normalizeArtist,
 		toHalfWidth: core.toHalfWidth,
 	}
-	const { AUTO_MATCH_THRESHOLD, MIN_USABLE_SCORE } = core
+	/*
+	 * ⚠️⚠️ 这里的两个阈值**故意不再从 core 取**，而是写死为本文件调好的值。
+	 *
+	 * 历史上它们读的是 `core.AUTO_MATCH_THRESHOLD` / `core.MIN_USABLE_SCORE` ——
+	 * 那是**歌词匹配器**的阈值。两套打分函数完全不同：
+	 *   * 歌词匹配：标题/歌手/时长，权重 0.5/0.3/0.2，候选来自三源搜索；
+	 *   * 本文件：标题/上传者/时长，另有权重表和负向词，候选来自 B 站视频搜索。
+	 * 共用一个常量意味着**调其中一套会悄悄改掉另一套的判定**。
+	 *
+	 * 实测撞上过：把歌词的阈值从 0.75 降到 0.45（有 100 用例的 harness 证明
+	 * 该改）之后，**外链歌单导入的 `auto` 判定会一起变宽** ——
+	 * 而导入那边没有任何评测数据支撑这个改动。
+	 *
+	 * 所以：导入用回它自己的 0.75 / 0.45（= 歌词阈值改动前的值，
+	 * 保证导入行为一字不变）；歌词那边用 0.45 / 0.3。
+	 * 将来要调导入，请对着导入的评测数据调，不要顺手改 core 的常量。
+	 */
+	const AUTO_MATCH_THRESHOLD = 0.75
+	const MIN_USABLE_SCORE = 0.45
 
 	for (const [name, fn] of Object.entries(primitives)) {
 		if (typeof fn !== 'function') {
