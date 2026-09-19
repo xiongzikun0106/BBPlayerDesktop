@@ -103,6 +103,7 @@ const MEDIA_KEYS_MODE = process.argv.includes('--media-keys')
 const PROBE_ENABLED = [
 	'--probe',
 	'--ui-probe',
+	'--ui-tour',
 	'--login-probe',
 	'--media-probe',
 	'--settings-probe',
@@ -138,11 +139,28 @@ protocol.registerSchemesAsPrivileged([
 let mainWindow = null
 
 function createWindow() {
+	/*
+	 * ⚠️ 探针模式**不显示窗口**。
+	 *
+	 * 探针从不使用 OS 级输入（它走 `webContents.executeJavaScript` 驱动
+	 * `el.click()`），所以"会不会抢键鼠"这件事本来就只取决于窗口有没有出现。
+	 * 显示窗口会在开发者（或用户的游戏）正忙时打断焦点 ——
+	 * 用户明确要求测试必须静默。
+	 *
+	 * 三条配套设置：
+	 *   * `show: false` —— 不显示；
+	 *   * `skipTaskbar: true` —— 也不在任务栏留一个图标；
+	 *   * `backgroundThrottling: false` —— **关键**：隐藏窗口默认会被节流，
+	 *     合成器不再产帧，`capturePage()` 就会拿到空白图。
+	 *     `paintWhenInitiallyHidden` 默认为 true，这里显式写出来表明依赖它。
+	 */
+	const silent = PROBE_ENABLED
 	mainWindow = new BrowserWindow({
 		width: 1100,
 		height: 760,
 		backgroundColor: '#1C1B1F',
-		show: true,
+		show: !silent,
+		skipTaskbar: silent,
 		webPreferences: {
 			preload: path.join(__dirname, 'preload.cjs'),
 			contextIsolation: true,
@@ -150,6 +168,9 @@ function createWindow() {
 			// 生产路径**不需要** webSecurity:false —— 音频走自定义协议，CORS 由协议层解决。
 			// 仅在 `--compare --insecure` 下才关闭，用来量化「方案 B 到底要付什么代价」。
 			webSecurity: !INSECURE_MODE,
+			// 隐藏窗口也要继续合成帧，否则截图是空白（见上面注释）
+			backgroundThrottling: false,
+			paintWhenInitiallyHidden: true,
 			// 把「是否暴露 bbProbe」这个事实显式传给 preload。
 			// 不在 preload 里推断（打包后 NODE_ENV 之类的信号都不可靠）。
 			additionalArguments: PROBE_ENABLED ? ['--bb-probe-enabled'] : [],

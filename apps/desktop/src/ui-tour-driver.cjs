@@ -54,6 +54,49 @@ async function sleep(ms) {
 	return new Promise((resolve) => setTimeout(resolve, ms))
 }
 
+/**
+ * **像素体检**：这一帧到底有没有内容。
+ *
+ * 为什么非要有它：体检表（`auditVisibility` / `auditLayout`）量的是 **DOM** ——
+ * 元素在不在、有没有尺寸、在不在视口里。这些**全都证明不了它被画出来了**。
+ *
+ * 而探针窗口现在是不显示的（`main.cjs` 的 `createWindow`），隐藏窗口一旦被
+ * 节流，`capturePage()` 就会返回**纯色空图**，DOM 体检却依然全绿 ——
+ * 那时"33 张 0 问题"会是一句谎话。
+ *
+ * 做法：从位图里稀疏采样，数**不同颜色**的个数。正常界面有几百上千种颜色
+ * （文字抗锯齿、渐变、封面），纯色空图只有 1–2 种。
+ */
+function inspectFrame(image) {
+	const bitmap = image.toBitmap() // BGRA
+	if (!bitmap || bitmap.length < 16) {
+		return { blank: true, distinctColors: 0, redRange: 0, sampled: 0 }
+	}
+	const pixels = Math.floor(bitmap.length / 4)
+	// 最多采样约 4000 个点；步长取整到 4 的倍数（保证落在像素边界上）
+	const step = Math.max(1, Math.floor(pixels / 4000)) * 4
+	const colors = new Set()
+	let min = 255
+	let max = 0
+	let sampled = 0
+	for (let i = 0; i + 3 < bitmap.length; i += step) {
+		const b = bitmap[i]
+		const g = bitmap[i + 1]
+		const r = bitmap[i + 2]
+		colors.add((r << 16) | (g << 8) | b)
+		if (r < min) min = r
+		if (r > max) max = r
+		sampled++
+	}
+	return {
+		sampled,
+		distinctColors: colors.size,
+		redRange: max - min,
+		// 只有一两种颜色 = 空白/纯色帧
+		blank: colors.size <= 2,
+	}
+}
+
 /** 截图并存盘；同时记录尺寸，方便发现"截出来是空白" */
 async function shot(window, name, note) {
 	/*
@@ -73,6 +116,7 @@ async function shot(window, name, note) {
 		)`,
 	)
 	const image = await window.webContents.capturePage()
+	const frame = inspectFrame(image)
 	const file = path.join(shotDir(report.theme), `${name}.png`)
 	fs.writeFileSync(file, image.toPNG())
 	const size = image.getSize()
@@ -87,15 +131,28 @@ async function shot(window, name, note) {
 	// 的教训写成四条通用规则，在每一屏上自动跑（见 auditLayout 的注释）。
 	const layoutProblems = await auditLayout(window)
 	audit.layoutProblems = layoutProblems
+	audit.frame = frame
 	if (layoutProblems.length > 0) {
 		report.problems.push(
 			`${name} 布局体检：${layoutProblems.slice(0, 3).join('；')}`,
 		)
 	}
+	// ⚠️ **像素**体检：这一帧到底有没有内容。
+	//
+	// 体检表量的是 DOM（元素在不在、有没有尺寸），它**证明不了画出来了**。
+	// 而探针窗口现在是不显示的（见 main.cjs 的 createWindow），
+	// 隐藏窗口一旦被节流就会截出**纯色空图** —— 而 DOM 体检依然全绿。
+	// 所以这里直接数像素：整张图只有一两种颜色就是空图。
+	if (frame.blank) {
+		report.problems.push(
+			`${name} 截图像是空图：只有 ${frame.distinctColors} 种颜色（通道极差 ${frame.redRange}）`,
+		)
+	}
 	report.shots.push({ name, note, file, ...size, audit })
 	console.log(
 		`  📷 ${name}  ${size.width}x${size.height}  ${note}  ${audit.summary}` +
-			(layoutProblems.length > 0 ? `  ⚠ ${layoutProblems.length} 条` : ''),
+			(layoutProblems.length > 0 ? `  ⚠ ${layoutProblems.length} 条` : '') +
+			(frame.blank ? '  ⚠ 空图' : `  ${frame.distinctColors}色`),
 	)
 	return file
 }
