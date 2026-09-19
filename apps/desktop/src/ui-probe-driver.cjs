@@ -1903,6 +1903,68 @@ async function run(window) {
 	)
 
 	// ---------------------------------------------------------------
+	// 1.7b 浮动状态胶囊的生命周期
+	// ---------------------------------------------------------------
+	//
+	// ⚠️ 这与上面那条**不是同一个东西**：上面测的是组件层的 `toast()`
+	// （自带 timeout）；这里测的是 `status.js` 那个常驻的浮动胶囊。
+	//
+	// 用户实测反馈「现在的胶囊是不会消失的，会一直出现」，截图里能**同时**
+	// 看到两条（一条失败提示、一条状态）。根因：原实现只让 `ok` / `warn`
+	// 淡出，`idle` / `busy` / `bad` 永远挂着。
+	//
+	// 写入方式与各模块一致（直接改 `#status` 的文本与类名，
+	// 观察者会接管显示与淡出），而不是绕开观察者去调内部函数。
+	console.log('\n[ui] 1.7b) 浮动状态胶囊会自己消失（每一种）')
+	const pillFade = JSON.parse(
+		await evaluate(
+			window,
+			`(async () => {
+				const status = document.getElementById('status')
+				const host = document.querySelector('[data-testid="status-host"]')
+				if (!status || !host) return JSON.stringify({ missing: true })
+				const probeKind = async (kind, budgetMs) => {
+					status.textContent = '探针用例：' + kind
+					status.className = 'status status--' + kind
+					const t0 = Date.now()
+					while (!host.classList.contains('is-visible') && Date.now() - t0 < 2500) {
+						await new Promise((r) => setTimeout(r, 50))
+					}
+					const appeared = host.classList.contains('is-visible')
+					const t1 = Date.now()
+					while (host.classList.contains('is-visible') && Date.now() - t1 < budgetMs) {
+						await new Promise((r) => setTimeout(r, 150))
+					}
+					return {
+						kind,
+						appeared,
+						faded: !host.classList.contains('is-visible'),
+						ms: Date.now() - t1,
+					}
+				}
+				const bad = await probeKind('bad', 14000)
+				const idle = await probeKind('idle', 9000)
+				const ok = await probeKind('ok', 9000)
+				window.bbStatus?.hide?.()
+				return JSON.stringify({ bad, idle, ok })
+			})()`,
+		),
+	)
+	check(
+		'状态胶囊：bad / idle / ok **三种都会自动消失**（原实现只有 ok/warn 会）',
+		!pillFade.missing &&
+			pillFade.bad?.faded &&
+			pillFade.idle?.faded &&
+			pillFade.ok?.faded,
+		JSON.stringify(pillFade),
+	)
+	check(
+		'状态胶囊：bad 停留得比 ok 久（错误要看清，但不该永久占屏）',
+		!pillFade.missing && pillFade.bad?.ms > pillFade.ok?.ms,
+		`bad ${pillFade.bad?.ms}ms vs ok ${pillFade.ok?.ms}ms`,
+	)
+
+	// ---------------------------------------------------------------
 	// 3. 播放全部 → 真的开始播放
 	// ---------------------------------------------------------------
 	console.log('\n[ui] 3) 点「播放全部」并确认真的在播')
