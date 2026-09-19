@@ -575,6 +575,32 @@ async function run(window) {
 	await sleep(2500)
 	await shot(window, '13-rightbar-lyrics', '右栏 › 歌词')
 
+	console.log('\n=== 6b) 多选 ===')
+	// 收起右栏，免得它把中栏挤窄（多选工具条要在一屏里看全）
+	await click(window, '[data-testid="tab-queue"]')
+	await sleep(400)
+	await click(window, '[data-testid="rightbar-toggle"]')
+	await sleep(600)
+	await evaluate(
+		window,
+		`(() => {
+			// 进多选并选中前 3 首（与用户在界面上 Ctrl 点选的效果一致 ——
+			// 用真实事件而不是直接改类名，否则截图里的状态可能是"画出来的"）
+			document.querySelector('[data-testid="btn-select-mode"]')?.click()
+			const rows = [...document.querySelectorAll('.track-table tbody tr')].slice(0, 3)
+			for (const row of rows) {
+				row.dispatchEvent(
+					new MouseEvent('click', { bubbles: true, cancelable: true, ctrlKey: true }),
+				)
+			}
+			return true
+		})()`,
+	)
+	await sleep(800)
+	await shot(window, '30-multi-select', '多选（工具条 + 行首复选框）')
+	await click(window, '[data-testid="selection-clear"]')
+	await sleep(500)
+
 	console.log('\n=== 7) 设置（一级页面：分类列表 + 每个子页）===')
 	await click(window, '[data-testid="nav-settings"]')
 	await sleep(1000)

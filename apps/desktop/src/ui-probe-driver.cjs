@@ -1434,6 +1434,204 @@ async function run(window) {
 	await click(window, '[data-testid="btn-play-all"]')
 	await sleep(1500)
 
+	// ---------------------------------------------------------------
+	// 2.6a 多选（阶段 6d-2）
+	// ---------------------------------------------------------------
+	//
+	// 安卓端：长按 500ms 进多选 → Appbar 标题变「已选择 N 首」、action 组换成
+	// 全选/反选/添加到歌单 → 行首复选框淡入、序号淡出。
+	//
+	// 桌面端保留这套语义，两处**必须改变**：
+	//   * 进入方式：桌面没有长按 → Ctrl/Cmd 点选 + Shift 连选 + 一个看得见的
+	//     「多选」按钮（否则功能不可发现）；
+	//   * ⚠️ **必须能退出**：安卓端把返回按钮整组换掉之后屏幕上没有任何退出入口，
+	//     只能靠系统返回键。桌面没有系统返回键 → 显式「清除选择」+ Esc。
+	console.log('\n[ui] 2.6a) 多选')
+	const beforeEach = JSON.parse(
+		await evaluate(
+			window,
+			`(() => JSON.stringify({
+				rows: document.querySelectorAll('.track-table tbody tr').length,
+				barHidden: document.querySelector('[data-testid="selection-bar"]')?.hidden,
+				selectButton: Boolean(document.querySelector('[data-testid="btn-select-mode"]')),
+			}))()`,
+		),
+	)
+	check(
+		'多选前：工具条隐藏、有可见的「多选」入口',
+		beforeEach.rows > 1 &&
+			beforeEach.barHidden === true &&
+			beforeEach.selectButton,
+		JSON.stringify(beforeEach),
+	)
+
+	// Ctrl 点第 1 行 → 进多选并选中它
+	const multi = JSON.parse(
+		await evaluate(
+			window,
+			`(async () => {
+				const rows = [...document.querySelectorAll('.track-table tbody tr')]
+				const click = (row, init) =>
+					row.dispatchEvent(
+						new MouseEvent('click', { bubbles: true, cancelable: true, ...init }),
+					)
+				click(rows[0], { ctrlKey: true })
+				await new Promise((r) => setTimeout(r, 200))
+				const afterOne = {
+					barHidden: document.querySelector('[data-testid="selection-bar"]').hidden,
+					checked: document.querySelectorAll('tr.is-checked').length,
+					label: document.querySelector('[data-testid="selection-count"]').textContent,
+					checkBoxes: document.querySelectorAll('.track-table.is-select-mode .track-check')
+						.length,
+					// 复选框必须是**方的**（圆圈会被读成单选）
+					boxRadius: getComputedStyle(
+						document.querySelector('.track-check'),
+					).borderTopLeftRadius,
+					boxSize: (() => {
+						const box = document.querySelector('.track-check').getBoundingClientRect()
+						return [Math.round(box.width), Math.round(box.height)]
+					})(),
+					// 进多选后行拖拽必须关掉（拖动与点选互相打架）
+					draggable: rows[0].draggable,
+				}
+				// Shift 连选：第 3 行
+				click(rows[2], { shiftKey: true })
+				await new Promise((r) => setTimeout(r, 200))
+				const afterRange = {
+					checked: document.querySelectorAll('tr.is-checked').length,
+					label: document.querySelector('[data-testid="selection-count"]').textContent,
+				}
+				return JSON.stringify({ afterOne, afterRange })
+			})()`,
+		),
+	)
+	check(
+		'Ctrl 点选进入多选：工具条出现、该行选中、复选框是方的',
+		multi.afterOne.barHidden === false &&
+			multi.afterOne.checked === 1 &&
+			/multi|已选择 1 首/.test(multi.afterOne.label) &&
+			multi.afterOne.checkBoxes > 0 &&
+			Number.parseFloat(multi.afterOne.boxRadius) <= 6 &&
+			Math.abs(multi.afterOne.boxSize[0] - multi.afterOne.boxSize[1]) <= 1,
+		JSON.stringify(multi.afterOne),
+	)
+	check(
+		'多选时关掉行拖拽（拖拽与点选不能同时生效）',
+		multi.afterOne.draggable === false,
+		`draggable=${multi.afterOne.draggable}`,
+	)
+	check(
+		'Shift 连选：锚点到目标之间的行全部选中',
+		multi.afterRange.checked === 3 && /3/.test(multi.afterRange.label),
+		JSON.stringify(multi.afterRange),
+	)
+
+	// 全选 / 反选
+	const batch = JSON.parse(
+		await evaluate(
+			window,
+			`(async () => {
+				const rows = document.querySelectorAll('.track-table tbody tr').length
+				document.querySelector('[data-testid="selection-all"]').click()
+				await new Promise((r) => setTimeout(r, 200))
+				const all = document.querySelectorAll('tr.is-checked').length
+				document.querySelector('[data-testid="selection-invert"]').click()
+				await new Promise((r) => setTimeout(r, 200))
+				const inverted = document.querySelectorAll('tr.is-checked').length
+				document.querySelector('[data-testid="selection-all"]').click()
+				await new Promise((r) => setTimeout(r, 200))
+				const backToAll = document.querySelectorAll('tr.is-checked').length
+				return JSON.stringify({ rows, all, inverted, backToAll })
+			})()`,
+		),
+	)
+	check(
+		'全选 / 反选：全选=全部行，反选=0，再全选又回到全部行',
+		batch.all === batch.rows &&
+			batch.inverted === 0 &&
+			batch.backToAll === batch.rows,
+		JSON.stringify(batch),
+	)
+
+	// 批量「添加到歌单」：走真实的写库路径（这里只到"弹层列出歌单"为止，
+	// 真正的写库由 1.7c 与本节的单首用例覆盖）
+	const batchAdd = JSON.parse(
+		await evaluate(
+			window,
+			`(async () => {
+				document.querySelector('[data-testid="selection-add"]')?.click()
+				await new Promise((r) => setTimeout(r, 600))
+				const dialog = document.querySelector('[data-testid="add-to-playlist"]')
+				const options = document.querySelectorAll('.dialog-option').length
+				const note = document.querySelector('.dialog-note')?.textContent ?? ''
+				document.querySelector('[data-testid="add-to-playlist-cancel"]')?.click()
+				await new Promise((r) => setTimeout(r, 300))
+				return JSON.stringify({
+					opened: Boolean(dialog),
+					options,
+					noteSaysLocal: note.includes('本地歌单'),
+				})
+			})()`,
+		),
+	)
+	check(
+		'多选的「添加到歌单」打开弹层并列出本地歌单',
+		batchAdd.opened && batchAdd.options > 0 && batchAdd.noteSaysLocal,
+		JSON.stringify(batchAdd),
+	)
+
+	// Esc 退出（桌面端补的出口之一）
+	const escExit = JSON.parse(
+		await evaluate(
+			window,
+			`(async () => {
+				// 先重新进多选：上一步取消弹层后仍在多选态
+				const inMode = !document.querySelector('[data-testid="selection-bar"]').hidden
+				window.dispatchEvent(
+					new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }),
+				)
+				await new Promise((r) => setTimeout(r, 250))
+				return JSON.stringify({
+					inMode,
+					barHidden: document.querySelector('[data-testid="selection-bar"]').hidden,
+					checked: document.querySelectorAll('tr.is-checked').length,
+					rowsVisible: document.querySelectorAll('.track-table tbody tr').length,
+				})
+			})()`,
+		),
+	)
+	check(
+		'Esc 退出多选：工具条收起、选中清空、曲目仍在',
+		escExit.inMode &&
+			escExit.barHidden &&
+			escExit.checked === 0 &&
+			escExit.rowsVisible > 1,
+		JSON.stringify(escExit),
+	)
+
+	// 显式「清除选择」按钮（另一个出口）
+	const clearExit = JSON.parse(
+		await evaluate(
+			window,
+			`(async () => {
+				document.querySelector('[data-testid="btn-select-mode"]').click()
+				await new Promise((r) => setTimeout(r, 200))
+				const entered = !document.querySelector('[data-testid="selection-bar"]').hidden
+				document.querySelector('[data-testid="selection-clear"]').click()
+				await new Promise((r) => setTimeout(r, 200))
+				return JSON.stringify({
+					entered,
+					barHidden: document.querySelector('[data-testid="selection-bar"]').hidden,
+				})
+			})()`,
+		),
+	)
+	check(
+		'「清除选择」按钮也能退出多选（安卓端缺的就是这个出口）',
+		clearExit.entered && clearExit.barHidden,
+		JSON.stringify(clearExit),
+	)
+
 	// --- (1) 随机播放：必须是**洗牌**，不是"每次随机挑一首" ---
 	//
 	// 第一版是 `while (candidate === index) candidate = random()` ——

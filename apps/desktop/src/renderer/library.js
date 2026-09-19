@@ -306,8 +306,132 @@
 		}
 	}
 
+	// ---------------------------------------------------------------
+	// 多选（阶段 6d-2）
+	// ---------------------------------------------------------------
+
+	/**
+	 * 曲目的**稳定选中键**。
+	 *
+	 * ⚠️ 不能用 `track.id`：同一个 id 在不同列表里指的是完全不同的东西 ——
+	 * 搜索结果里是 `aid`、收藏夹里是 `bv2av(bvid)`、分P 里是 `cid`、
+	 * 本地库里是 DB 的 `trackId`。跨列表用同一个键会**串味**
+	 * （安卓端因此统一用 `uniqueKey`，这里照做）。
+	 */
+	function trackKey(track) {
+		if (!track) return null
+		if (track.uniqueKey) return track.uniqueKey
+		if (track.unique_key) return track.unique_key
+		if (track.bvid) return `bilibili::${track.bvid}`
+		if (track.aid != null) return `bilibili::av${track.aid}`
+		if (track.id != null) return `local::${track.id}`
+		return null
+	}
+
+	let selectMode = false
+	let selectedKeys = new Set()
+	/** Shift 连选的锚点 */
+	let lastClickedKey = null
+	/** 当前曲目表对应的 DOM 引用（多选状态只改类名/文案，不重渲染） */
+	let selectionUi = null
+
+	function currentTracks() {
+		return window.bbState.get().tracks ?? []
+	}
+
+	/** 选中的曲目对象（按当前列表的顺序） */
+	function selectedTracks() {
+		return currentTracks().filter((track) => selectedKeys.has(trackKey(track)))
+	}
+
+	function onSelectKeydown(event) {
+		if (event.key !== 'Escape') return
+		event.stopPropagation()
+		exitSelectMode()
+	}
+
+	function clearSelection() {
+		selectMode = false
+		selectedKeys = new Set()
+		lastClickedKey = null
+		window.removeEventListener('keydown', onSelectKeydown)
+		syncSelectionUi()
+	}
+
+	function enterSelectMode(key) {
+		lastClickedKey = key ?? null
+		enterSelectModeWith(key ? [key] : [])
+	}
+
+	/** 用一组键进入多选（全选 / 反选也走它，语义一致） */
+	function enterSelectModeWith(keys) {
+		selectMode = true
+		selectedKeys = new Set(keys)
+		// 同一个函数引用重复 add 不会重复触发；退出时统一 remove
+		window.addEventListener('keydown', onSelectKeydown)
+		syncSelectionUi()
+	}
+
+	function exitSelectMode() {
+		clearSelection()
+	}
+
+	function toggleKey(key) {
+		if (!key) return
+		if (selectedKeys.has(key)) selectedKeys.delete(key)
+		else selectedKeys.add(key)
+		syncSelectionUi()
+	}
+
+	/** Shift 连选：从锚点到目标之间的**当前列表顺序**全部选中 */
+	function selectRangeTo(key) {
+		const keys = currentTracks().map(trackKey)
+		const from = keys.indexOf(lastClickedKey)
+		const to = keys.indexOf(key)
+		if (from < 0 || to < 0) {
+			toggleKey(key)
+			return
+		}
+		const [start, end] = from <= to ? [from, to] : [to, from]
+		selectedKeys = new Set(keys.slice(start, end + 1).filter(Boolean))
+		syncSelectionUi()
+	}
+
+	/**
+	 * 把多选状态同步到界面。
+	 *
+	 * ⚠️ 这里**不重渲染整张表**：多选是高频操作，重建 24 行的 DOM 会丢滚动位置、
+	 * 也会把拖拽等监听器重绑一遍。只改类名与文案就够了。
+	 */
+	function syncSelectionUi() {
+		const ui = selectionUi
+		if (!ui) return
+		ui.table.classList.toggle('is-select-mode', selectMode)
+		// 多选时关掉行拖拽：拖动与"点一下选中"会互相打架
+		// （安卓端在本地列表里也是把「⋮」换成拖拽把手，不会同时给两个手势）
+		for (const row of ui.table.querySelectorAll('tbody tr')) {
+			const key = row.dataset.trackKey
+			row.classList.toggle(
+				'is-checked',
+				selectMode && key != null && selectedKeys.has(key),
+			)
+			if (row.dataset.draggable === 'true') row.draggable = !selectMode
+		}
+		ui.bar.hidden = !selectMode
+		ui.actions.hidden = selectMode
+		const count = selectedKeys.size
+		ui.count.textContent = `已选择 ${count} 首`
+		ui.addButton.disabled = count === 0
+		for (const button of ui.batchButtons) button.disabled = count === 0
+		ui.selectButton.classList.toggle('is-active', selectMode)
+	}
+
 	function renderTrackTable(tracks, { title, query } = {}) {
 		clear(els.content)
+		// 换了列表就把多选清掉 —— 否则在 A 歌单选中的曲子会"跟到" B 歌单
+		// （这也是为什么清空放在**渲染入口**而不是各个调用点）
+		clearSelection()
+		selectionUi = null
 		// 共享视图是常驻节点，从它切回来（例如直接搜索、点左栏歌单）时要显式让位
 		window.bbUI?.showContent?.()
 
@@ -389,7 +513,96 @@
 			window.bbPlayer.setQueue(merged, window.bbPlayer.getIndex())
 		})
 		actions.appendChild(queueAll)
+
+		/*
+		 * 「多选」的**入口**。
+		 *
+		 * 安卓端靠长按 500ms 进多选 —— 桌面上没有长按这个手势，所以要有
+		 * 一个看得见的入口。Ctrl / Shift 点选是桌面惯例（保留），但**发现性**
+		 * 只能靠一个按钮给（用户明确要求过"不要自己发明桌面惯例，但也不该
+		 * 让功能不可发现"）。
+		 */
+		const selectButton = document.createElement('button')
+		selectButton.dataset.testid = 'btn-select-mode'
+		selectButton.textContent = '多选'
+		selectButton.addEventListener('click', () => {
+			if (selectMode) exitSelectMode()
+			else enterSelectMode(null)
+		})
+		actions.appendChild(selectButton)
 		els.content.appendChild(actions)
+
+		// 多选工具条：与安卓端一样，进多选后**替换掉**上面那排动作
+		// （安卓端是 Appbar 的 action 组整体替换掉返回按钮）。
+		const bar = document.createElement('div')
+		bar.className = 'selection-bar'
+		bar.dataset.testid = 'selection-bar'
+		bar.hidden = true
+
+		const count = document.createElement('span')
+		count.className = 'selection-bar__count'
+		count.dataset.testid = 'selection-count'
+		count.textContent = '已选择 0 首'
+		bar.appendChild(count)
+
+		const batchButtons = []
+		const makeBatch = (testid, label, className, handler, options = {}) => {
+			const button = document.createElement('button')
+			button.dataset.testid = testid
+			if (className) button.className = className
+			button.textContent = label
+			button.disabled = options.needsSelection === true
+			button.addEventListener('click', () => handler(button))
+			bar.appendChild(button)
+			// ⚠️ 只有**需要选中项**的动作才归 `batchButtons`（选中为 0 时禁用）。
+			// 全选 / 反选**不能**被禁用：反选之后恰好选中 0 首，若把全选也一起
+			// 禁用，用户就再也点不回来了 —— 只能退出多选重进（实测踩到）。
+			if (options.needsSelection) batchButtons.push(button)
+			return button
+		}
+
+		makeBatch('selection-all', '全选', null, () =>
+			enterSelectModeWith(new Set(tracks.map(trackKey).filter(Boolean))),
+		)
+		makeBatch('selection-invert', '反选', null, () => {
+			const inverted = new Set(
+				tracks.map(trackKey).filter((key) => key && !selectedKeys.has(key)),
+			)
+			enterSelectModeWith(inverted)
+		})
+		const addButton = makeBatch(
+			'selection-add',
+			'添加到歌单',
+			'btn--filled',
+			() => openAddToPlaylistDialog(selectedTracks()),
+			{ needsSelection: true },
+		)
+		// 批量移除与安卓端的本地歌单批量矩阵一致（收藏夹/搜索结果没有"移除"）
+		const removeButton = makeBatch(
+			'selection-remove',
+			'从歌单移除',
+			'btn--tonal',
+			() => void removeSelectedTracks(removeButton),
+			{ needsSelection: true },
+		)
+		removeButton.hidden = !removal.canRemove
+
+		/*
+		 * ⚠️ 「清除选择」是**桌面端必须补的**：安卓端把返回按钮整组换掉之后，
+		 * 屏幕上没有任何退出多选的入口（只能靠系统返回键）——
+		 * `useTrackSelection` 的注释里也承认了这一点。
+		 * 桌面上没有系统返回键，所以这里必须给一个，并且 Esc 也能退出。
+		 */
+		const spacer = document.createElement('span')
+		spacer.className = 'modal__actions-spacer'
+		bar.appendChild(spacer)
+		const clearButton = document.createElement('button')
+		clearButton.className = 'text-button'
+		clearButton.dataset.testid = 'selection-clear'
+		clearButton.textContent = '清除选择（Esc）'
+		clearButton.addEventListener('click', () => exitSelectMode())
+		bar.appendChild(clearButton)
+		els.content.appendChild(bar)
 
 		const table = document.createElement('table')
 		table.className = 'track-table'
@@ -422,14 +635,27 @@
 			const tr = document.createElement('tr')
 			tr.dataset.testid = `track-row-${index}`
 			tr.dataset.bvid = track.bvid
+			// 多选的**稳定键**（`uniqueKey` 语义，见 trackKey 的注释）
+			const key = trackKey(track)
+			if (key) tr.dataset.trackKey = key
 			if (window.bbPlayer.getCurrent()?.bvid === track.bvid) {
 				tr.classList.add('is-playing')
 			}
 
-			// 序号
+			// 序号 / 复选框：同一格。
+			// 安卓端也是这个做法（`selectMode` 时序号淡出、复选框淡入），
+			// 而不是**多插一列** —— 多一列会让整张表在进多选时横向跳一下。
 			const indexCell = document.createElement('td')
 			indexCell.className = 'col-index'
-			indexCell.textContent = String(index + 1)
+			const indexText = document.createElement('span')
+			indexText.className = 'track-index'
+			indexText.textContent = String(index + 1)
+			indexCell.appendChild(indexText)
+			const check = document.createElement('span')
+			check.className = 'track-check'
+			check.dataset.testid = `track-check-${index}`
+			check.appendChild(window.bbComponents.icon('check', 'track-check__tick'))
+			indexCell.appendChild(check)
 			tr.appendChild(indexCell)
 
 			// 标题单元格特殊处理：**曲绘封面 + 标题**。
@@ -576,11 +802,35 @@
 			}
 
 			tr.addEventListener('dblclick', () => {
+				// 多选态下双击不播放（否则"点两下选中两首"会变成开始播放）
+				if (selectMode) return
 				window.bbPlayer.setQueue(tracks, index)
 				window.bbPlayer.playAt(index)
 				void window.bbPlayer.play()
 			})
-			tr.addEventListener('click', () => {
+			tr.addEventListener('click', (event) => {
+				// `⋮` 自己 stopPropagation 了，但其它行内交互也一并放行
+				if (event.target.closest?.('.track-action')) return
+
+				// Ctrl / Cmd：切换这一首的选中；Shift：从锚点连选。
+				// 这是桌面端的"多选手势"，与安卓端的"长按"对应。
+				if (event.shiftKey && selectMode && lastClickedKey) {
+					selectRangeTo(key)
+					lastClickedKey = key
+					return
+				}
+				if (event.ctrlKey || event.metaKey) {
+					if (selectMode) toggleKey(key)
+					else enterSelectMode(key)
+					lastClickedKey = key
+					return
+				}
+				if (selectMode) {
+					toggleKey(key)
+					lastClickedKey = key
+					return
+				}
+
 				// 单击只选中（高亮），双击才播放 —— 桌面上避免误触
 				for (const other of tbody.querySelectorAll('tr')) {
 					other.classList.remove('is-selected')
@@ -592,6 +842,53 @@
 		})
 		table.appendChild(tbody)
 		els.content.appendChild(table)
+
+		// 多选只改类名/文案，不重渲染（见 syncSelectionUi 的注释）
+		selectionUi = {
+			table,
+			bar,
+			actions,
+			count,
+			addButton,
+			batchButtons,
+			selectButton,
+		}
+		syncSelectionUi()
+	}
+
+	/**
+	 * 批量从歌单移除选中的曲目（安卓端本地歌单的批量矩阵里有「删除」）。
+	 *
+	 * 只确认**一次**：逐首确认会让批量操作变成 N 次点击。
+	 */
+	async function removeSelectedTracks(button) {
+		const tracks = selectedTracks()
+		const playlistId = window.bbState.get().selectedPlaylistId
+		if (!playlistId || tracks.length === 0) return
+		const ok =
+			typeof window.bbProbe !== 'undefined' ||
+			window.confirm(`确定从歌单里移除选中的 ${tracks.length} 首吗？`)
+		if (!ok) return
+		button.disabled = true
+		let removed = 0
+		try {
+			for (const track of tracks) {
+				if (track?.id == null) continue
+				const result = await window.bbplayer.playlist.removeTrack({
+					playlistId,
+					trackId: track.id,
+				})
+				if (result?.ok) removed += 1
+			}
+			setStatus(`已移除 ${removed} 首`, 'ok')
+			exitSelectMode()
+			// ⚠️ 移除后必须重渲染：`sort_key` 与序号都变了
+			await openPlaylist(playlistId)
+		} catch (error) {
+			setStatus(error.message, 'bad')
+		} finally {
+			if (button.isConnected) button.disabled = false
+		}
 	}
 
 	/**
@@ -986,6 +1283,9 @@
 	 */
 	function wireRowDrag(row, index, container, onDrop) {
 		row.draggable = true
+		// 多选时要把拖拽关掉（见 syncSelectionUi）—— 记在 dataset 上，
+		// 免得靠"读 draggable 当前值"反推它本来该不该可拖
+		row.dataset.draggable = 'true'
 		row.dataset.dragIndex = String(index)
 
 		row.addEventListener('dragstart', (event) => {

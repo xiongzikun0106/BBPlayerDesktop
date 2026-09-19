@@ -760,6 +760,85 @@ body {
 	border-radius: var(--r-full);
 }
 
+/* ── 多选（阶段 6d-2）─────────────────────────────────── */
+/*
+ * 多选工具条：进多选后**替换掉**「播放全部 / 加入队列 / 多选」那一排
+ * （安卓端是 Appbar 的 action 组整体替换掉返回按钮，语义一致）。
+ *
+ * ⚠️ 与 `.row-actions` 用同一套外形（同一位置的同一类东西不该长得不一样）。
+ */
+.selection-bar {
+	display: flex;
+	align-items: center;
+	flex-wrap: wrap;
+	gap: var(--sp-xs);
+	margin-bottom: var(--sp-sm);
+}
+
+.selection-bar[hidden] {
+	display: none;
+}
+
+.selection-bar__count {
+	margin-right: var(--sp-xs);
+	font-size: var(--fs-title-small);
+	font-weight: 600;
+	color: var(--on-surface);
+}
+
+/*
+ * 行首的复选框（多选时才出现）。
+ *
+ * ⚠️ 复选框是**CSS 画**的，不是图标字体里的字形：图标子集里没有
+ * `check_box` / `check_box_outline_blank`，而重建子集需要联网。
+ * 只有那个"勾"用了 `check`（它在子集里）。
+ * 方框必须是方的、勾必须居中 —— 方框被读成复选框、圆圈被读成单选，
+ * 这是语义，不是装饰。
+ */
+.track-check {
+	display: none;
+	width: 18px;
+	height: 18px;
+	place-items: center;
+	border: 2px solid var(--on-surface-variant);
+	border-radius: 4px;
+	vertical-align: middle;
+}
+
+.track-check__tick {
+	display: none;
+	font-size: 14px;
+	color: var(--on-primary);
+}
+
+.track-table.is-select-mode .track-index {
+	display: none;
+}
+
+.track-table.is-select-mode .track-check {
+	display: inline-grid;
+}
+
+.track-table.is-select-mode tbody tr.is-checked .track-check {
+	background: var(--primary);
+	border-color: var(--primary);
+}
+
+.track-table.is-select-mode tbody tr.is-checked .track-check__tick {
+	display: block;
+}
+
+/* 选中的行整行也要看得出来（不然只有行首一个 18px 的方框在变化） */
+.track-table.is-select-mode tbody tr.is-checked {
+	background: color-mix(in srgb, var(--primary) 12%, transparent);
+}
+
+/* 多选时不显示「下一首播放 / ⋮」那一列的内容 —— 与安卓端一致
+   （安卓端进多选后「⋮」会消失，行右侧让位给复选框/拖拽把手） */
+.track-table.is-select-mode tbody td.col-actions {
+	opacity: 0.25;
+}
+
 .muted {
 	color: var(--on-surface-variant);
 }
