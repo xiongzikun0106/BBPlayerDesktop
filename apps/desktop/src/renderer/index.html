@@ -19,6 +19,20 @@
 	</head>
 	<body>
 		<div class="app">
+			<!--
+				「左栏 ↔ 中栏」的拖拽分隔条（阶段 6，用户要求"各功能区能左右拉动改大小"）。
+				绝对定位在左栏右边缘上，**不参与网格布局** —— 往 grid 里塞第四条轨道
+				要动 grid-template-areas，而它只是个 6px 的手柄。
+			-->
+			<div
+				class="sidebar-splitter"
+				id="sidebar-splitter"
+				data-testid="sidebar-splitter"
+				role="separator"
+				aria-orientation="vertical"
+				aria-label="拖动调整左栏宽度（双击还原）"
+				title="拖动调整宽度 · 双击还原"
+			></div>
 			<!-- ── 左栏：导航 + 歌单 ───────────────────────────── -->
 			<aside class="sidebar" data-testid="sidebar">
 				<!--
@@ -1473,6 +1487,8 @@
 		<script src="player.js"></script>
 		<script src="library.js"></script>
 		<script src="keyboard.js"></script>
+		<!-- 左栏宽度可拖拽（阶段 6）：要在 renderer.js 之前，它不依赖别人 -->
+		<script src="splitter.js"></script>
 		<script src="lyrics-panel.js"></script>
 		<script src="media-session.js"></script>
 		<!--

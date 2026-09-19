@@ -4156,6 +4156,160 @@ async function run(window) {
 	)
 	dialog.showOpenDialog = realShowOpenDialog
 
+	// ---------------------------------------------------------------
+	// 15. 左栏宽度可拖拽（阶段 6）
+	// ---------------------------------------------------------------
+	//
+	// 用户的原话：「要能支持左右拉动各个功能区，能改变大小。就是鼠标放到上面会变成
+	// 左右箭头样式」，并逐条确认：只做**左栏 ↔ 中栏**这条边界、宽度**记住**、
+	// **双击还原默认**、**拖到极窄自动收起**。
+	//
+	// ⚠️ 用**真实指针事件**驱动（`PointerEvent` + pointerdown/move/up），
+	// 而不是直接调 `bbSidebar.set()` —— 后者只能证明"那个函数能用"，
+	// 证明不了"拖得动"。
+	console.log('\n[ui] 15) 左栏宽度可拖拽')
+	const dragSidebar = async (targetX) =>
+		JSON.parse(
+			await evaluate(
+				window,
+				`(() => {
+					const splitter = document.getElementById('sidebar-splitter')
+					if (!splitter) return JSON.stringify({ missing: true })
+					// 合成事件没有"活动指针"，真正的 setPointerCapture 会抛
+					// NotFoundError —— 测试里换成空实现（这是 DOM API 的测试缝，
+					// 不是产品逻辑）
+					splitter.setPointerCapture = () => {}
+					splitter.releasePointerCapture = () => {}
+					const rect = splitter.getBoundingClientRect()
+					const opts = (x) => ({
+						bubbles: true,
+						cancelable: true,
+						pointerId: 1,
+						pointerType: 'mouse',
+						isPrimary: true,
+						button: 0,
+						buttons: 1,
+						clientX: x,
+						clientY: Math.round(rect.top + 20),
+					})
+					splitter.dispatchEvent(new PointerEvent('pointerdown', opts(rect.left + 3)))
+					splitter.dispatchEvent(new PointerEvent('pointermove', opts(${JSON.stringify(targetX)})))
+					splitter.dispatchEvent(new PointerEvent('pointerup', opts(${JSON.stringify(targetX)})))
+					const app = document.querySelector('.app')
+					const sidebar = document.querySelector('.sidebar')
+					return JSON.stringify({
+						sidebarWidth: Math.round(sidebar.getBoundingClientRect().width),
+						collapsed: app.classList.contains('is-sidebar-collapsed'),
+						described: window.bbSidebar.describe(),
+					})
+				})()`,
+			),
+		)
+
+	const splitterInfo = JSON.parse(
+		await evaluate(
+			window,
+			`(() => {
+				const splitter = document.getElementById('sidebar-splitter')
+				if (!splitter) return JSON.stringify({ missing: true })
+				const rect = splitter.getBoundingClientRect()
+				return JSON.stringify({
+					cursor: getComputedStyle(splitter).cursor,
+					width: Math.round(rect.width),
+					height: Math.round(rect.height),
+					role: splitter.getAttribute('role'),
+				})
+			})()`,
+		),
+	)
+	check(
+		'左栏右边缘有分隔条，鼠标悬停是**左右箭头**（col-resize）',
+		!splitterInfo.missing &&
+			splitterInfo.cursor === 'col-resize' &&
+			splitterInfo.width >= 4 &&
+			splitterInfo.height > 200 &&
+			splitterInfo.role === 'separator',
+		JSON.stringify(splitterInfo),
+	)
+
+	const dragged = await dragSidebar(360)
+	check(
+		'拖动真的改了左栏宽度（不是只改了一个数字）',
+		dragged.sidebarWidth >= 350 && dragged.sidebarWidth <= 370,
+		`左栏实测 ${dragged.sidebarWidth}px（目标 360）`,
+	)
+
+	// 用户要求"记住"：宽度必须**落进设置**，而不只是当前这一屏
+	/*
+	 * 用户要求"记住"：宽度必须**落进设置**，而不只是当前这一屏。
+	 *
+	 * ⚠️ 两个坑都踩过：
+	 *   1. 拖完**立刻**读会读到旧值（`settings.update()` 是异步的：load → merge → persist）；
+	 *   2. **不能用 `waitFor` 等**：它内部是 `JSON.stringify(表达式)`，
+	 *      **不会 await 异步 IIFE** —— 拿到的永远是 `{}`，于是无论实现对不对都判红。
+	 *      所以这里手写"睡一会儿 + 显式 await 读一次"的轮询。
+	 */
+	let savedWidth = null
+	for (let attempt = 0; attempt < 12 && savedWidth !== 360; attempt += 1) {
+		await sleep(250)
+		savedWidth = await evaluate(
+			window,
+			`(async () => {
+				const result = await window.bbplayer.settings.get()
+				return result?.data?.settings?.sidebarWidth ?? null
+			})()`,
+		)
+	}
+	check(
+		'拖过的宽度**存进了设置**（重启后能还原）',
+		savedWidth === dragged.described.width,
+		`设置里 ${savedWidth} / 内存里 ${dragged.described.width}`,
+	)
+
+	// 拖到极窄 → 自动收起
+	const narrowed = await dragSidebar(40)
+	check(
+		'拖到极窄时**自动收起**该栏（而不是卡成一条 150px 的窄条）',
+		narrowed.collapsed === true && narrowed.sidebarWidth <= 1,
+		`收起=${narrowed.collapsed} 左栏宽 ${narrowed.sidebarWidth}px`,
+	)
+	// 收起之后手柄仍在最左边，还得能拖回来（否则再也恢复不了）
+	const sidebarRestored = await dragSidebar(300)
+	check(
+		'从收起状态能再拖回来（手柄没跟着消失）',
+		sidebarRestored.collapsed === false && sidebarRestored.sidebarWidth >= 290,
+		`收起=${sidebarRestored.collapsed} 左栏宽 ${sidebarRestored.sidebarWidth}px`,
+	)
+
+	// 双击还原默认
+	await evaluate(
+		window,
+		`(() => {
+			document
+				.getElementById('sidebar-splitter')
+				.dispatchEvent(new MouseEvent('dblclick', { bubbles: true }))
+			return true
+		})()`,
+	)
+	await sleep(400)
+	const reset = JSON.parse(
+		await evaluate(
+			window,
+			`(() => {
+				const sidebar = document.querySelector('.sidebar')
+				return JSON.stringify({
+					width: Math.round(sidebar.getBoundingClientRect().width),
+					described: window.bbSidebar.describe(),
+				})
+			})()`,
+		),
+	)
+	check(
+		'双击分隔条还原默认宽度',
+		reset.width === reset.described.defaultWidth,
+		`左栏 ${reset.width}px（默认 ${reset.described.defaultWidth}）`,
+	)
+
 	return finish(window)
 }
 

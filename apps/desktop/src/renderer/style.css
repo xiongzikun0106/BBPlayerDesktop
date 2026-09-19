@@ -136,13 +136,21 @@ body {
    ────────────────────────────────────────────────────────── */
 .app {
 	display: grid;
-	grid-template-columns: 240px minmax(0, 1fr) 320px;
+	/*
+	 * ⚠️ 第一列走 `--sidebar-width`（阶段 6：左栏可拖拽改宽）。
+	 * 关键是**收起状态与右栏收起状态互不覆盖**：它们各自只改一个变量/类，
+	 * 如果都去写整条 `grid-template-columns`，后写的会把另一个吃掉 ——
+	 * 那种覆盖在界面上表现为"某次展开/收起莫名失灵"。
+	 */
+	grid-template-columns: var(--sidebar-width, 240px) minmax(0, 1fr) 320px;
 	grid-template-rows: minmax(0, 1fr) 72px;
 	grid-template-areas:
 		'sidebar main rightbar'
 		'playbar playbar playbar';
 	/* 状态栏已删除（改成浮动提示胶囊），所以整屏都归内容 */
 	height: 100vh;
+	/* 分隔条绝对定位在左栏右边缘上（不参与网格） */
+	position: relative;
 }
 
 /*
@@ -154,7 +162,48 @@ body {
  *     用 `display: none` 会让它们读不到，表现成"操作完成了但界面没变"。
  */
 .app.is-rightbar-collapsed {
-	grid-template-columns: 240px minmax(0, 1fr) 0px;
+	/*
+	 * ⚠️ 这里也必须用 `var(--sidebar-width, 240px)` 而不是写死 240px ——
+	 * 原来写死之后，用户把左栏拖宽、再收/放一次右栏，左栏宽度就被**悄悄改回 240**
+	 * （因为这条规则整条重写了 `grid-template-columns`）。这类"拖过之后自己变回去"
+	 * 的 bug 很难联想到是另一条规则干的。
+	 */
+	grid-template-columns: var(--sidebar-width, 240px) minmax(0, 1fr) 0px;
+}
+
+/* 左栏整个收起（拖到极窄） */
+.app.is-sidebar-collapsed .sidebar {
+	overflow: hidden;
+	border-right: none;
+}
+
+/* ── 左栏 / 中栏之间的拖拽分隔条（阶段 6）───────────────── */
+/*
+ * 悬停时鼠标变**左右箭头**（用户明确要求的表现），拖动中高亮成主色。
+ * 6px 宽：再窄不好抓，再宽会盖住左栏的边缘内容。
+ */
+.sidebar-splitter {
+	position: absolute;
+	top: 0;
+	/* 播放条占底部 72px，那一行横跨三栏，不属于左栏 */
+	bottom: 72px;
+	left: calc(var(--sidebar-width, 240px) - 3px);
+	width: 6px;
+	z-index: 5;
+	cursor: col-resize;
+	background: transparent;
+	transition: background var(--motion-duration-fast) ease;
+}
+
+.sidebar-splitter:hover,
+.sidebar-splitter.is-dragging,
+.sidebar-splitter:focus-visible {
+	background: color-mix(in srgb, var(--primary) 70%, transparent);
+}
+
+/* 收起之后手柄贴到最左边，仍然抓得到（否则就再也拖不回来了） */
+.app.is-sidebar-collapsed .sidebar-splitter {
+	left: 0;
 }
 
 /*

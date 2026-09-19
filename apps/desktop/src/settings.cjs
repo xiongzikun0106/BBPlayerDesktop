@@ -85,6 +85,14 @@ const DEFAULT_SETTINGS = {
 	accentMode: 'system',
 	/** 自定义种子色（`accentMode` 为 `custom` 时使用） */
 	accentColor: '#6750A4',
+	/**
+	 * 左栏宽度（阶段 6，用户要求"各功能区能左右拉动改大小"）。
+	 *
+	 * 用户确认了三条：**记住**（重启还原）、**双击分隔条还原默认**、
+	 * **拖到极窄自动收起该栏**。收起状态用 0 表示（而不是另存一个布尔值：
+	 * 两个字段描述同一件事，迟早会不一致）。
+	 */
+	sidebarWidth: 240,
 }
 
 /**
@@ -137,6 +145,14 @@ function createSettings({ storage, log = () => {} }) {
 		if (!/^#[0-9a-fA-F]{6}$/.test(String(cache.accentColor ?? ''))) {
 			cache.accentColor = DEFAULT_SETTINGS.accentColor
 		}
+		/*
+		 * 左栏宽度：`0` 是合法值（表示"已收起"），所以要单独判 ——
+		 * 用 `clamp` 会把 0 悄悄改成最小值，于是"拖窄自动收起"在重启后就失效了。
+		 */
+		cache.sidebarWidth = clamp(Math.round(Number(cache.sidebarWidth)), 0, 520)
+		if (!Number.isFinite(cache.sidebarWidth)) {
+			cache.sidebarWidth = DEFAULT_SETTINGS.sidebarWidth
+		}
 
 		return cache
 	}
@@ -159,6 +175,11 @@ function createSettings({ storage, log = () => {} }) {
 		)
 		cache.loudnessTargetDb = clamp(cache.loudnessTargetDb, -30, -5)
 		cache.loudnessMaxGainDb = clamp(cache.loudnessMaxGainDb, 0, 24)
+		// 左栏宽度：0 表示已收起，必须保留（见 load() 里的注释）
+		cache.sidebarWidth = clamp(Math.round(Number(cache.sidebarWidth)), 0, 520)
+		if (!Number.isFinite(cache.sidebarWidth)) {
+			cache.sidebarWidth = DEFAULT_SETTINGS.sidebarWidth
+		}
 
 		await persist()
 		return { ...cache }
