@@ -2571,6 +2571,28 @@ async function run(window) {
 		`计数=${nowPlaying.queueCount} 行数=${nowPlaying.queueRows}`,
 	)
 
+	// 歌词面板也必须**搬进中栏**（阶段 D 的三栏布局），而不是还留在右栏
+	const lyricsPlaced = JSON.parse(
+		await evaluate(
+			window,
+			`(() => {
+				const mount = document.getElementById('lyrics-panel')
+				const slot = document.getElementById('nowplaying-lyrics-slot')
+				return JSON.stringify({
+					inSlot: Boolean(mount && slot && mount.parentElement === slot),
+					// 只有一个（没有被复制成两份）
+					count: document.querySelectorAll('#lyrics-panel').length,
+					rect: slot ? Math.round(slot.getBoundingClientRect().width) : 0,
+				})
+			})()`,
+		),
+	)
+	check(
+		'歌词面板被**搬进**「正在播放」的中栏（同一份 DOM，不是复制）',
+		lyricsPlaced.inSlot && lyricsPlaced.count === 1 && lyricsPlaced.rect > 100,
+		JSON.stringify(lyricsPlaced),
+	)
+
 	// 面板里的队列同样可拖（同一个元素，交互不能丢）
 	const draggableInPanel = await evaluate(
 		window,

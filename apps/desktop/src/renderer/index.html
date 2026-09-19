@@ -1057,37 +1057,64 @@
 						<span class="icon icon--md">expand_more</span>
 					</button>
 
-					<div class="nowplaying__art" data-testid="nowplaying-art">
-						<img id="nowplaying-cover" data-testid="nowplaying-cover" alt="" hidden />
-						<span class="icon icon--xl" id="nowplaying-placeholder">music_note</span>
-					</div>
-
-					<h2
-						class="nowplaying__title"
-						id="nowplaying-title"
-						data-testid="nowplaying-title"
-					>
-						未在播放
-					</h2>
-					<p
-						class="nowplaying__artist muted"
-						id="nowplaying-artist"
-						data-testid="nowplaying-artist"
-					>
-						—
-					</p>
-
-					<div class="nowplaying__queue-head">
-						<span>播放队列</span>
-						<span class="muted mono" id="nowplaying-count" data-testid="nowplaying-count"
-							>0</span
-						>
-					</div>
+					<!--
+						三栏布局（阶段 D，对齐网易云播放页的**布局**，视觉仍用本项目令牌）：
+						  左 = 大封面 + 曲名/歌手   中 = 歌词   右 = 播放队列（可收起）
+						⚠️ 歌词与队列都是**同一份 DOM 搬进来**的，不复制：
+						   队列见 renderer.js 的 placeQueue，歌词见 placeLyrics。
+						   复制一份会让 testid 重复、拖拽落到错误的树上 —— 界面却看着正常。
+					-->
 					<div
-						class="nowplaying__queue"
-						id="nowplaying-queue-slot"
-						data-testid="nowplaying-queue-slot"
-					></div>
+						class="nowplaying__columns"
+						id="nowplaying-columns"
+						data-testid="nowplaying-columns"
+					>
+						<div class="nowplaying__left">
+							<div class="nowplaying__art" data-testid="nowplaying-art">
+								<img id="nowplaying-cover" data-testid="nowplaying-cover" alt="" hidden />
+								<span class="icon icon--xl" id="nowplaying-placeholder">music_note</span>
+							</div>
+
+							<h2
+								class="nowplaying__title"
+								id="nowplaying-title"
+								data-testid="nowplaying-title"
+							>
+								未在播放
+							</h2>
+							<p
+								class="nowplaying__artist muted"
+								id="nowplaying-artist"
+								data-testid="nowplaying-artist"
+							>
+								—
+							</p>
+						</div>
+
+						<div
+							class="nowplaying__lyrics"
+							id="nowplaying-lyrics-slot"
+							data-testid="nowplaying-lyrics-slot"
+						></div>
+
+						<div
+							class="nowplaying__queue-col"
+							id="nowplaying-queue-column"
+							data-testid="nowplaying-queue-column"
+						>
+							<div class="nowplaying__queue-head">
+								<span>播放队列</span>
+								<span class="muted mono" id="nowplaying-count" data-testid="nowplaying-count"
+									>0</span
+								>
+							</div>
+							<div
+								class="nowplaying__queue"
+								id="nowplaying-queue-slot"
+								data-testid="nowplaying-queue-slot"
+							></div>
+						</div>
+					</div>
 				</div>
 			</section>
 

@@ -754,12 +754,64 @@
 	z-index: 1;
 	flex: 1 1 auto;
 	min-height: 0;
-	overflow-y: auto;
+	display: flex;
+	flex-direction: column;
+	padding: var(--sp-md) var(--sp-lg) var(--sp-lg);
+}
+
+/*
+ * ── 三栏（阶段 D）──────────────────────────────────────
+ *
+ * 对齐**网易云播放页的布局**（用户给的参考图），视觉仍用本项目令牌：
+ *   左 = 大封面 + 曲名/歌手   中 = 歌词   右 = 播放队列（可收起）
+ *
+ * ⚠️ 为什么原来那一版"难看"：它把封面、标题、队列**竖着堆成一列并居中**，
+ * 1440px 的窗口里上半屏基本是空的；而且**完全没有歌词** ——
+ * 播放页最该出现的东西（歌词）反而只躺在右栏里。
+ *
+ * 每一栏自己滚动（`overflow-y: auto`），整页不再整体滚动：
+ * 长队列与长歌词各滚各的，封面与歌名始终留在原处。
+ */
+.nowplaying__columns {
+	flex: 1 1 auto;
+	min-height: 0;
+	display: grid;
+	grid-template-columns:
+		minmax(200px, 0.9fr)
+		minmax(240px, 1.4fr)
+		minmax(200px, 0.9fr);
+	gap: var(--sp-lg);
+	align-items: center;
+}
+
+/* 队列那一栏收起时变成两栏（由 renderer.js 切这个类） */
+.nowplaying__columns.is-queue-hidden {
+	grid-template-columns:
+		minmax(220px, 1fr)
+		minmax(260px, 1.6fr);
+}
+
+.nowplaying__columns.is-queue-hidden .nowplaying__queue-col {
+	display: none;
+}
+
+.nowplaying__left {
+	min-width: 0;
 	display: flex;
 	flex-direction: column;
 	align-items: center;
-	gap: var(--sp-sm);
-	padding: var(--sp-md) var(--sp-lg) var(--sp-lg);
+}
+
+.nowplaying__lyrics,
+.nowplaying__queue-col {
+	min-height: 0;
+	max-height: 100%;
+	overflow-y: auto;
+}
+
+.nowplaying__queue-col {
+	display: flex;
+	flex-direction: column;
 }
 
 .nowplaying__back {

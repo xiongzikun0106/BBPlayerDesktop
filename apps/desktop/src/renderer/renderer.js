@@ -206,6 +206,8 @@
 		if (showSettings) window.bbSettings?.open?.()
 		// 队列只有一份：它跟着"哪一个面板在前台"搬家（见 placeQueue）
 		placeQueue(showNow)
+		// 歌词同理（见 placeLyrics）：进「正在播放」时搬进中栏，出来时搬回右栏
+		placeLyrics(showNow)
 	}
 
 	/**
@@ -225,6 +227,44 @@
 			intoNowPlaying ? 'nowplaying-queue-slot' : 'queue-slot',
 		)
 		if (slot && list.parentElement !== slot) slot.appendChild(list)
+	}
+
+	/**
+	 * 把**唯一那份**歌词面板放到正确的位置（阶段 D）。
+	 *
+	 * 与 `placeQueue` 完全同一个理由与手法：歌词在「右栏」和「正在播放的中栏」
+	 * 都要出现，但**不能渲染两份** —— 两份会让 testid 重复、拖拽与点击落到
+	 * 错误的那棵树上，而界面看起来完全正常。
+	 *
+	 * 差别只有一处：右栏里的面板**靠 `is-active` 决定显隐**，而搬到中栏之后
+	 * 它必须一直可见 —— 所以搬过去时自己加上 `is-active`，搬回来时再交还给
+	 * 右栏的页签状态（`switchPanel`）。
+	 */
+	let lyricsPanelHome = null
+	/**
+	 * 歌词挂载点当前是不是在「正在播放」的中栏里。
+	 *
+	 * ⚠️ 搬的是**挂载点 `#lyrics-panel`**（`lyrics-panel.js` 往里渲染的那层），
+	 * 不是外层那个 `.panel` 壳。第一版搞错了对象：外层壳**没有 `id`**，
+	 * 只有 `data-panel="lyrics"`，于是 `getElementById('panel-lyrics')` 一直是
+	 * null —— `placeLyrics` 直接 return、中栏永远空着，而所有断言都"通过"，
+	 * 只有截图看得出中栏是空的。
+	 */
+	function lyricsMountPoint() {
+		return document.getElementById('lyrics-panel')
+	}
+	function placeLyrics(intoNowPlaying) {
+		const mount = lyricsMountPoint()
+		if (!mount) return
+		if (!lyricsPanelHome) lyricsPanelHome = mount.parentElement
+		if (intoNowPlaying) {
+			const slot = document.getElementById('nowplaying-lyrics-slot')
+			if (slot && mount.parentElement !== slot) slot.appendChild(mount)
+			return
+		}
+		if (lyricsPanelHome && mount.parentElement !== lyricsPanelHome) {
+			lyricsPanelHome.appendChild(mount)
+		}
 	}
 
 	/**
