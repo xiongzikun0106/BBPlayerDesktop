@@ -32,6 +32,20 @@
 				-->
 				<div class="sidebar__brand">
 					<span class="sidebar__title">BBPlayer</span>
+					<!--
+						用户名放在品牌名**右边**（用户复审时明确要求的）：
+						「UID 你完全没有必要在播放页面放这个，你应该把用户名
+						放到左上角 bbplayer 字样右边」。
+
+						未登录时**不占位**（`hidden`）—— 免得出现一个孤零零的
+						「未登录」把品牌行撑宽。
+					-->
+					<span
+						class="sidebar__user"
+						id="sidebar-user"
+						data-testid="sidebar-user"
+						hidden
+					></span>
 					<div class="sidebar__brand-actions">
 						<button
 							class="icon-button icon-only"

@@ -271,12 +271,42 @@ body {
 .sidebar__brand {
 	display: flex;
 	align-items: center;
-	justify-content: space-between;
+	/*
+	 * ⚠️ 用 `flex-start` + 给动作区 `margin-left: auto`，不要 `space-between`。
+	 *
+	 * 现在这一行有三个元素：品牌名 / 用户名 / 动作按钮。
+	 * `space-between` 会把用户名推到**中间**去，看起来像"居中标题"。
+	 * 用户名应该紧跟在品牌名右边。
+	 */
+	justify-content: flex-start;
+	gap: var(--sp-sm);
 	padding: var(--sp-md);
-	border-bottom: 1px solid var(--outline-variant);
+	/*
+	 * ⚠️ 这里原来有一条通栏细线（`border-bottom`），阶段 6b 去通栏线时**漏了它**。
+	 * 侧栏与主区靠底色分层，不需要这条线。
+	 */
+}
+
+/*
+ * 用户名（品牌名右边）。
+ *
+ * ⚠️ 必须能**收窄并省略**：左栏只有 240px，而 B 站昵称可以很长。
+ * `min-width: 0` + ellipsis 让它自己让位，而不是把 `BBPlayer`
+ * 或右边的头像按钮挤走。
+ */
+.sidebar__user {
+	flex: 1 1 auto;
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	font-size: var(--fs-body-small);
+	color: var(--on-surface-variant);
+	text-align: left;
 }
 
 .sidebar__title {
+	flex: none;
 	font-size: var(--fs-body-large);
 	font-weight: 600;
 }

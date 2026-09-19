@@ -122,6 +122,21 @@
 			const iconNode = els.accountOpen.querySelector('.icon')
 			if (iconNode)
 				iconNode.textContent = loggedIn ? 'account_circle' : 'person'
+
+			/*
+			 * 用户名写到**品牌名右边**（用户复审时明确要求）。
+			 *
+			 * ⚠️ 未登录时**隐藏而不是写"未登录"** —— 品牌行只有 240px 宽，
+			 * 一个常驻的"未登录"会把 `BBPlayer` 挤掉，而"没登录"这件事
+			 * 在账号弹窗里说一次就够了。
+			 */
+			const userLabel = document.getElementById('sidebar-user')
+			if (userLabel) {
+				const shown = loggedIn ? name : ''
+				userLabel.textContent = shown
+				userLabel.hidden = shown === ''
+				userLabel.title = shown
+			}
 			// 已登录时给按钮加个色，作为"有登录态"的唯一视觉线索
 			els.accountOpen.classList.toggle('is-online', loggedIn)
 		}
