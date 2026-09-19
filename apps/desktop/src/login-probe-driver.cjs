@@ -691,6 +691,98 @@ async function run(window) {
 	}
 
 	// ---------- 13. 可选：真实凭据下的行为 ----------
+	/*
+	 * ---------- 登录成功的收束动作（**默认就会跑**）----------
+	 *
+	 * ⚠️ 这一段**不能**放进下面那个 `if (process.env.BILIBILI_TEST_COOKIE)` 分支。
+	 * 第一版就放在那里，结果默认跑不到 —— 等于没有守卫
+	 * （"一条从不执行的断言"与"没有断言"是同一件事）。
+	 *
+	 * 做法：**桩掉 IPC**，让二维码轮询直接返回 `confirmed`。
+	 * 这样走的是**真实的** `pollQr → finishLogin` 代码路径，
+	 * 只是不需要真人拿手机扫码。
+	 */
+	console.log('\n[login] 登录成功的收束动作（弹窗关闭 + 胶囊提示）')
+	const openedForFinish = await click(window, '#account-open')
+	if (openedForFinish) {
+		await sleep(400)
+		await click(window, '[data-testid="login-tab-cookie"]')
+		await sleep(300)
+		/*
+		 * 桩：直接在**主进程**换掉 IPC handler。
+		 *
+		 * ⚠️ 两条踩过的坑：
+		 *   1. 不能在渲染进程里改 `window.bbplayer.*` ——
+		 *      `contextBridge.exposeInMainWorld` 暴露的对象是**冻结的**，
+		 *      赋值静默失败。必须在主进程这一侧换。
+		 *   2. 一开始走的是**二维码**路径，但它的轮询没被触发
+		 *      （弹窗一直开着）。改用**粘贴 Cookie** 这条：
+		 *      它没有轮询、没有定时器，一次 IPC 调用就出结果，
+		 *      是最容易确定性地驱动到 `finishLogin` 的路径。
+		 *
+		 * 三条登录路径（扫码 / 密码 / 粘贴 Cookie）成功时都调 `finishLogin`，
+		 * 所以验证其中一条即可覆盖那段共用逻辑。
+		 */
+		const { ipcMain } = require('electron')
+		ipcMain.removeHandler('login:importCookie')
+		ipcMain.handle('login:importCookie', async () => ({
+			ok: true,
+			data: { user: { uname: '探针用户', mid: 1 } },
+		}))
+		await typeInto(
+			window,
+			'#login-cookie-input',
+			'SESSDATA=probe; bili_jct=probe',
+		)
+		await click(window, '#login-cookie-submit')
+		await sleep(1200)
+		/*
+		 * 读一次状态。**不要**用 waitFor 的谓词形式 ——
+		 * 超时只返回 `false`，失败时看不到任何真实值，
+		 * 排查时等于闭着眼睛（第一版就卡在这里）。
+		 */
+		const loginFinish = JSON.parse(
+			await evaluate(
+				window,
+				`(() => {
+					const modal = document.getElementById('login-modal')
+					const pill = document.getElementById('status')
+					const host = document.querySelector('[data-testid="status-host"]')
+					return JSON.stringify({
+						modalHidden: Boolean(modal?.hidden),
+						modalOpen: Boolean(modal?.classList.contains('is-open')),
+						pillText: (pill?.textContent ?? '').trim(),
+						pillKind: pill?.className ?? '',
+						pillVisible: Boolean(host?.classList.contains('is-visible')),
+					})
+				})()`,
+			),
+		)
+		check(
+			'登录成功后**自动关闭登录弹窗**',
+			loginFinish.modalHidden && !loginFinish.modalOpen,
+			`hidden=${loginFinish.modalHidden} is-open=${loginFinish.modalOpen}`,
+		)
+		check(
+			'登录成功后**胶囊提示**「登录成功」（不是只改弹窗里一行小字）',
+			// ⚠️ 文案检查必须在**条件**里。第一版只把它写在描述字符串里，
+			// 于是任何 ok 类型的胶囊（实测是「已加载 10 首」）都能通过 —— 假绿。
+			/登录成功/.test(loginFinish.pillText) &&
+				loginFinish.pillKind.includes('status--ok') &&
+				loginFinish.pillVisible,
+			`「${loginFinish.pillText}」 kind=${loginFinish.pillKind} 可见=${loginFinish.pillVisible}`,
+		)
+		ipcMain.removeHandler('login:importCookie')
+		await click(window, '[data-testid="login-close"]')
+		await sleep(300)
+	} else {
+		check(
+			'能打开登录弹窗以验证登录成功的收束动作',
+			false,
+			'找不到 #account-open',
+		)
+	}
+
 	const testCookie = process.env.BILIBILI_TEST_COOKIE
 	if (testCookie) {
 		console.log('[login] 检测到 BILIBILI_TEST_COOKIE，验证真实登录后的行为')
@@ -713,6 +805,48 @@ async function run(window) {
 			'粘贴真实 cookie 后登录成功',
 			loggedIn.ok,
 			loggedIn.ok ? loggedIn.value.badge : JSON.stringify(loggedIn.value),
+		)
+		/*
+		 * 登录成功后的收束动作：**关弹窗 + 弹胶囊**。
+		 *
+		 * 用户复审时提的：「登录成功之后没有任何提示，我建议是登录成功之后
+		 * 自动关闭登录相关页面然后胶囊提示登录成功」。
+		 *
+		 * 原来三条登录路径（扫码 / 密码 / 粘贴 Cookie）都只是把**弹窗内部**
+		 * 的状态行改了一行小字就结束了 —— 弹窗还杵在那儿，用户既没有
+		 * "完成了"的收束感，也不知道接下来干什么。
+		 *
+		 * 断言两件事：弹窗真的关了，且全局胶囊里出现了成功文案。
+		 * 只看其中一件都不够 —— 只关弹窗没有反馈，只弹胶囊弹窗还挡着。
+		 */
+		const loginFinish = JSON.parse(
+			await evaluate(
+				window,
+				`(() => {
+					const modal = document.getElementById('login-modal')
+					const pill = document.getElementById('status')
+					const host = document.querySelector('[data-testid="status-host"]')
+					return JSON.stringify({
+						modalHidden: Boolean(modal?.hidden),
+						modalOpen: Boolean(modal?.classList.contains('is-open')),
+						pillText: (pill?.textContent ?? '').trim(),
+						pillKind: pill?.className ?? '',
+						pillVisible: Boolean(host?.classList.contains('is-visible')),
+					})
+				})()`,
+			),
+		)
+		check(
+			'登录成功后**自动关闭登录弹窗**',
+			loginFinish.modalHidden && !loginFinish.modalOpen,
+			`hidden=${loginFinish.modalHidden} is-open=${loginFinish.modalOpen}`,
+		)
+		check(
+			'登录成功后**胶囊提示**「登录成功」（不是只改弹窗里一行小字）',
+			/登录成功/.test(loginFinish.pillText) &&
+				loginFinish.pillKind.includes('status--ok') &&
+				loginFinish.pillVisible,
+			`「${loginFinish.pillText}」 kind=${loginFinish.pillKind} 可见=${loginFinish.pillVisible}`,
 		)
 		await shot(window, 'login-10-logged-in')
 	} else {

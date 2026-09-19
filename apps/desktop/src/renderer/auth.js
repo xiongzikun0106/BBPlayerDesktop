@@ -56,6 +56,37 @@
 		node.className = `login-status${kind ? ` login-status--${kind}` : ''}`
 	}
 
+	/**
+	 * 登录成功后的**收束动作**（三条登录路径共用）。
+	 *
+	 * 扫码 / 密码 / 粘贴 Cookie 都能登录，但原来只有各自的成功分支
+	 * 改了弹窗内的一行小字就结束 —— 用户看到的是"弹窗还杵在那儿、
+	 * 里面一行字变了"，既没有"完成了"的收束感，也不知道接下来干什么。
+	 * （用户复审时明确提了这一条。）
+	 *
+	 * 所以统一成三件事：
+	 *   1. 关掉登录弹窗；
+	 *   2. 在**全局胶囊**（`#status`，与 library/history/import 等模块
+	 *      完全同一个元素、同一套写法）上提示「登录成功」——
+	 *      它会被 `status.js` 接管并**自动淡出**；
+	 *   3. 有昵称就带上昵称，让用户确认登的是哪个账号。
+	 *
+	 * ⚠️ 顺序：先关弹窗再弹提示，否则提示会被弹窗盖住。
+	 *
+	 * ⚠️ 不要把 `mid` 之类的字段拼进文案（原来粘贴 Cookie 那条写的是
+	 * 「…（mid=12345）」）—— 那是给开发者看的，用户只关心"是不是我"。
+	 */
+	function finishLogin(statusNode, uname) {
+		const name = typeof uname === 'string' && uname.trim() ? uname.trim() : ''
+		setStatus(statusNode, name ? `登录成功：${name}` : '登录成功', 'ok')
+		close()
+		const pill = document.getElementById('status')
+		if (pill) {
+			pill.textContent = name ? `登录成功，欢迎 ${name}` : '登录成功'
+			pill.className = 'status status--ok'
+		}
+	}
+
 	/** 统一的 IPC 结果解包 */
 	function unwrap(result, what) {
 		if (!result || result.ok !== true) {
@@ -201,9 +232,9 @@
 			setStatus(els.qrStatus, '二维码已失效，请点击「刷新二维码」', 'bad')
 			return
 		} else if (data.state === 'confirmed') {
-			setStatus(els.qrStatus, '登录成功', 'ok')
 			qrKey = null
 			await refresh()
+			finishLogin(els.qrStatus, data.user?.uname)
 			return
 		} else {
 			setStatus(
@@ -269,7 +300,7 @@
 				await window.bbplayer.loginWithPassword(username, password),
 				'密码登录',
 			)
-			setStatus(els.passwordStatus, `登录成功：${data.user?.uname ?? ''}`, 'ok')
+			finishLogin(els.passwordStatus, data.user?.uname)
 			await refresh()
 		} catch (error) {
 			setStatus(els.passwordStatus, error.message, 'bad')
@@ -297,11 +328,7 @@
 				'导入 cookie',
 			)
 			if (els.cookieInput) els.cookieInput.value = ''
-			setStatus(
-				els.cookieStatus,
-				`登录成功：${data.user?.uname ?? ''}（mid=${data.user?.mid ?? '?'}）`,
-				'ok',
-			)
+			finishLogin(els.cookieStatus, data.user?.uname)
 			await refresh()
 		} catch (error) {
 			setStatus(els.cookieStatus, error.message, 'bad')
