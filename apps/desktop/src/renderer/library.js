@@ -426,56 +426,88 @@
 		ui.selectButton.classList.toggle('is-active', selectMode)
 	}
 
-	function renderTrackTable(tracks, { title, query } = {}) {
-		clear(els.content)
+	/**
+	 * 渲染一张曲目表。
+	 *
+	 * ## 两种形态（同一份实现）
+	 *
+	 * * **整页**：`into` 不传 → 渲染进 `#content`，带页面级标题、返回按钮、
+	 *   「N 首」计数、只读提示；
+	 * * **内嵌**：传 `into`（一个容器）→ 只渲染**表格本体**（动作条 + 多选工具条
+	 *   + 表格），不碰页面标题，也不清空 `#content`。
+	 *
+	 * ⚠️ 为什么要有内嵌形态：收藏夹的展开预览原来**自己手搓了第二张表**
+	 * （`favorites.js`，只有 序号/标题/作者/时长 四列），于是那一屏
+	 * **不能播放、没有「⋮」、不能多选** —— 用户的原话是"没有和正式歌单一样的
+	 * 操作按钮，同时也无法多选添加进歌单"。
+	 * 修法不是给预览再补一套按钮（那是第三套），而是**把整页那个渲染器参数化**：
+	 * 预览一旦走同一条路径，行内动作、多选、双击播放、批量添加到歌单
+	 * **自动全都有**，以后新增行能力两处一起生效。
+	 *
+	 * @param {object[]} tracks
+	 * @param {object} [options]
+	 * @param {string} [options.title] 整页形态的标题
+	 * @param {string} [options.query] 搜索关键词（决定空状态文案）
+	 * @param {HTMLElement|null} [options.into] 内嵌形态的目标容器
+	 * @param {string} [options.tableTestid] 表格的 testid（探针按它定位）
+	 */
+	function renderTrackTable(
+		tracks,
+		{ title, query, into = null, tableTestid = 'track-table' } = {},
+	) {
+		const embedded = Boolean(into)
+		const container = into ?? els.content
+		if (!embedded) clear(els.content)
 		// 换了列表就把多选清掉 —— 否则在 A 歌单选中的曲子会"跟到" B 歌单
 		// （这也是为什么清空放在**渲染入口**而不是各个调用点）
 		clearSelection()
 		selectionUi = null
 		// 共享视图是常驻节点，从它切回来（例如直接搜索、点左栏歌单）时要显式让位
-		window.bbUI?.showContent?.()
+		if (!embedded) window.bbUI?.showContent?.()
 
-		const head = document.createElement('div')
-		head.className = 'view-head'
-		const lead = document.createElement('div')
-		lead.className = 'view-head__lead'
+		if (!embedded) {
+			const head = document.createElement('div')
+			head.className = 'view-head'
+			const lead = document.createElement('div')
+			lead.className = 'view-head__lead'
 
-		// 歌单详情是从「播放列表」卡片进来的，所以要有一条**明确的回路**。
-		// 安卓端这是路由自带的返回；桌面端没有导航栈，得自己给。
-		if (window.bbState.get().view === 'playlist') {
-			const back = document.createElement('button')
-			back.className = 'text-button view-head__back'
-			back.dataset.testid = 'playlist-back'
-			back.innerHTML = `${window.bbComponents.iconHtml('arrow_back', 'icon--sm')} 播放列表`
-			back.addEventListener('click', () => void showPlaylistsTab())
-			lead.appendChild(back)
+			// 歌单详情是从「播放列表」卡片进来的，所以要有一条**明确的回路**。
+			// 安卓端这是路由自带的返回；桌面端没有导航栈，得自己给。
+			if (window.bbState.get().view === 'playlist') {
+				const back = document.createElement('button')
+				back.className = 'text-button view-head__back'
+				back.dataset.testid = 'playlist-back'
+				back.innerHTML = `${window.bbComponents.iconHtml('arrow_back', 'icon--sm')} 播放列表`
+				back.addEventListener('click', () => void showPlaylistsTab())
+				lead.appendChild(back)
+			}
+
+			const h2 = document.createElement('h2')
+			h2.textContent = title || '音乐库'
+			lead.appendChild(h2)
+			head.appendChild(lead)
+
+			const meta = document.createElement('span')
+			meta.className = 'muted'
+			meta.textContent = `${tracks.length} 首`
+			head.appendChild(meta)
+			container.appendChild(head)
 		}
 
-		const h2 = document.createElement('h2')
-		h2.textContent = title || '音乐库'
-		lead.appendChild(h2)
-		head.appendChild(lead)
-
-		const meta = document.createElement('span')
-		meta.className = 'muted'
-		meta.textContent = `${tracks.length} 首`
-		head.appendChild(meta)
-		els.content.appendChild(head)
-
 		const removal = removalContext(tracks.length)
-		if (removal.readOnly) {
+		if (!embedded && removal.readOnly) {
 			const note = document.createElement('p')
 			note.className = 'muted share-hint'
 			note.dataset.testid = 'playlist-readonly-note'
 			note.textContent =
 				'这是订阅来的共享歌单（只读）：可以播放与同步，但不能增删曲目。'
-			els.content.appendChild(note)
+			container.appendChild(note)
 		}
 
 		if (tracks.length === 0) {
-			els.content.appendChild(
+			container.appendChild(
 				window.bbComponents.empty({
-					testid: 'content-empty',
+					testid: embedded ? 'embedded-empty' : 'content-empty',
 					iconName: query ? 'search_off' : 'library_music',
 					title: query ? `没有与「${query}」相关的结果` : '这里还没有内容',
 					hint: query
@@ -530,7 +562,7 @@
 			else enterSelectMode(null)
 		})
 		actions.appendChild(selectButton)
-		els.content.appendChild(actions)
+		container.appendChild(actions)
 
 		// 多选工具条：与安卓端一样，进多选后**替换掉**上面那排动作
 		// （安卓端是 Appbar 的 action 组整体替换掉返回按钮）。
@@ -602,11 +634,11 @@
 		clearButton.textContent = '清除选择（Esc）'
 		clearButton.addEventListener('click', () => exitSelectMode())
 		bar.appendChild(clearButton)
-		els.content.appendChild(bar)
+		container.appendChild(bar)
 
 		const table = document.createElement('table')
 		table.className = 'track-table'
-		table.dataset.testid = 'track-table'
+		table.dataset.testid = tableTestid
 
 		const thead = document.createElement('thead')
 		const headRow = document.createElement('tr')
@@ -841,7 +873,7 @@
 			tbody.appendChild(tr)
 		})
 		table.appendChild(tbody)
-		els.content.appendChild(table)
+		container.appendChild(table)
 
 		// 多选只改类名/文案，不重渲染（见 syncSelectionUi 的注释）
 		selectionUi = {

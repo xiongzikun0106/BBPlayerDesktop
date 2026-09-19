@@ -3623,6 +3623,137 @@ async function run(window) {
 		`请求 ${folderCalls} 次`,
 	)
 
+	// 2a：UID 工具条**按需出现** —— 登录后自动用自己的 UID 读，那一行收起来
+	const barState = JSON.parse(
+		await evaluate(
+			window,
+			`(() => {
+				const bar = document.getElementById('favorite-bar')
+				return JSON.stringify({
+					hidden: bar?.hidden,
+					hasChangeUid: Boolean(
+						document.querySelector('[data-testid="favorites-change-uid"]'),
+					),
+					wanted: window.bbFavorites.isBarWanted(),
+				})
+			})()`,
+		),
+	)
+	check(
+		'登录后 UID 工具条自动收起（用户圈的那一行不再常驻）',
+		barState.hidden === true && barState.wanted === false,
+		JSON.stringify(barState),
+	)
+	check(
+		'收起后仍留「换个 UID…」入口（否则再也读不了别人的收藏夹）',
+		barState.hasChangeUid === true,
+		String(barState.hasChangeUid),
+	)
+	await click(window, '[data-testid="favorites-change-uid"]')
+	await sleep(500)
+	const barRevealed = await evaluate(
+		window,
+		`(() => {
+			const bar = document.getElementById('favorite-bar')
+			const input = document.getElementById('favorite-mid')
+			return JSON.stringify({
+				hidden: bar?.hidden,
+				focused: document.activeElement === input,
+			})
+		})()`,
+	)
+	const barRevealedParsed = JSON.parse(barRevealed)
+	check(
+		'点「换个 UID…」把工具条调出来并聚焦输入框',
+		barRevealedParsed.hidden === false && barRevealedParsed.focused === true,
+		barRevealed,
+	)
+
+	// ---------------------------------------------------------------
+	// 11b. 收藏夹展开预览 = 与正式歌单**同一个**渲染器（阶段 B-1）
+	// ---------------------------------------------------------------
+	//
+	// 修之前它自己手搓了第二张表（只有 序号/标题/作者/时长，**连点击处理都没有**）：
+	// 不能播放、没有「⋮」、不能多选。用户的原话是
+	// 「没有和正式歌单一样的操作按钮，同时也无法多选添加进入歌单」。
+	//
+	// 这里桩 60 条（**大于原来写死的 50**），一次把三件事都验了：
+	//   1. 预览里有「操作」列 /「⋮」/「多选」/「播放全部」→ 走的是同一个渲染器；
+	//   2. 60 条**全部渲染**（不再被砍到 50）；
+	//   3. 双击预览里的行**真的能播**（修之前点了没反应）。
+	let resourceCalls = 0
+	const fakeEntries = Array.from({ length: 60 }, (_, i) => ({
+		bvid: 'BVprobe' + String(i + 1).padStart(6, '0'),
+		title: '探针曲目 ' + (i + 1),
+		upperName: '探针UP ' + (i + 1),
+		cover: null,
+		duration: 200 + i,
+	}))
+	ipcMain.removeHandler('bili:favoriteResources')
+	ipcMain.handle('bili:favoriteResources', () => {
+		resourceCalls += 1
+		return { ok: true, data: fakeEntries }
+	})
+
+	await click(window, '[data-testid="favorite-preview-9001"]')
+	await sleep(1800)
+	const preview = JSON.parse(
+		await evaluate(
+			window,
+			`(() => {
+				const box = document.querySelector('[data-testid="favorite-preview-box-9001"]')
+				const table = box?.querySelector('[data-testid="favorite-table-9001"]')
+				return JSON.stringify({
+					rows: table ? table.querySelectorAll('tbody tr').length : 0,
+					hasActionsCol: Boolean(table?.querySelector('th.col-actions')),
+					moreButtons: table ? table.querySelectorAll('.track-action').length : 0,
+					hasSelectMode: Boolean(box?.querySelector('[data-testid="btn-select-mode"]')),
+					hasPlayAll: Boolean(box?.querySelector('[data-testid="btn-play-all"]')),
+					hasIndex: Boolean(table?.querySelector('td.col-index')),
+				})
+			})()`,
+		),
+	)
+	check(
+		'收藏夹预览复用了正式歌单的渲染器（有「⋮」列 / 多选 / 播放全部）',
+		preview.hasActionsCol &&
+			preview.moreButtons === preview.rows &&
+			preview.hasSelectMode &&
+			preview.hasPlayAll,
+		JSON.stringify(preview),
+	)
+	check(
+		'收藏夹预览**全量渲染**（桩了 60 条，不再被砍到 50）',
+		preview.rows === 60 && resourceCalls === 1,
+		`渲染 ${preview.rows} 行 / 请求 ${resourceCalls} 次`,
+	)
+
+	// 双击预览里的行 —— 修之前这一屏**根本不能播**
+	const playFromPreview = JSON.parse(
+		await evaluate(
+			window,
+			`(async () => {
+				const row = document.querySelector('[data-testid="favorite-table-9001"] tbody tr')
+				if (!row) return JSON.stringify({ clicked: false })
+				row.dispatchEvent(new MouseEvent('dblclick', { bubbles: true }))
+				await new Promise((r) => setTimeout(r, 1500))
+				const queue = window.bbPlayer.getQueue()
+				return JSON.stringify({
+					clicked: true,
+					queueLength: queue.length,
+					currentTitle: window.bbPlayer.getCurrent()?.title ?? '',
+				})
+			})()`,
+		),
+	)
+	check(
+		'预览里的曲目能直接双击播放（队列与当前曲目都变了）',
+		playFromPreview.clicked &&
+			playFromPreview.queueLength === 60 &&
+			playFromPreview.currentTitle === '探针曲目 1',
+		JSON.stringify(playFromPreview),
+	)
+
 	// ---------------------------------------------------------------
 	// 12. 设置页在**登录态**下的表现（阶段 A-3）
 	// ---------------------------------------------------------------

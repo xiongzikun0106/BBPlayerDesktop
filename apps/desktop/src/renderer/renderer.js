@@ -161,10 +161,13 @@
 			item.classList.toggle('is-active', item.dataset.view === view)
 		}
 		setPageTitle(view)
-		// 收藏夹的 UID 工具条只在「音乐库 › 收藏夹」页签显示
-		const bar = document.getElementById('favorite-bar')
-		if (bar)
-			bar.hidden = !(view === 'library' && currentLibraryTab === 'favorites')
+		// 收藏夹的 UID 工具条**按需出现**（登录后自动读自己的、它就收起来；
+		// 只有未登录、或用户在页头点「换个 UID…」时才露出）。
+		// 可见性由 `bbFavorites` 自己决定 —— 这里只告诉它"现在是不是收藏夹页签"，
+		// 免得"要不要显示"这件事又被写在两个地方（那种分头决定迟早不一致）。
+		window.bbFavorites?.syncBar?.(
+			view === 'library' && currentLibraryTab === 'favorites',
+		)
 		// 音乐库的页签条只在音乐库目的地显示
 		const tabs = document.getElementById('library-tabs')
 		if (tabs) tabs.hidden = view !== 'library'

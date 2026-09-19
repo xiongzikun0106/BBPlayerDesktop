@@ -22,10 +22,32 @@
 
 	const els = {
 		content: document.getElementById('content'),
+		bar: document.getElementById('favorite-bar'),
 		midInput: document.getElementById('favorite-mid'),
 		useMine: document.getElementById('favorite-use-mine'),
 		load: document.getElementById('favorite-load'),
 		status: document.getElementById('favorite-status'),
+	}
+
+	/*
+	 * UID 工具条**按需出现**（用户复审第二条）。
+	 *
+	 * 用户的原话：「我用红圈圈出来的状态栏可以不要」。
+	 * 但那一行同时是**唯一能输入 UID 的入口**，直接删掉就再也读不了别人的收藏夹了，
+	 * 所以改成按需：
+	 *   * **登录了** → 自动用你自己的 UID 读取（`show()` 里拿 loginStatus），
+	 *     这一行**收起来** —— 常见情况下屏幕上没有它；
+	 *   * **没登录** → 必须露出来（不然无处可填）；
+	 *   * 登录状态下想看别人的 → 页头的「换个 UID…」把它调出来。
+	 *
+	 * 可见性由本模块决定（`syncBar`），不再是"只要在收藏夹页签就显示" ——
+	 * `renderer.js` 的 `setActiveNav` 只负责告诉它"现在是不是收藏夹页签"。
+	 */
+	let barWanted = false
+
+	function syncBar(onFavoritesTab) {
+		if (!els.bar) return
+		els.bar.hidden = !(onFavoritesTab && barWanted)
 	}
 
 	const setStatus = (text, kind) => {
@@ -99,6 +121,25 @@
 			void loadFolders(String(mid), { force: true, button: refresh })
 		})
 		right.appendChild(refresh)
+
+		/*
+		 * 「换个 UID…」：登录之后工具条是收起来的，这里是**唯一**想起它的入口。
+		 * 没有这个按钮，登录用户就再也读不了别人的收藏夹了。
+		 */
+		const changeUid = document.createElement('button')
+		changeUid.className = 'text-button'
+		changeUid.dataset.testid = 'favorites-change-uid'
+		changeUid.textContent = '换个 UID…'
+		changeUid.addEventListener('click', () => {
+			barWanted = true
+			syncBar(true)
+			const input = els.midInput
+			if (input) {
+				input.focus()
+				input.select()
+			}
+		})
+		right.appendChild(changeUid)
 		head.appendChild(right)
 		content.appendChild(head)
 
@@ -203,47 +244,37 @@
 		}
 
 		box.textContent = ''
+		/*
+		 * ⚠️ 这里原来**自己手搓了第二张 `track-table`**（只有 序号/标题/作者/时长
+		 * 四列，连点击处理都没有）—— 于是收藏夹的展开预览
+		 * **不能播放、没有「⋮」、不能多选批量添加到歌单**。
+		 * 用户的原话：「没有和正式歌单一样的操作按钮，同时也无法多选添加进入歌单」。
+		 *
+		 * 现在改为 `bbLibrary.renderTrackTable(..., { into })` —— 就是整页那张表
+		 * 的**同一个渲染器**（内嵌形态）。于是行内动作、多选、双击播放、
+		 * 播放全部/加入队列**自动全都有**，以后新增行能力两处一起生效。
+		 *
+		 * ⚠️ 同时**去掉了"只取前 50 条"的限制**（用户明确要求全量渲染）：
+		 * 几百条的收藏夹展开时会多渲染一会儿，但"看得全"比"展开快"重要 ——
+		 * 想看全部却只给 50 条、还得去别处导入才能看全，那才是真的难受。
+		 * 真遇到超大收藏夹卡顿的话，再考虑"加载更多"，而不是先砍条数。
+		 */
 		if (items.length === 0) {
-			const p = document.createElement('p')
-			p.className = 'muted'
-			p.textContent = '没有可播放的条目（可能全是已失效视频）。'
-			box.appendChild(p)
+			box.appendChild(
+				window.bbComponents.empty({
+					testid: 'favorite-preview-empty',
+					iconName: 'video_library',
+					title: '没有可播放的条目',
+					hint: '可能全是已失效视频。',
+				}),
+			)
 			return
 		}
 
-		const table = document.createElement('table')
-		table.className = 'track-table'
-		table.dataset.testid = `favorite-table-${folder.mediaId}`
-		const tbody = document.createElement('tbody')
-		for (const [index, entry] of items.slice(0, 50).entries()) {
-			const tr = document.createElement('tr')
-			for (const [text, cls] of [
-				[String(index + 1), 'col-index'],
-				[entry.title || '(无标题)', 'col-title'],
-				// 与 library.js 的曲目表一样同时认两套字段名
-				[
-					entry.upperName || entry.artist || entry.artist_name || '—',
-					'col-artist',
-				],
-				[window.bbPlayer.formatTime(entry.duration), 'col-duration'],
-			]) {
-				const td = document.createElement('td')
-				td.className = cls
-				td.textContent = text
-				td.title = text
-				tr.appendChild(td)
-			}
-			tbody.appendChild(tr)
-		}
-		table.appendChild(tbody)
-		box.appendChild(table)
-
-		if (items.length > 50) {
-			const more = document.createElement('p')
-			more.className = 'muted'
-			more.textContent = `仅预览前 50 条（共 ${items.length} 条）`
-			box.appendChild(more)
-		}
+		window.bbLibrary.renderTrackTable(items, {
+			into: box,
+			tableTestid: `favorite-table-${folder.mediaId}`,
+		})
 	}
 
 	async function syncFolder(folder, button) {
@@ -352,17 +383,25 @@
 
 		// 已登录则预填自己的 UID，省一步输入
 		let mid = els.midInput?.value?.trim() ?? ''
+		let fromLogin = false
 		if (!mid) {
 			try {
 				const status = unwrap(await window.bbplayer.loginStatus(), '读取登录态')
 				if (status?.user?.mid) {
 					mid = String(status.user.mid)
 					if (els.midInput) els.midInput.value = mid
+					// 记下来：这个 UID 是"登录用户自己的"，所以工具条可以收起来
+					fromLogin = true
 				}
 			} catch {
 				// 拿不到登录态就留空，走手填
 			}
 		}
+
+		// 登录用户自己的 UID → 收起工具条；否则露出来（没登录必须能填）
+		if (fromLogin) barWanted = false
+		else if (!mid) barWanted = true
+		syncBar(true)
 
 		if (mid) {
 			await loadFolders(mid)
@@ -449,6 +488,10 @@
 		loadFolders,
 		syncFolder,
 		renderFolders,
+		/** UID 工具条的可见性由本模块决定（`renderer.js` 只报"是不是收藏夹页签"） */
+		syncBar,
+		/** 供自动化断言：工具条当前该不该显示 */
+		isBarWanted: () => barWanted,
 		/** 供自动化断言 */
 		getFolders: () =>
 			Array.from(document.querySelectorAll('.favorite-list__item')).map(
