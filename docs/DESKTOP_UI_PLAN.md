@@ -498,3 +498,9 @@ Temp\  AppData\  /tmp/
 阶段 0–5 完成后用户逐屏复审，指出桌面端"处处是自己发明的桌面惯例"。
 **阶段 6 的施工单、两份安卓端代码研究报告、16 项待办与根因、
 歌词匹配的量化数据，全部记在 [`DESKTOP_UI_PLAN_STAGE6.md`](./DESKTOP_UI_PLAN_STAGE6.md)。**
+
+### 6.1 阶段 6 进展
+
+阶段 6 的实施进度、每项的根因与提交号、以及**尚未完成的清单**，
+记在 [`DESKTOP_UI_PLAN_STAGE6_PROGRESS.md`](./DESKTOP_UI_PLAN_STAGE6_PROGRESS.md)。
+施工单与两份安卓端代码研究报告在 [`DESKTOP_UI_PLAN_STAGE6.md`](./DESKTOP_UI_PLAN_STAGE6.md)。
