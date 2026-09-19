@@ -233,6 +233,18 @@ contextBridge.exposeInMainWorld('bbplayer', {
 	 */
 	openExternal: (url) => ipcRenderer.invoke('app:openExternal', url),
 	/**
+	 * 订阅**顶部播放菜单**的动作（阶段 6）。
+	 *
+	 * 主进程只发明文组合键（`'space'` / `'shift+arrowleft'`…），
+	 * 渲染进程用 `bbKeys.trigger(combo)` 转交给已注册的处理器 ——
+	 * 菜单与快捷键因此**永远同源**，不会各写一套行为。
+	 */
+	onMenuAction: (callback) => {
+		const listener = (_event, combo) => callback(combo)
+		ipcRenderer.on('menu:action', listener)
+		return () => ipcRenderer.removeListener('menu:action', listener)
+	},
+	/**
 	 * 主题（阶段 1）。
 	 *
 	 * 主进程把设计令牌解析成 CSS 变量下发；渲染进程只负责应用。

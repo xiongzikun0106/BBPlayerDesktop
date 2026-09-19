@@ -169,8 +169,114 @@ protocol.registerSchemesAsPrivileged([
 
 let mainWindow = null
 
+/**
+ * **顶部播放菜单**（阶段 6）。
+ *
+ * 用户确认过：把 Electron 默认的 File/Edit/View/Window 换成播放相关的。
+ *
+ * ## 两条设计约束
+ *
+ * 1. **不在主进程复制一套播放逻辑**。菜单项只发一个**组合键字符串**
+ *    （`'space'` / `'shift+arrowleft'`…），渲染进程用
+ *    `window.bbKeys.trigger(combo)` 交给**已经注册过的那个处理器**。
+ *    这样菜单与快捷键永远同源，不会出现"菜单里的下一首和快捷键的下一首
+ *    行为不一致"这种双路径漂移（这个仓库在别处吃过这个亏）。
+ *
+ * 2. **菜单项文字写"动作"而不是"状态"**。菜单不会跟着播放状态重建，
+ *    所以写「播放 / 暂停」而不是「暂停」—— 后者会在播放时显示成错的。
+ *    快捷键提示直接标在菜单右侧，用户能顺便学到键盘操作。
+ *
+ * 关掉开发相关项（reload / toggleDevTools）是刻意的：它们是打包后
+ * 最容易误触、且对用户没有意义的入口。
+ */
+function buildPlaybackMenu() {
+	const { Menu, shell } = require('electron')
+	const send = (combo) => {
+		const win = BrowserWindow.getFocusedWindow() ?? mainWindow
+		win?.webContents?.send('menu:action', combo)
+	}
+	/** 生成一个"点它等于按某个快捷键"的菜单项 */
+	const key = (label, combo, accelerator) => ({
+		label,
+		accelerator,
+		click: () => send(combo),
+	})
+
+	const template = [
+		{
+			label: '播放',
+			submenu: [
+				key('播放 / 暂停', 'space', 'Space'),
+				key('上一首', 'shift+arrowleft', 'Shift+Left'),
+				key('下一首', 'shift+arrowright', 'Shift+Right'),
+				{ type: 'separator' },
+				key('快退 5 秒', 'arrowleft', 'Left'),
+				key('快进 5 秒', 'arrowright', 'Right'),
+				{ type: 'separator' },
+				key('音量 −5%', 'ctrl+arrowleft', 'Ctrl+Left'),
+				key('音量 +5%', 'ctrl+arrowright', 'Ctrl+Right'),
+				key('静音切换', 'ctrl+m', 'Ctrl+M'),
+				{ type: 'separator' },
+				key('切换播放模式', 'ctrl+r', 'Ctrl+R'),
+				key('播放队列 / 歌词', 'ctrl+q', 'Ctrl+Q'),
+			],
+		},
+		{
+			label: '前往',
+			submenu: [
+				key('音乐库', 'ctrl+1', 'Ctrl+1'),
+				key('搜索', 'ctrl+2', 'Ctrl+2'),
+				key('收藏夹', 'ctrl+3', 'Ctrl+3'),
+				key('合集', 'ctrl+4', 'Ctrl+4'),
+			],
+		},
+		{
+			label: '窗口',
+			submenu: [
+				key('独立歌词窗口', 'ctrl+alt+l', 'Ctrl+Alt+L'),
+				key('快捷键说明', 'ctrl+shift+l', 'Ctrl+Shift+L'),
+				{ type: 'separator' },
+				{ role: 'minimize', label: '最小化' },
+				{ role: 'close', label: '关闭窗口' },
+			],
+		},
+		{
+			label: '帮助',
+			submenu: [
+				{
+					label: '前往 GitHub',
+					click: () =>
+						void shell.openExternal(
+							'https://github.com/xiongzikun0106/BBPlayerDesktop',
+						),
+				},
+				{ type: 'separator' },
+				// ⚠️ 这两个是刻意保留的：打包后出问题时，用户/我们只能靠它们
+				// 拿到控制台。放在「帮助」里而不是第一屏，降低误触。
+				{ role: 'toggleDevTools', label: '开发者工具' },
+				{ role: 'reload', label: '重新载入' },
+			],
+		},
+	]
+	// macOS 下第一项必须是应用菜单，否则会被系统吃掉
+	if (process.platform === 'darwin') {
+		template.unshift({ role: 'appMenu' })
+	}
+	Menu.setApplicationMenu(Menu.buildFromTemplate(template))
+}
+
 function createWindow() {
 	/*
+	 * ⚠️ 菜单在这里构建，而**不是**在某个启动分支里。
+	 *
+	 * 第一版只在"正常启动"那条分支里调了 `buildPlaybackMenu()`，
+	 * 于是**探针模式**（它走另外的 if 分支）拿到的是 Electron 默认菜单 ——
+	 * 断言直接量到 `[File / Edit / View / Window]`。
+	 * 放进 `createWindow()` 之后，所有启动路径都会装上它。
+	 */
+	buildPlaybackMenu()
+	/*
+
 	 * ⚠️ 探针模式**不显示窗口**。
 	 *
 	 * 探针从不使用 OS 级输入（它走 `webContents.executeJavaScript` 驱动

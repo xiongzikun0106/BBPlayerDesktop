@@ -2133,6 +2133,45 @@ async function run(window) {
 		(grew || deduped) && addFlow.closed === true,
 		`曲目数 ${addFlow.before} → ${addFlow.after}，关闭=${addFlow.closed}，状态「${addFlow.statusText}」`,
 	)
+	// ---------------------------------------------------------------
+	// 1.7e 顶部播放菜单（阶段 6）
+	// ---------------------------------------------------------------
+	//
+	// 原来这里是 Electron 默认的 File/Edit/View/Window（全仓库没有
+	// `setApplicationMenu`）。用户确认要换成播放相关的。
+	//
+	// ⚠️ 驱动的这一段跑在**主进程**里，所以能直接摸到 `Menu` ——
+	// 而且能**调用菜单项的 `click()`**，从而验证整条桥真的通，
+	// 而不是只验证"菜单对象长得对"。
+	console.log('\n[ui] 1.7e) 顶部播放菜单')
+	const { Menu } = require('electron')
+	const appMenu = Menu.getApplicationMenu()
+	const topLabels = appMenu ? appMenu.items.map((item) => item.label) : []
+	check(
+		'顶部菜单已换成播放相关（不再是 Electron 默认的 File/Edit/View）',
+		topLabels.includes('播放') &&
+			!topLabels.includes('File') &&
+			!topLabels.includes('Edit'),
+		`顶层菜单：[${topLabels.join(' / ')}]`,
+	)
+
+	// 菜单项里必须有这几个核心播放动作，且**标了快捷键**
+	const playMenu = appMenu?.items.find((item) => item.label === '播放')
+	const playItems = playMenu ? playMenu.submenu.items.map((i) => i.label) : []
+	const hasAccel = playMenu
+		? playMenu.submenu.items.some(
+				(i) => i.accelerator && i.label.includes('播放'),
+			)
+		: false
+	check(
+		'「播放」菜单里有播放/暂停、上一首、下一首，且标了快捷键',
+		playItems.some((l) => l.includes('播放')) &&
+			playItems.includes('上一首') &&
+			playItems.includes('下一首') &&
+			hasAccel,
+		`[${playItems.join(' / ')}] 有快捷键=${hasAccel}`,
+	)
+
 	console.log('\n[ui] 1.7b) 浮动状态胶囊会自己消失（每一种）')
 	const pillFade = JSON.parse(
 		await evaluate(

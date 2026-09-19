@@ -77,6 +77,38 @@
 		})
 	}
 
+	/**
+	 * **按组合键触发已注册的处理器**（阶段 6，顶部播放菜单用）。
+	 *
+	 * ⚠️ 存在的意义是**复用**，不是新增一套分发。
+	 *
+	 * 顶部菜单要能播放/暂停、上一首/下一首…… 而这些动作在
+	 * `renderer.js` 里已经以 `keys.register('space', …, handler)` 的形式
+	 * 注册过了 —— 但处理器是**匿名回调**，外面拿不到。
+	 *
+	 * 最省事也最不容易走样的做法是：菜单只发**组合键字符串**
+	 * （`'space'` / `'shift+arrowleft'`…），由这里转交给**同一个**处理器。
+	 * 于是菜单与快捷键**永远同源**，不会出现"菜单里的下一首和快捷键的
+	 * 下一首行为不一致"这种双路径漂移。
+	 *
+	 * 与真实按键的区别：不做 `isTyping()` 检查（用户是**主动点菜单**，
+	 * 不是在输入框里敲键盘），也不构造 KeyboardEvent。
+	 *
+	 * @returns {boolean} 有没有命中已注册的处理器
+	 */
+	function trigger(combo) {
+		const key = String(combo).toLowerCase()
+		const binding = bindings.get(key)
+		if (!binding?.handler) return false
+		try {
+			binding.handler({ type: 'menu', key, preventDefault() {} })
+		} catch (error) {
+			console.warn(`[keys] 触发 ${key} 时抛错：`, error)
+			return false
+		}
+		return true
+	}
+
 	function unregister(combo) {
 		bindings.delete(String(combo).toLowerCase())
 	}
@@ -159,6 +191,7 @@
 	window.bbKeys = {
 		register,
 		unregister,
+		trigger,
 		install,
 		list,
 		normalize,
