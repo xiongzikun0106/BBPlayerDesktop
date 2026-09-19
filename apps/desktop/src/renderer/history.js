@@ -1,5 +1,22 @@
 /**
- * 播放历史视图（Phase 3.5）。
+ * 播放历史视图（Phase 3.5）—— 阶段 6d 起它同时是**主页的下半部分**。
+ *
+ * ## 主页怎么组成（对齐安卓端 `(tabs)/index.tsx`）
+ *
+ * 安卓端主页是一个滚动区，三个区块：**听歌频率热力图 → 快捷入口 → 近期歌单**，
+ * 区块之间 32px、**区块自身不套卡片**（卡片化只发生在单个条目上）。
+ * 桌面端的「主页」在阶段 6d 之前**根本不存在**：点它执行的是 `bbHistory.show()`
+ * （`renderer.js` 的 openView），也就是说主页被播放历史独占。
+ *
+ * 现在主页是「热力图 → 快捷入口 → 最近更新 → 播放历史」四块。
+ * 播放历史没有被删掉 —— 它是桌面端比移动端**更完整**的一块功能
+ * （三个派生视图各自的 SQL 都在 `db.cjs` 里），所以保留为最后一个区块。
+ *
+ * ⚠️ 「近期歌单」这个标题**故意没照抄**：安卓端那条查的是
+ * `ORDER BY updatedAt DESC`，而 `playlists.updatedAt` 只在歌单被**修改**时才动
+ * （播放写的是 `play_history`，不碰 `playlists`）——
+ * 所以它实际是「最近**修改**过的歌单」。桌面端用「最近更新」+ 一句说明，
+ * 不把"最近听过"这件事说成事实。
  *
  * ## 三个页签，不是一张表
  *
@@ -55,6 +72,14 @@
 	let activeTab = 'resume'
 
 	/**
+	 * 热力图点中的那一天（`YYYY-MM-DD`）。
+	 *
+	 * 非空时播放历史那一块显示**那天**的会话，点任意页签即退出该视图
+	 * （用户点页签的意思就是"我要看那个视图"，不该还停在那天）。
+	 */
+	let pickedDate = null
+
+	/**
 	 * 刷新序号。
 	 *
 	 * ⚠️ 必须防并发：点导航（`show()` → `refresh()`）与点页签（也 → `refresh()`）
@@ -108,6 +133,8 @@
 			button.dataset.testid = `history-tab-${tab.key}`
 			button.textContent = tab.label
 			button.addEventListener('click', () => {
+				// 点页签 = 退出"某一天"的视图（见 pickedDate 的注释）
+				pickedDate = null
 				activeTab = tab.key
 				void refresh()
 			})
@@ -227,6 +254,199 @@
 	}
 
 	// ---------------------------------------------------------------
+	// 主页的区块（阶段 6d）
+	// ---------------------------------------------------------------
+
+	/** 一个主页区块：标题 +（可选）说明 + 内容 */
+	function homeSection(title, { hint, testid } = {}) {
+		const section = document.createElement('section')
+		section.className = 'home-section'
+		if (testid) section.dataset.testid = testid
+		const h3 = document.createElement('h2')
+		h3.className = 'home-section__title'
+		h3.textContent = title
+		section.appendChild(h3)
+		if (hint) {
+			const note = document.createElement('p')
+			note.className = 'home-section__hint'
+			note.textContent = hint
+			section.appendChild(note)
+		}
+		return section
+	}
+
+	/** 区块 1：听歌频率热力图（主题色） */
+	function renderHeatmapSection() {
+		const section = homeSection('听歌频率', {
+			testid: 'home-heatmap',
+			hint: '最近一年每天听了几次。点一格可以看那一天的记录。',
+		})
+		const box = document.createElement('div')
+		box.className = 'heatmap-box'
+		box.dataset.testid = 'heatmap-box'
+		section.appendChild(box)
+
+		// 数据要等 IPC，先把网格画出来（**有数据/没数据都画**，
+		// 新用户看到的是一整片灰格子而不是空白 —— 与移动端一致）
+		const draw = (byDate) => {
+			window.bbHeatmap?.render(box, byDate ?? {}, {
+				onPick: (date) => {
+					// 与移动端同一个动作：点某天 → 看那天听了什么
+					pickedDate = date
+					void refresh()
+				},
+			})
+		}
+		/*
+		 * ⚠️ 占位那一版必须**同步**画，不能放进 `requestAnimationFrame`。
+		 *
+		 * 第一版就是这么写的：`rAF(() => draw({}))` + IPC 的 `.then(draw(真实数据))`。
+		 * 本地 SQLite 的 IPC 往往**比一帧还快**，于是真实数据先画上去，
+		 * 一帧之后那个"空网格"再覆盖它 —— 表现是**数据已经到了、格子却全灰**
+		 * （`history.heatmap()` 明明返回了 `{ '2026-09-19': 6 }`，界面上一个
+		 * 非空档都没有）。是那条"数据真的走通 IPC 且界面上出现非空档"的断言抓到的。
+		 *
+		 * 代价：这一刻盒子可能还没挂进 `#content`，`clientWidth` 是 0，
+		 * 格子会按兜底宽度算 —— 所以下面拿到真实数据时**再量一次**即可
+		 * （宽度与数据都在这一版里修正）。
+		 */
+		draw({})
+		window.bbplayer.history
+			.heatmap()
+			.then((result) => {
+				if (result?.ok === true) draw(result.data ?? {})
+			})
+			.catch(() => {
+				// 热力图拿不到数据不影响主页其它区块
+			})
+		return section
+	}
+
+	/** 区块 2：快捷入口（安卓端三张卡：那月今日 / 最近常听 / 稍后再看） */
+	function renderQuickAccess() {
+		const section = homeSection('快捷入口', { testid: 'home-quick' })
+		const grid = document.createElement('div')
+		grid.className = 'home-quick'
+		section.appendChild(grid)
+
+		/*
+		 * ⚠️ 桌面端没有「稍后再看」（那是 B 站账号侧的列表，桌面端未接入），
+		 * 所以第三张换成本地真实存在的入口，而不是摆一个点了没用的卡。
+		 */
+		const cards = [
+			{
+				testid: 'quick-recent',
+				icon: 'history',
+				label: '最近常听',
+				run: () => gotoTab('recent'),
+			},
+			{
+				testid: 'quick-resume',
+				icon: 'play_circle',
+				label: '继续收听',
+				run: () => gotoTab('resume'),
+			},
+			{
+				testid: 'quick-favorites',
+				icon: 'star',
+				label: '我的收藏夹',
+				run: () => window.bbUI?.setLibraryTab?.('favorites'),
+			},
+		]
+		for (const card of cards) {
+			const button = document.createElement('button')
+			button.className = 'home-quick__card'
+			button.dataset.testid = card.testid
+			const iconBox = document.createElement('span')
+			iconBox.className = 'home-quick__icon'
+			iconBox.appendChild(window.bbComponents.icon(card.icon))
+			button.appendChild(iconBox)
+			const label = document.createElement('span')
+			label.className = 'home-quick__label'
+			label.textContent = card.label
+			button.appendChild(label)
+			button.addEventListener('click', () => card.run())
+			grid.appendChild(button)
+		}
+		return section
+	}
+
+	/** 切换历史子页签并把那一块滚进视野（快捷入口用） */
+	async function gotoTab(key) {
+		activeTab = key
+		await refresh()
+		document
+			.querySelector('[data-testid="history-tabs"]')
+			?.scrollIntoView({ block: 'start', behavior: 'smooth' })
+	}
+
+	/**
+	 * 区块 3：最近更新（歌单）。
+	 *
+	 * 安卓端的「近期歌单」卡：`surfaceVariant` 底 + 1:1 封面 + 标题两行 + 「N 首」。
+	 * 桌面端用的是**同一张卡**（`bbComponents.mediaCard`），
+	 * 与音乐库 › 播放列表的卡片网格同源。
+	 */
+	async function renderRecentPlaylists(content) {
+		const section = homeSection('最近更新', {
+			testid: 'home-recent-playlists',
+			hint: '按歌单最近一次修改排序（不是最近听过）。',
+		})
+		const grid = document.createElement('div')
+		grid.className = 'media-grid'
+		// ⚠️ 容器与子项的 testid **不能共享前缀**：卡片是 `home-playlist-<id>`，
+		// 若容器也叫 `home-playlist-grid`，那么 `[data-testid^="home-playlist-"]`
+		// 会先命中**容器**（DOM 顺序在前）—— 探针点它会点在一个没有监听器的
+		// div 上（什么都发生不了），而读标题却能读到第一张卡的内容，
+		// 于是表现为"功能坏了"（实际是选择器选错了对象）。
+		grid.dataset.testid = 'home-recent-grid'
+		section.appendChild(grid)
+
+		let playlists = []
+		try {
+			const result = await window.bbplayer.listPlaylists()
+			playlists = (result?.data ?? [])
+				.filter((item) => item.type !== 'dynamic')
+				.slice()
+				.sort((a, b) => (b.updated_at ?? 0) - (a.updated_at ?? 0))
+				.slice(0, 6)
+		} catch {
+			playlists = []
+		}
+
+		if (playlists.length === 0) {
+			grid.appendChild(
+				window.bbComponents.empty({
+					testid: 'home-playlists-empty',
+					iconName: 'library_music',
+					title: '还没有歌单',
+					hint: '去音乐库 › 播放列表新建一个，或从合集导入。',
+				}),
+			)
+			content.appendChild(section)
+			return
+		}
+
+		for (const playlist of playlists) {
+			grid.appendChild(
+				window.bbComponents.mediaCard({
+					title: playlist.title,
+					sub: `${playlist.item_count ?? 0} 首`,
+					coverUrl: playlist.cover_url ?? null,
+					badges: window.bbLibrary?.playlistBadges?.(playlist) ?? [],
+					testid: `home-playlist-${playlist.id}`,
+					onClick: () => {
+						// 与音乐库里的卡片同一条路径：进歌单详情
+						window.bbUI?.showContent?.()
+						void window.bbLibrary?.openPlaylist?.(playlist.id)
+					},
+				}),
+			)
+		}
+		content.appendChild(section)
+	}
+
+	// ---------------------------------------------------------------
 	// 加载
 	// ---------------------------------------------------------------
 
@@ -252,7 +472,15 @@
 			let rows = []
 			let options = { showCount: false, showPosition: false }
 			const tab = activeTab
-			if (tab === 'resume') {
+			if (pickedDate) {
+				// 热力图点进来的"某一天"：按**会话**列出（同一天听两遍就是两行），
+				// 这样格子里的数字与表里的行数对得上
+				rows = unwrap(
+					await window.bbplayer.history.byDate(pickedDate, 200),
+					'读取当天记录',
+				)
+				options = { showCount: false, showPosition: false }
+			} else if (tab === 'resume') {
 				rows = unwrap(await window.bbplayer.history.resume(50), '读取继续收听')
 				options = { showCount: false, showPosition: true }
 			} else if (tab === 'recent') {
@@ -270,16 +498,25 @@
 			const head = document.createElement('div')
 			head.className = 'view-head'
 			const h2 = document.createElement('h2')
-			h2.textContent = '播放历史'
+			// ⚠️ 主页的第一个 `.view-head` 是**播放历史**（它在页面下半部分）。
+			// 主页自己的标题由外壳的 `#page-title` 负责（「主页」）——
+			// 见 README 的「标题只有一处」。
+			h2.textContent = pickedDate ? `播放历史 · ${pickedDate}` : '播放历史'
 			head.appendChild(h2)
 			const meta = document.createElement('span')
 			meta.className = 'muted'
 			meta.dataset.testid = 'history-summary'
-			meta.textContent =
-				summary.sessionCount === 0
+			meta.textContent = pickedDate
+				? `${rows.length} 次播放`
+				: summary.sessionCount === 0
 					? '暂无记录'
 					: `${summary.trackCount} 首 · ${summary.sessionCount} 次播放 · 累计 ${Math.round(summary.totalSeconds / 60)} 分钟`
 			head.appendChild(meta)
+			// 主页的四个区块顺序：热力图 → 快捷入口 → 最近更新 → 播放历史
+			content.appendChild(renderHeatmapSection())
+			content.appendChild(renderQuickAccess())
+			await renderRecentPlaylists(content)
+			if (stale()) return null
 			content.appendChild(head)
 
 			renderTabs(content)

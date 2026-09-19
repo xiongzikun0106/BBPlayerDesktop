@@ -952,6 +952,59 @@ function listResumeCandidates({ limit = 20, minSeconds = 10 } = {}) {
 	)
 }
 
+/**
+ * 听歌频率热力图的数据：**按本地日期**分组计数。
+ *
+ * ⚠️ 必须按 `localtime` 分组，不能用 UTC：`start_time` 存的是毫秒时间戳，
+ * 若按 UTC 切天，晚上 8 点之后听的歌会算到"第二天"—— 用户看到的格子会
+ * 整体右移一天，而且他自己没法察觉哪里不对。
+ * 移动端查的是同一句 `date(start_time / 1000, 'unixepoch', 'localtime')`。
+ *
+ * @returns {Record<string, number>} `{ 'YYYY-MM-DD': 次数 }`
+ */
+function listPlayHistoryByDate() {
+	const rows = sqlite.getAllSync(
+		`SELECT date(start_time / 1000, 'unixepoch', 'localtime') AS date,
+		        COUNT(*) AS count
+		 FROM play_history
+		 GROUP BY date`,
+	)
+	const byDate = {}
+	for (const row of rows) {
+		if (row.date) byDate[row.date] = Number(row.count)
+	}
+	return byDate
+}
+
+/**
+ * 某一天（本地日期）听过的曲目。
+ *
+ * 热力图每一格**可点**就是落到这里 —— 移动端点一格是跳到
+ * `/history/YYYY-MM-DD`，桌面端没有那个路由，所以直接把当天的会话查出来
+ * 用同一张表渲染。
+ *
+ * ⚠️ 与 `listRecentTracks` 的区别：那个是"每首歌只出现一次、按最后一次播放
+ * 排序"，所以**同一天听了两遍只算一条**。热力图点进来的语义是"那天听了什么"，
+ * 所以这里按**会话**返回（同一天听两遍就是两行）—— 否则格子里的数字
+ * 与表里的行数对不上，用户会以为记录丢了。
+ */
+function listPlayHistoryForDay(dateStr, { limit = 200 } = {}) {
+	return sqlite.getAllSync(
+		`SELECT t.*, a.name AS artist_name, bm.bvid, bm.cid,
+		        ph.start_time AS last_played_at,
+		        ph.duration_played AS last_position_seconds,
+		        1 AS play_count
+		 FROM play_history ph
+		 JOIN tracks t ON t.id = ph.track_id
+		 LEFT JOIN artists a ON a.id = t.artist_id
+		 LEFT JOIN bilibili_metadata bm ON bm.track_id = t.id
+		 WHERE date(ph.start_time / 1000, 'unixepoch', 'localtime') = ?
+		 ORDER BY ph.start_time DESC
+		 LIMIT ?`,
+		[dateStr, limit],
+	)
+}
+
 /** 汇总统计（用于界面上的概览） */
 function getPlayHistorySummary() {
 	const row = sqlite.getFirstSync(
@@ -1024,6 +1077,8 @@ module.exports = {
 	listRecentlyPlayed,
 	listMostPlayed,
 	listResumeCandidates,
+	listPlayHistoryByDate,
+	listPlayHistoryForDay,
 	getTrackPlayStats,
 	getPlayHistorySummary,
 	findTrackIdByBvid,

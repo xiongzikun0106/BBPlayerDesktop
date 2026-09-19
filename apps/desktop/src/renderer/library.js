@@ -1817,6 +1817,8 @@
 		 */
 		showPlaylistsTab,
 		openCreatePlaylistDialog,
+		/** 歌单卡片上的状态图标（主页的「最近更新」用同一套判断） */
+		playlistBadges,
 		openPlaylist,
 		runSearch,
 		renderTrackTable,

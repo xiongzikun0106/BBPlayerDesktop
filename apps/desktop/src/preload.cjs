@@ -143,6 +143,11 @@ contextBridge.exposeInMainWorld('bbplayer', {
 		/** 「继续收听」：没听完的曲目 */
 		resume: (limit) => ipcRenderer.invoke('history:resume', limit),
 		summary: () => ipcRenderer.invoke('history:summary'),
+		/** 热力图：`{ 'YYYY-MM-DD': 次数 }`（按**本地日期**分组） */
+		heatmap: () => ipcRenderer.invoke('history:heatmap'),
+		/** 某一天听过的曲目（热力图点一格进去） */
+		byDate: (date, limit) =>
+			ipcRenderer.invoke('history:byDate', { date, limit }),
 		stats: (trackId) => ipcRenderer.invoke('history:stats', trackId),
 		clear: () => ipcRenderer.invoke('history:clear'),
 	},

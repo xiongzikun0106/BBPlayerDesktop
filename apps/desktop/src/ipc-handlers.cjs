@@ -1044,6 +1044,31 @@ function registerIpcHandlers() {
 		}
 	})
 
+	/** 听歌频率热力图：`{ 'YYYY-MM-DD': 次数 }`（本地日期分组） */
+	ipcMain.handle('history:heatmap', () => {
+		try {
+			return { ok: true, data: db.listPlayHistoryByDate() }
+		} catch (error) {
+			return { ok: false, error: error.message }
+		}
+	})
+
+	/** 某一天听过的曲目（热力图点一格） */
+	ipcMain.handle('history:byDate', (_event, payload) => {
+		try {
+			const date = String(payload?.date ?? '')
+			if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+				return { ok: false, error: '日期格式应为 YYYY-MM-DD' }
+			}
+			return {
+				ok: true,
+				data: db.listPlayHistoryForDay(date, { limit: payload?.limit ?? 200 }),
+			}
+		} catch (error) {
+			return { ok: false, error: error.message }
+		}
+	})
+
 	ipcMain.handle('history:stats', (_event, trackId) => {
 		try {
 			return { ok: true, data: db.getTrackPlayStats(trackId) }

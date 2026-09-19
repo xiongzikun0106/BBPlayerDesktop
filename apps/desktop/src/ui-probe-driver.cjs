@@ -188,6 +188,23 @@ async function openPlaylistWithTracks(window) {
 	return true
 }
 
+/** 把 `#6750A4` / `rgb(103, 80, 164)` 两种写法都归一成 `r,g,b` 便于比较 */
+function toRgb(value) {
+	const hex = /^#([0-9a-f]{6})$/i.exec(String(value).trim())
+	if (hex) {
+		const n = Number.parseInt(hex[1], 16)
+		return [(n >> 16) & 255, (n >> 8) & 255, n & 255].join(',')
+	}
+	const rgb = /rgba?\(([^)]+)\)/.exec(String(value))
+	return rgb
+		? rgb[1]
+				.split(',')
+				.slice(0, 3)
+				.map((v) => Number(v.trim()))
+				.join(',')
+		: null
+}
+
 /** 派发真实键盘事件（走 window 上的监听器） */
 async function press(window, combo) {
 	return await evaluate(
@@ -3108,6 +3125,229 @@ async function run(window) {
 		await evaluate(window, 'JSON.stringify(window.bbUI.keys())'),
 	)
 	check('快捷键已注册（≥10 个）', keyList.length >= 10, `${keyList.length} 个`)
+
+	// ---------------------------------------------------------------
+	// 10. 主页（阶段 6d-3 / 6d-4）
+	// ---------------------------------------------------------------
+	//
+	// 主页在阶段 6d 之前**不存在**：点「主页」执行的是 `bbHistory.show()`
+	// （主页被播放历史独占）。安卓端的主页是「热力图 → 快捷入口 → 近期歌单」，
+	// 桌面端现在也是这三块 + 保留下来的播放历史。
+	//
+	// ⚠️ 这一段放在最后：它要**换目的地**（点导航），放中间会污染后面
+	// 依赖"当前视图"的断言（这个仓库已经踩过一次"测试之间相互污染"）。
+	console.log('\n[ui] 10) 主页（热力图 + 快捷入口 + 最近更新）')
+	await click(window, '[data-testid="nav-home"]')
+	await sleep(2500)
+
+	const home = JSON.parse(
+		await evaluate(
+			window,
+			`(() => {
+				const cells = [...document.querySelectorAll('.heatmap__cell')]
+				const rects = cells.slice(0, 5).map((node) => {
+					const r = node.getBoundingClientRect()
+					return [Math.round(r.width), Math.round(r.height)]
+				})
+				return JSON.stringify({
+					sections: [...document.querySelectorAll('.home-section__title')].map(
+						(node) => node.textContent,
+					),
+					cells: cells.length,
+					cellsSquare: rects.every(([w, h]) => w > 0 && Math.abs(w - h) <= 1),
+					// 有数据/没数据都要画网格：新用户看到的是一整片灰格子
+					emptyFill:
+						cells.length > 0 ? getComputedStyle(cells[0]).fill : null,
+					dated: cells.filter((node) => /^\\d{4}-\\d{2}-\\d{2}$/.test(node.dataset.date ?? ''))
+						.length,
+					quick: [...document.querySelectorAll('.home-quick__card')].map(
+						(node) => node.dataset.testid,
+					),
+					playlistCards: document.querySelectorAll(
+						'[data-testid^="home-playlist-"]',
+					).length,
+					// 与音乐库的卡片是**同一张卡**（同一个组件类）
+					usesMediaCard:
+						document.querySelectorAll(
+							'[data-testid^="home-playlist-"] .media-card__title',
+						).length > 0,
+					historyStillThere: Boolean(
+						document.querySelector('[data-testid="history-tabs"]'),
+					),
+				})
+			})()`,
+		),
+	)
+	check(
+		'主页有三块新内容（听歌频率 / 快捷入口 / 最近更新）+ 保留的播放历史',
+		home.sections.includes('听歌频率') &&
+			home.sections.includes('快捷入口') &&
+			home.sections.includes('最近更新') &&
+			home.historyStillThere,
+		home.sections.join(' / '),
+	)
+	check(
+		'热力图：格子是方格、每格带本地日期（没数据也画网格）',
+		home.cells > 300 && home.cellsSquare && home.dated === home.cells,
+		`${home.cells} 格，带日期 ${home.dated}，空单元色 ${home.emptyFill}`,
+	)
+	check(
+		'快捷入口三张卡 + 最近更新用歌单卡（与音乐库同一张卡）',
+		home.quick.length === 3 && home.usesMediaCard,
+		`${home.quick.join(' / ')}，最近更新 ${home.playlistCards} 张`,
+	)
+
+	// ⚠️ **真正端到端**的那一条：热力图的数据必须真的从 IPC 来。
+	//
+	// 只断言"格子画出来了 / 四档颜色不同"是**不够的** —— 那些都可以由
+	// 渲染器本身满足（下面那段就是喂构造数据测的）。而"应用自己取数这条路
+	// 通不通"是另一回事：handler 没注册、preload 名字写错、字段名不对，
+	// 三种情况都会让格子永远停在空档，而上面的断言全绿。
+	// （我就是靠这一条才发现 handler 返回的数据没进到图里。）
+	const heatmapData = JSON.parse(
+		await evaluate(
+			window,
+			`(async () => {
+				const result = await window.bbplayer.history.heatmap()
+				const data = result?.data ?? {}
+				return JSON.stringify({
+					ok: result?.ok === true,
+					error: result?.error ?? null,
+					keys: Object.keys(data).length,
+					sample: Object.entries(data).slice(0, 3),
+					// 界面上真的有"非空档"的格子吗（不是只有渲染器能画）
+					filledCells: document.querySelectorAll(
+						'.heatmap__cell[class*="heatmap__cell--l"]',
+					).length,
+				})
+			})()`,
+		),
+	)
+	check(
+		'热力图数据真的走通了 IPC，且界面上出现了非空档的格子',
+		heatmapData.ok && heatmapData.keys > 0 && heatmapData.filledCells > 0,
+		JSON.stringify(heatmapData),
+	)
+
+	// 热力图的**档位配色**：喂一份构造数据，四个档位必须是四种颜色，
+	// 且最深的一档就是主题主色（"主题色"是用户明确要求的）。
+	//
+	// ⚠️ 不能只断言"格子有颜色"：那样四种档位全画成同一个颜色也会通过。
+	const levels = JSON.parse(
+		await evaluate(
+			window,
+			`(() => {
+				const box = document.querySelector('[data-testid="heatmap-box"]')
+				if (!box) return JSON.stringify({ missing: true })
+				const today = new Date()
+				const key = (offset) => {
+					const d = new Date(today.getFullYear(), today.getMonth(), today.getDate() - offset)
+					return [
+						d.getFullYear(),
+						String(d.getMonth() + 1).padStart(2, '0'),
+						String(d.getDate()).padStart(2, '0'),
+					].join('-')
+				}
+				const probe = { [key(1)]: 1, [key(2)]: 2, [key(3)]: 3, [key(4)]: 4 }
+				window.bbHeatmap.render(box, probe)
+				const fillOf = (date) => {
+					const cell = box.querySelector('.heatmap__cell[data-date="' + date + '"]')
+					return cell ? getComputedStyle(cell).fill : null
+				}
+				const primary = getComputedStyle(document.documentElement)
+					.getPropertyValue('--primary')
+					.trim()
+				return JSON.stringify({
+					l1: fillOf(key(1)),
+					l2: fillOf(key(2)),
+					l3: fillOf(key(3)),
+					l4: fillOf(key(4)),
+					l0: fillOf(key(5)),
+					primary,
+				})
+			})()`,
+		),
+	)
+	check(
+		'热力图档位：1/2/3/4 次是四种不同的颜色，0 次是中性面',
+		levels.l1 &&
+			levels.l2 &&
+			levels.l3 &&
+			levels.l4 &&
+			new Set([levels.l1, levels.l2, levels.l3, levels.l4, levels.l0]).size ===
+				5,
+		`l0=${levels.l0} l1=${levels.l1} l2=${levels.l2} l3=${levels.l3} l4=${levels.l4}`,
+	)
+	// 最深一档必须是主题主色（用 rgb 三通道比较，避免 `#6750A4` / `rgb(...)` 形式差异）
+	check(
+		'热力图最深一档就是主题主色（"主题色"是用户明确要求）',
+		toRgb(levels.l4) != null && toRgb(levels.l4) === toRgb(levels.primary),
+		`l4=${levels.l4} vs --primary=${levels.primary}`,
+	)
+	await shot(window, 'ui-09-home')
+
+	// 最近更新的卡片点得开（"卡片在"不等于"点了能进歌单"）。
+	//
+	// ⚠️ 断言"进到了**那张卡对应的**歌单"，而不是"出现了曲目表"：
+	// 「最近更新」按修改时间排，排第一的可能正好是**空歌单**（套件前面刚建的），
+	// 空歌单的详情**没有**曲目表 —— 用"有曲目表"当判据会把正确行为判成失败。
+	const cardOpened = JSON.parse(
+		await evaluate(
+			window,
+			`(async () => {
+				const card = document.querySelector('[data-testid^="home-playlist-"]')
+				if (!card) return JSON.stringify({ clicked: false })
+				const want = card.querySelector('.media-card__title')?.textContent ?? ''
+				card.click()
+				await new Promise((r) => setTimeout(r, 1800))
+				return JSON.stringify({
+					clicked: true,
+					testid: card.dataset.testid ?? '',
+					want,
+					title: document.querySelector('.view-head h2')?.textContent ?? '',
+					trackTable: Boolean(document.querySelector('[data-testid="track-table"]')),
+					emptyState: Boolean(document.querySelector('[data-testid="content-empty"]')),
+					leftHome: document.querySelectorAll('.home-section__title').length === 0,
+					back: Boolean(document.querySelector('[data-testid="playlist-back"]')),
+				})
+			})()`,
+		),
+	)
+	check(
+		'点主页的歌单卡进入**那张卡对应的**歌单详情',
+		cardOpened.clicked &&
+			cardOpened.title === cardOpened.want &&
+			cardOpened.leftHome &&
+			(cardOpened.trackTable || cardOpened.emptyState),
+		JSON.stringify(cardOpened),
+	)
+	check(
+		'从主页进歌单详情后有「← 播放列表」回路',
+		cardOpened.back === true,
+		String(cardOpened.back),
+	)
+
+	// 快捷入口：收藏夹那张卡要真的切到音乐库 › 收藏夹
+	await click(window, '[data-testid="nav-home"]')
+	await sleep(1500)
+	await click(window, '[data-testid="quick-favorites"]')
+	await sleep(1500)
+	const quickJump = JSON.parse(
+		await evaluate(
+			window,
+			`(() => JSON.stringify({
+				libraryTab: window.bbState.get().libraryTab,
+				favoriteBar: document.getElementById('favorite-bar')?.hidden === false,
+				trackTable: Boolean(document.querySelector('[data-testid="track-table"]')),
+			}))()`,
+		),
+	)
+	check(
+		'快捷入口「我的收藏夹」切到音乐库 › 收藏夹',
+		quickJump.libraryTab === 'favorites' && quickJump.favoriteBar,
+		JSON.stringify(quickJump),
+	)
+	await shot(window, 'ui-10-home-quick')
 
 	return finish(window)
 }

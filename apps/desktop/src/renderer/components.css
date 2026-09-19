@@ -258,6 +258,181 @@
 	align-items: start;
 }
 
+/* ── 听歌频率热力图（阶段 6d-4）─────────────────────────── */
+/*
+ * 配色与移动端一致：**主题主色的 20/40/60/100% 透明度**，
+ * 空单元是中性面（`--surface-container-highest`，即 surfaceVariant 那一档）。
+ *
+ * ⚠️ 档位用 `color-mix` 而不是 rgba：主色可能是用户自定义的种子色派生的，
+ * 写死 rgba 会在换主题后与主色不再同源（"配色半接通"的经典症状）。
+ */
+
+/* 格子尺寸是按容器宽度算的（见 heatmap.js 的文件头注释）；
+   滚动条只是兜底 —— 极窄窗口下宁可横滚，也不要把格子压成 1px */
+.heatmap-box {
+	overflow-x: auto;
+	padding-bottom: 2px;
+}
+
+.heatmap {
+	display: block;
+	max-width: 100%;
+	overflow: visible;
+}
+
+.heatmap__cell {
+	fill: var(--surface-container-highest);
+	stroke: transparent;
+	stroke-width: 1;
+}
+
+.heatmap__cell--l1 {
+	fill: color-mix(in srgb, var(--primary) 20%, transparent);
+}
+
+.heatmap__cell--l2 {
+	fill: color-mix(in srgb, var(--primary) 40%, transparent);
+}
+
+.heatmap__cell--l3 {
+	fill: color-mix(in srgb, var(--primary) 60%, transparent);
+}
+
+.heatmap__cell--l4 {
+	fill: var(--primary);
+}
+
+/* 可点：悬停描边（每格能点开那天的历史，所以要看得出来是可点的） */
+.heatmap__cell:hover,
+.heatmap__cell:focus-visible {
+	stroke: var(--on-surface);
+}
+
+.heatmap__label {
+	fill: var(--on-surface-variant);
+	font-size: 11px;
+}
+
+.heatmap__legend {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: var(--sp-sm);
+	margin-top: var(--sp-xs);
+	font-size: var(--fs-body-small);
+}
+
+.heatmap__scale {
+	display: flex;
+	align-items: center;
+	gap: 4px;
+}
+
+/* 图例色块与格子同色同形（否则图例解释的不是它旁边的东西） */
+.heatmap__swatch {
+	width: 12px;
+	height: 12px;
+	border-radius: 3px;
+	background: var(--surface-container-highest);
+}
+
+.heatmap__swatch.heatmap__cell--l1,
+.heatmap__swatch.heatmap__cell--l2,
+.heatmap__swatch.heatmap__cell--l3,
+.heatmap__swatch.heatmap__cell--l4 {
+	/* 上面那几条是 `fill:`（SVG 用），这里要的是 CSS 的 background */
+	background: currentColor;
+}
+
+.heatmap__swatch.heatmap__cell--l1 {
+	color: color-mix(in srgb, var(--primary) 20%, transparent);
+}
+
+.heatmap__swatch.heatmap__cell--l2 {
+	color: color-mix(in srgb, var(--primary) 40%, transparent);
+}
+
+.heatmap__swatch.heatmap__cell--l3 {
+	color: color-mix(in srgb, var(--primary) 60%, transparent);
+}
+
+.heatmap__swatch.heatmap__cell--l4 {
+	color: var(--primary);
+}
+
+/* ── 主页的分区标题 / 快捷入口（阶段 6d-3）───────────────── */
+/*
+ * 安卓端的区块标题是 `titleMedium + bold`，区块之间 32px、**区块自身不套卡片**
+ * （卡片化只发生在单个条目上）。桌面端 `#content` 本身已经是一张卡片面，
+ * 所以这里也**不要**再给每个区块套一层卡片 —— 那会变成"卡片里的卡片"。
+ */
+.home-section {
+	margin-bottom: var(--sp-xl);
+}
+
+.home-section:last-child {
+	margin-bottom: 0;
+}
+
+.home-section__title {
+	margin: 0 0 var(--sp-sm);
+	font-size: var(--fs-title-medium);
+	font-weight: 600;
+	color: var(--on-surface);
+}
+
+.home-section__hint {
+	margin: calc(-1 * var(--sp-xs)) 0 var(--sp-sm);
+	font-size: var(--fs-body-small);
+	color: var(--on-surface-variant);
+}
+
+/* 快捷入口：三张卡横排（安卓端是横向滚动，桌面端放得下就不滚） */
+.home-quick {
+	display: grid;
+	grid-template-columns: repeat(auto-fill, minmax(148px, 1fr));
+	gap: var(--sp-sm);
+}
+
+.home-quick__card {
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	justify-content: center;
+	gap: var(--sp-xs);
+	padding: var(--sp-md) var(--sp-sm);
+	background: var(--surface-container-high);
+	border: none;
+	border-radius: var(--r-md);
+	color: var(--on-surface);
+	font: inherit;
+	cursor: pointer;
+	transition: background var(--motion-duration-fast) ease;
+}
+
+.home-quick__card:hover {
+	background: var(--surface-container-highest);
+}
+
+/* 圆图标位（安卓端 48 的圆里放 32 的图标） */
+.home-quick__icon {
+	display: grid;
+	place-items: center;
+	width: 48px;
+	height: 48px;
+	border-radius: var(--r-full);
+	color: var(--on-surface-variant);
+}
+
+.home-quick__icon .icon {
+	font-size: 32px;
+}
+
+.home-quick__label {
+	font-size: var(--fs-label-medium);
+	font-weight: 600;
+}
+
 /* ── 视图页签条 ────────────────────────────────────────── */
 /*
  * 「音乐库」的四个页签（播放列表 / 收藏夹 / 合集 / 导入）。

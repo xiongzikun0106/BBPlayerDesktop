@@ -529,7 +529,11 @@ async function run(window) {
 	console.log('\n=== 4) 主页 ===')
 	await click(window, '[data-testid="nav-home"]')
 	await sleep(1200)
-	await shot(window, '07-home', '主页（最近播放 / 最常 / 继续收听）')
+	await shot(
+		window,
+		'07-home',
+		'主页（听歌频率 / 快捷入口 / 最近更新 / 播放历史）',
+	)
 	// 三个子页签都看一眼
 	for (const [tab, name] of [
 		['most', '08-home-most'],
@@ -600,6 +604,14 @@ async function run(window) {
 	await shot(window, '30-multi-select', '多选（工具条 + 行首复选框）')
 	await click(window, '[data-testid="selection-clear"]')
 	await sleep(500)
+
+	console.log('\n=== 6c) 主页（听过之后的热力图）===')
+	// 阶段 6d 之前主页在**有播放记录之前**拍过一次（07-home），那时热力图是
+	// 一片灰格子。这里在播放之后再拍一张 —— 档位配色（主题色的四档）
+	// 只有真有数据时才看得出来，而"配色对不对"正是这一步要核对的。
+	await click(window, '[data-testid="nav-home"]')
+	await sleep(2500)
+	await shot(window, '07b-home-heatmap', '主页 › 听歌频率（有播放记录）')
 
 	console.log('\n=== 7) 设置（一级页面：分类列表 + 每个子页）===')
 	await click(window, '[data-testid="nav-settings"]')
