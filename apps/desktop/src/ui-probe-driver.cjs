@@ -1452,6 +1452,162 @@ async function run(window) {
 	await sleep(1500)
 
 	// ---------------------------------------------------------------
+	// 2.6b 冻结表头（阶段 A）
+	// ---------------------------------------------------------------
+	//
+	// 用户截图圈出来的三件事，逐条对应：
+	//   1. **"一条发白的横带"** —— 表头底色用的是页面底的令牌（`--bg`），
+	//      而它浮在卡片上（`--surface`）。两个令牌不同色，滚动时就看出来了。
+	//   2. **方角压住卡片圆角** —— `top` 是负值，表头故意钻出滚动视口 16px。
+	//   3. **表头与表体对不上** —— 序号/时长列只给 `td` 设了右对齐，
+	//      表头落到通用规则的左对齐，同一列两种对齐。
+	//
+	// 断言按"看得见的现象"写：颜色一致、不越界、**逐列对齐**、滚起来还粘着。
+	// （"类名在、样式生效了"是证明不了这三件事的。）
+	console.log('\n[ui] 2.6b) 冻结表头')
+	const stickyHead = JSON.parse(
+		await evaluate(
+			window,
+			`(async () => {
+				const content = document.getElementById('content')
+				const table = document.querySelector('[data-testid="track-table"]')
+				if (!content || !table) return JSON.stringify({ missing: true })
+				const ths = [...table.querySelectorAll('thead th')]
+				const firstRow = table.querySelector('tbody tr')
+				const tds = firstRow ? [...firstRow.children] : []
+				const thStyle = getComputedStyle(ths[0])
+				const contentTop = content.getBoundingClientRect().top
+
+				// 逐列比较表头/表体的对齐方式与左右边缘
+				const alignMismatch = []
+				let maxEdgeDelta = 0
+				ths.forEach((th, i) => {
+					const td = tds[i]
+					if (!td) return
+					const a = getComputedStyle(th).textAlign
+					const b = getComputedStyle(td).textAlign
+					if (a !== b) alignMismatch.push((th.className || 'th') + ' ' + a + ' ≠ ' + b)
+					const ra = th.getBoundingClientRect()
+					const rb = td.getBoundingClientRect()
+					maxEdgeDelta = Math.max(
+						maxEdgeDelta,
+						Math.abs(ra.left - rb.left),
+						Math.abs(ra.right - rb.right),
+					)
+				})
+
+				const atRestTop = Math.round(ths[0].getBoundingClientRect().top - contentTop)
+				/*
+				 * 「粘住」的定义是：**内容继续往上走，表头停住**。
+				 *
+				 * ⚠️ 第一版断言写的是"滚动后表头与容器上沿重合（偏移 0）"，
+				 * 实测是 16px —— 因为滚动容器的粘性定位矩形是**内边距盒**，
+				 * 表头会停在容器的 padding-top 处。那个位置**正是我们想要的**
+				 * （它刚好不碰卡片的圆角），错的是断言而不是实现。
+				 * 所以改成量两次：内容动了、表头没动。
+				 */
+				const offsetOf = () =>
+					Math.round(ths[0].getBoundingClientRect().top - contentTop)
+				const rowOffsetOf = () =>
+					Math.round(firstRow.getBoundingClientRect().top - contentTop)
+				content.scrollTop = 400
+				await new Promise((r) =>
+					requestAnimationFrame(() => requestAnimationFrame(r)),
+				)
+				const at400 = offsetOf()
+				const rowAt400 = rowOffsetOf()
+				content.scrollTop = 800
+				await new Promise((r) =>
+					requestAnimationFrame(() => requestAnimationFrame(r)),
+				)
+				const at800 = offsetOf()
+				const rowAt800 = rowOffsetOf()
+				const afterScroll = {
+					scrollTop: content.scrollTop,					// ⚠️ 不要写成嵌套的模板字符串（美元加大括号那种插值）：
+					// 内层的反引号会当场结束外层这个 evaluate 模板。
+					// 规矩是"模板里要拼字符串就用 + "。
+					headOffset: at400 + ' → ' + at800,
+					rowOffset: rowAt400 + ' → ' + rowAt800,
+					// 内容还在动（行位置变了），但表头停住了；且停在容器内（不为负）
+					stuck: rowAt400 !== rowAt800 && at400 === at800 && at800 >= 0,
+				}
+				/*
+				 * 「冻结表头所在的这条带子里，最上面命中的元素必须是表头自己」。
+				 *
+				 * 这是**能机械化验证"有没有被行盖住"**的判据：颜色、位置、对齐
+				 * 全对，也仍然可能有行从表头那里画出来 —— 第一版就是这样：
+				 * 截图上一行"幽灵文字"压在表头上，而所有坐标断言都是绿的。
+				 */
+				const headRect = ths[0].getBoundingClientRect()
+				const hitAt = (x, y) => {
+					const hit = document.elementFromPoint(x, y)
+					return hit ? hit.tagName + (hit.className ? '.' + hit.className : '') : 'null'
+				}
+				const hits = [0.2, 0.6, 0.9].map((f) =>
+					hitAt(headRect.left + headRect.width * f, headRect.top + 3),
+				)
+				// 表头**上方**那条补边（容器内边距那一格）也该由表头自己占着
+				const aboveHit = hitAt(
+					headRect.left + headRect.width * 0.5,
+					headRect.top - 6,
+				)
+				const headOnTop = hits.every((h) => h.startsWith('TH'))
+				const gapCovered = aboveHit.startsWith('TH')
+
+				content.scrollTop = 0
+				return JSON.stringify({
+					bg: thStyle.backgroundColor,
+					containerBg: getComputedStyle(content).backgroundColor,
+					position: thStyle.position,
+					zIndex: thStyle.zIndex,
+					atRestTop,
+					alignMismatch,
+					maxEdgeDelta: Math.round(maxEdgeDelta),
+					afterScroll,
+					hits,
+					headOnTop,
+					aboveHit,
+					gapCovered,
+				})
+			})()`,
+		),
+	)
+	check(
+		'冻结表头底色与所在容器一致（不再是一条发白的横带）',
+		!stickyHead.missing && stickyHead.bg === stickyHead.containerBg,
+		`表头 ${stickyHead.bg} vs 容器 ${stickyHead.containerBg}`,
+	)
+	check(
+		'冻结表头贴住容器上沿、有 z-index（不会钻出去压住卡片圆角、也不会被行盖住）',
+		!stickyHead.missing &&
+			stickyHead.position === 'sticky' &&
+			stickyHead.atRestTop >= 0 &&
+			Number(stickyHead.zIndex) >= 1,
+		`静止时距容器顶 ${stickyHead.atRestTop}px，position=${stickyHead.position}，z-index=${stickyHead.zIndex}`,
+	)
+	check(
+		'表头与表体**逐列对齐**（对齐方式一致 + 左右边缘重合）',
+		!stickyHead.missing &&
+			stickyHead.alignMismatch.length === 0 &&
+			stickyHead.maxEdgeDelta <= 1,
+		stickyHead.alignMismatch.length > 0
+			? stickyHead.alignMismatch.join(' / ')
+			: `最大边缘偏差 ${stickyHead.maxEdgeDelta}px`,
+	)
+	check(
+		'冻结表头所在的带子里，命中的是**表头自己**（没有行从它上面画出来）',
+		!stickyHead.missing && stickyHead.headOnTop && stickyHead.gapCovered,
+		`表头带内命中 ${JSON.stringify(stickyHead.hits)}；表头上方命中 ${stickyHead.aboveHit}`,
+	)
+	check(
+		'滚动之后表头确实粘住（内容在动、它不动，且停在容器内）',
+		!stickyHead.missing &&
+			stickyHead.afterScroll.scrollTop > 0 &&
+			stickyHead.afterScroll.stuck,
+		JSON.stringify(stickyHead.afterScroll),
+	)
+
+	// ---------------------------------------------------------------
 	// 2.6a 多选（阶段 6d-2）
 	// ---------------------------------------------------------------
 	//
@@ -2259,19 +2415,45 @@ async function run(window) {
 			`(() => {
 				const panel = document.querySelector('[data-settings-panel="account-bili"]')
 				const text = (panel?.innerText ?? '').replace(/\\s+/g, ' ')
+				const shown = (id) => {
+					const node = document.getElementById(id)
+					if (!node) return null
+					const rect = node.getBoundingClientRect()
+					return rect.width > 0 && rect.height > 0
+				}
 				return JSON.stringify({
 					hasAvatar: Boolean(panel?.querySelector('.account-summary__avatar')),
 					hasName: Boolean(document.getElementById('settings-bili-name')),
+					name: document.getElementById('settings-bili-name')?.textContent ?? '',
+					// 未登录时「登录 B 站」要在、「退出登录」不能画出来
+					loginShown: shown('settings-bili-login'),
+					logoutShown: shown('settings-bili-logout'),
+					rowSub:
+						document.getElementById('settings-cat-bili-sub')?.textContent ?? '',
 					leaksJargon: /密钥环|明文|加密存储|混淆|mid=|token/i.test(text),
 					text: text.slice(0, 120),
 				})
 			})()`,
 		),
 	)
+	/*
+	 * ⚠️ 这一条原来只断言"有头像元素 + 有昵称元素" —— 而**未登录**态同样满足它
+	 * （头像显示 person 图标、昵称显示「未登录」），所以它一直是绿的，
+	 * 却完全没有验证"登录状态有没有被正确读出来"。
+	 * 结果就是设置页恒显示「未登录」而没人发觉（左栏品牌行反而显示着用户名）。
+	 *
+	 * 现在按**这个时刻的真实状态**（探针无凭据 = 未登录）写严：
+	 * 名字必须是「未登录」，且两个按钮的显隐要跟着状态走。
+	 * 登录态的断言在套件末尾（那里会把 login:status 桩成已登录）。
+	 */
 	check(
-		'账号子页有头像 + 昵称',
-		accountPanel.hasAvatar && accountPanel.hasName,
-		accountPanel.text,
+		'账号子页在**未登录**时：名字显示「未登录」，「登录」按钮在、「退出登录」不画出来',
+		accountPanel.hasAvatar &&
+			accountPanel.name === '未登录' &&
+			accountPanel.rowSub === '未登录' &&
+			accountPanel.loginShown === true &&
+			accountPanel.logoutShown === false,
+		`名字「${accountPanel.name}」分类行「${accountPanel.rowSub}」登录可见=${accountPanel.loginShown} 退出可见=${accountPanel.logoutShown}`,
 	)
 	check(
 		'账号子页不泄露凭据实现细节（那是诊断信息的事）',
@@ -3348,6 +3530,156 @@ async function run(window) {
 		JSON.stringify(quickJump),
 	)
 	await shot(window, 'ui-10-home-quick')
+
+	// ---------------------------------------------------------------
+	// 11. 收藏夹：缓存 + 「只报一次」+ 手动刷新（阶段 A-2b）
+	// ---------------------------------------------------------------
+	//
+	// 原来的行为：**每次**切回「收藏夹」页签都重新联网拉一遍，并再弹一次
+	// 「正在读取…」→「读到 N 个收藏夹」。数据没变，用户却每次都要等网络、
+	// 还要再看一遍同一条提示。
+	//
+	// 这一段把主进程的 `bili:favoriteFolders` **换成计数桩**（返回固定的
+	// 3 个收藏夹），于是"到底请求了几次"是可数的、确定的 —— 不用盯着状态
+	// 胶囊猜（"没看到 busy"可能只是没看准时机）。
+	//
+	// ⚠️ 放在套件**最后**：桩不还原，后面的用例会拿到假数据。
+	const { ipcMain } = require('electron')
+	let folderCalls = 0
+	const fakeFolders = [
+		{ mediaId: 9001, title: '探针收藏夹 A', mediaCount: 3, isPrivate: false },
+		{ mediaId: 9002, title: '探针收藏夹 B', mediaCount: 5, isPrivate: true },
+		{ mediaId: 9003, title: '探针收藏夹 C', mediaCount: 1, isPrivate: false },
+	]
+	ipcMain.removeHandler('bili:favoriteFolders')
+	ipcMain.handle('bili:favoriteFolders', () => {
+		folderCalls += 1
+		return { ok: true, data: fakeFolders }
+	})
+	/*
+	 * ⚠️ 还要桩一个"已登录"。
+	 *
+	 * 这一段之前一直是**未登录**跑的（探针不预置凭据），于是收藏夹页签拿到
+	 * 的是「填入 UID」引导页 —— 第一次写这段断言时 `folderCalls` 就是 0，
+	 * 看起来像"缓存没生效"，其实是**根本没走到取数那一步**。
+	 *
+	 * 桩成已登录顺带覆盖了另一条路径：**登录后自动用你的 UID 读取**。
+	 */
+	ipcMain.removeHandler('login:status')
+	ipcMain.handle('login:status', () => ({
+		ok: true,
+		data: {
+			loggedIn: true,
+			available: true,
+			encrypted: false,
+			user: { mid: 9001, uname: '探针用户', face: null },
+		},
+	}))
+
+	const folderState = async () =>
+		JSON.parse(
+			await evaluate(
+				window,
+				`(() => JSON.stringify({
+					items: document.querySelectorAll('.favorite-list__item').length,
+					status: document.getElementById('favorite-status')?.textContent?.trim() ?? '',
+					meta: document.querySelector('[data-testid="favorites-meta"]')?.textContent ?? '',
+					hasRefresh: Boolean(document.querySelector('[data-testid="favorites-refresh"]')),
+				}))()`,
+			),
+		)
+
+	await click(window, '[data-testid="lib-tab-favorites"]')
+	await sleep(1500)
+	const firstVisit = await folderState()
+	check(
+		'收藏夹：首次读取渲染列表、报了数量、并给出刷新按钮',
+		folderCalls === 1 &&
+			firstVisit.items === 3 &&
+			firstVisit.status.includes('读到 3 个收藏夹') &&
+			firstVisit.status.includes('1 个私密') &&
+			firstVisit.hasRefresh,
+		`请求 ${folderCalls} 次；${JSON.stringify(firstVisit)}`,
+	)
+
+	// 切走再切回：必须**命中缓存**（不再请求、也不重画成"正在读取"）
+	await click(window, '[data-testid="lib-tab-playlists"]')
+	await sleep(800)
+	await click(window, '[data-testid="lib-tab-favorites"]')
+	await sleep(1200)
+	const secondVisit = await folderState()
+	check(
+		'收藏夹：切回页签**命中缓存**（不再联网、列表照旧在）',
+		folderCalls === 1 && secondVisit.items === 3,
+		`请求 ${folderCalls} 次；列表 ${secondVisit.items} 项`,
+	)
+
+	// 手动刷新：这时才应该再请求一次
+	await click(window, '[data-testid="favorites-refresh"]')
+	await sleep(1500)
+	check(
+		'收藏夹：点刷新才重新请求（用户主动动作）',
+		folderCalls === 2,
+		`请求 ${folderCalls} 次`,
+	)
+
+	// ---------------------------------------------------------------
+	// 12. 设置页在**登录态**下的表现（阶段 A-3）
+	// ---------------------------------------------------------------
+	//
+	// 这一段以前从来没人测过：套件跑在无凭据环境，账号子页那条断言只查
+	// "有头像元素 + 有昵称元素"，**未登录态照样满足它**。于是
+	// `settings-panel.js` 漏了一个 `unwrap`（读 `status.loggedIn` 而真实数据在
+	// `status.data.loggedIn`）之后，设置页无论登没登录都显示「未登录」，
+	// 而所有断言全绿 —— 用户是唯一发现的人。
+	//
+	// 这里复用上面那个 `login:status` 桩（已登录、mid 9001、昵称「探针用户」），
+	// 直接验证"数据被读出来了"。
+	console.log('\n[ui] 12) 设置页的登录态')
+	await click(window, '[data-testid="nav-settings"]')
+	await sleep(1200)
+	const loggedInRow = JSON.parse(
+		await evaluate(
+			window,
+			`(() => JSON.stringify({
+				rowSub: document.getElementById('settings-cat-bili-sub')?.textContent ?? '',
+			}))()`,
+		),
+	)
+	await click(window, '[data-testid="settings-cat-account-bili"]')
+	await sleep(1000)
+	const loggedInPanel = JSON.parse(
+		await evaluate(
+			window,
+			`(() => {
+				const shown = (id) => {
+					const node = document.getElementById(id)
+					if (!node) return null
+					const rect = node.getBoundingClientRect()
+					return rect.width > 0 && rect.height > 0
+				}
+				return JSON.stringify({
+					name: document.getElementById('settings-bili-name')?.textContent ?? '',
+					sub: document.getElementById('settings-bili-sub')?.textContent ?? '',
+					loginShown: shown('settings-bili-login'),
+					logoutShown: shown('settings-bili-logout'),
+					avatarIsImage: Boolean(
+						document.querySelector('.account-summary__avatar img'),
+					),
+				})
+			})()`,
+		),
+	)
+	check(
+		'设置页在**登录态**下读出真实昵称（而不是恒显示「未登录」）',
+		loggedInPanel.name === '探针用户' && loggedInRow.rowSub === '探针用户',
+		`子页名字「${loggedInPanel.name}」，分类行「${loggedInRow.rowSub}」`,
+	)
+	check(
+		'设置页登录态下按钮显隐跟着状态走（登录隐藏 / 退出显示）',
+		loggedInPanel.loginShown === false && loggedInPanel.logoutShown === true,
+		`登录可见=${loggedInPanel.loginShown} 退出可见=${loggedInPanel.logoutShown}`,
+	)
 
 	return finish(window)
 }

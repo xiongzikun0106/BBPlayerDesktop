@@ -70,14 +70,37 @@ function templateCommentProblems(file) {
 	const problems = []
 	const lines = fs.readFileSync(file, 'utf8').split('\n')
 	let inTemplate = false
+	/**
+	 * ⚠️ 两处都要盯：`//` 行注释**和** `/* … *​/` 块注释。
+	 *
+	 * 第一版只扫行注释，于是我在模板里的**块注释**里写了一个反引号就漏过了
+	 * —— 守卫报绿、探针加载失败、整个应用起不来。
+	 *
+	 * 但补上块注释之后又出现**误报**：文件头的 JSDoc 里常有 Markdown 代码
+	 * 围栏（三连反引号），它让"按行奇偶切换是否在模板内"的启发式算错，
+	 * 于是把注释里的围栏报成"模板内的反引号"。
+	 *
+	 * 修法：**只让非注释行参与奇偶切换**。注释行上的反引号本来就不是模板
+	 * 定界符 —— 它要么是"注释在模板里"（那是真 bug，报），要么是"注释在
+	 * 模板外"（栅栏，不该切换）。
+	 */
+	let inBlockComment = false
 	lines.forEach((line, index) => {
 		const count = (line.match(bareBacktick) ?? []).length
-		if (inTemplate && /^\s*\/\//.test(line) && count > 0) {
+		const startsBlock = /\/\*/.test(line)
+		const isCommentLine = inBlockComment || startsBlock || /^\s*\/\//.test(line)
+
+		if (inTemplate && isCommentLine && count > 0) {
 			problems.push(
 				`${path.relative(ROOT, file)}:${index + 1}  ${line.trim().slice(0, 70)}`,
 			)
 		}
-		if (count % 2 === 1) inTemplate = !inTemplate
+
+		if (startsBlock && !/\*\//.test(line)) inBlockComment = true
+		else if (inBlockComment && /\*\//.test(line)) inBlockComment = false
+
+		// 注释行不参与奇偶切换（见上面的注释）
+		if (!isCommentLine && count % 2 === 1) inTemplate = !inTemplate
 	})
 	return problems
 }

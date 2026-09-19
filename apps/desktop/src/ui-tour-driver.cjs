@@ -473,6 +473,32 @@ async function run(window) {
 		'02-library-playlist-detail',
 		'音乐库 › 歌单详情（曲目表）',
 	)
+
+	// 滚动之后的冻结表头 —— 用户截图圈的就是这个状态：表头不该变成一条
+	// 与卡片不同色的横带、不该盖住卡片的圆角、也不该和表体对不上。
+	// **不滚动的话这个状态根本不会出现**，也就永远巡检不到。
+	await evaluate(
+		window,
+		`(() => {
+			document.getElementById('content').scrollTop = 420
+			return true
+		})()`,
+	)
+	await sleep(600)
+	await shot(
+		window,
+		'02c-library-scrolled-head',
+		'音乐库 › 歌单详情（滚动后的冻结表头）',
+	)
+	await evaluate(
+		window,
+		`(() => {
+			document.getElementById('content').scrollTop = 0
+			return true
+		})()`,
+	)
+	await sleep(400)
+
 	await click(window, '[data-testid="playlist-back"]')
 	await sleep(1000)
 	await shot(

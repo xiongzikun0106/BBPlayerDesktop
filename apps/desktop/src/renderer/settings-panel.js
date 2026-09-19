@@ -1014,7 +1014,19 @@
 
 		let status = null
 		try {
-			status = await window.bbplayer.loginStatus()
+			/*
+			 * ⚠️ 必须走 `unwrap` 剥掉 `{ ok, data }` 那一层。
+			 *
+			 * 这里原来是裸的 `await window.bbplayer.loginStatus()`，于是下面
+			 * `status?.loggedIn` / `status?.user` **永远是 undefined** ——
+			 * 设置页无论登没登录都显示「未登录」，而左栏品牌行（走 auth.js，
+			 * 那边有 unwrap）却显示着用户名。
+			 *
+			 * 渲染进程里 5 个 `loginStatus()` 调用点，只有这一个漏了 unwrap。
+			 * 这类"半接通"的可怕之处是**界面上看着很正常**（就是一个"没登录"），
+			 * 而所有断言都绿 —— 因为没人验过**登录态下**的设置页。
+			 */
+			status = unwrap(await window.bbplayer.loginStatus(), '读取登录态')
 		} catch {
 			// 拿不到就当未登录，不打断设置页
 		}
@@ -1189,6 +1201,20 @@
 		if (title) title.textContent = '设置'
 		for (const panel of els.panels) panel.classList.remove('is-active')
 		window.bbState?.set?.({ settingsCategory: null })
+
+		/*
+		 * ⚠️ 分类列表**也要**刷新两个账号摘要。
+		 *
+		 * 原先只在"点进那个子页"时才刷（`switchCategory` 里那两行），于是分类行
+		 * 上的副标题（「Bilibili 账号 —— 未登录」）在你点进去之前一直是**旧的**：
+		 * 明明登录了，列表里还写着「未登录」；登录/退出之后回到列表也不会更新。
+		 *
+		 * 那行副标题存在的意义就是"不进子页也能一眼看出登录状态"（见它自己的
+		 * 注释），所以它必须在**列表出现时**就是对的。两个都是异步且各自容错，
+		 * 这里不 await（不阻塞界面切换）。
+		 */
+		void refreshAccountSummary()
+		void refreshBbplayerSummary()
 	}
 
 	/**

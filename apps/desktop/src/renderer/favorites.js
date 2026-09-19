@@ -73,10 +73,33 @@
 		const h2 = document.createElement('h2')
 		h2.textContent = '收藏夹'
 		head.appendChild(h2)
+
+		const right = document.createElement('div')
+		right.className = 'view-head__actions'
 		const meta = document.createElement('span')
 		meta.className = 'muted'
+		meta.dataset.testid = 'favorites-meta'
 		meta.textContent = `UID ${mid} · ${folders.length} 个`
-		head.appendChild(meta)
+		right.appendChild(meta)
+
+		/*
+		 * 手动刷新。
+		 *
+		 * ⚠️ 有了这个按钮，切回页签就**不必**重新联网拉一次 —— `show()` 会直接用
+		 * 缓存渲染（秒开、且不再重复弹「读到 N 个收藏夹」）。数据要更新时按这里，
+		 * 那是用户主动的动作，所以刷完**照样告诉他结果**。
+		 */
+		const refresh = document.createElement('button')
+		refresh.className = 'icon-only icon-button'
+		refresh.dataset.testid = 'favorites-refresh'
+		refresh.title = '重新读取'
+		refresh.setAttribute('aria-label', '重新读取收藏夹')
+		refresh.innerHTML = window.bbComponents.iconHtml('refresh', 'icon--md')
+		refresh.addEventListener('click', () => {
+			void loadFolders(String(mid), { force: true, button: refresh })
+		})
+		right.appendChild(refresh)
+		head.appendChild(right)
 		content.appendChild(head)
 
 		if (folders.length === 0) {
@@ -263,11 +286,35 @@
 	// 加载
 	// ---------------------------------------------------------------
 
-	async function loadFolders(mid) {
+	/*
+	 * 收藏夹列表的缓存。
+	 *
+	 * ⚠️ 为什么要有：`show()` 每次切回「收藏夹」页签都会走到 `loadFolders`。
+	 * 原来是**无条件重新联网**拉一遍，并再弹一次「正在读取…」→「读到 N 个收藏夹」。
+	 * 数据没变，用户却每次都要等网络、还要再看一遍同一条提示。
+	 *
+	 * 现在：同一个 UID 命中缓存就直接渲染（秒开、**完全不碰状态胶囊**）；
+	 * 想更新时按页头那个刷新按钮（`force`）。
+	 */
+	let foldersCache = null
+	let cacheMid = null
+	/** 已经"报过数量"的 UID —— 同一个 UID 只报一次，换了人或主动刷新才再报 */
+	let announcedMid = null
+
+	async function loadFolders(mid, { force = false, button = null } = {}) {
 		if (!mid) {
 			setStatus('请填写 UID', 'bad')
 			return []
 		}
+
+		const key = String(mid)
+		if (!force && foldersCache && cacheMid === key) {
+			// 缓存命中：只重画界面，不联网、不提示
+			renderFolders(foldersCache, mid)
+			return foldersCache
+		}
+
+		if (button) button.disabled = true
 		setStatus(`正在读取 UID ${mid} 的收藏夹…`, 'busy')
 		try {
 			const folders = unwrap(
@@ -275,16 +322,26 @@
 				'读取收藏夹列表',
 			)
 			resourceCache.clear()
+			foldersCache = folders
+			cacheMid = key
 			renderFolders(folders, mid)
-			const privateCount = folders.filter((f) => f.isPrivate).length
-			setStatus(
-				`读到 ${folders.length} 个收藏夹${privateCount > 0 ? `（含 ${privateCount} 个私密）` : ''}`,
-				'ok',
-			)
+
+			// 同一个 UID **只报一次**：切回页签不该再弹一遍。
+			// 换了 UID、或用户自己点了刷新，才报（那时数字是新信息）。
+			if (announcedMid !== key || force) {
+				announcedMid = key
+				const privateCount = folders.filter((f) => f.isPrivate).length
+				setStatus(
+					`读到 ${folders.length} 个收藏夹${privateCount > 0 ? `（含 ${privateCount} 个私密）` : ''}`,
+					'ok',
+				)
+			}
 			return folders
 		} catch (error) {
 			setStatus(error.message, 'bad')
 			return []
+		} finally {
+			if (button?.isConnected) button.disabled = false
 		}
 	}
 

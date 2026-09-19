@@ -682,6 +682,16 @@ body {
 	flex: 1 1 auto;
 	min-height: 0;
 	overflow-y: auto;
+	/*
+	 * ⚠️ 给滚动条**预留**位置。
+	 *
+	 * 不留的话，滚动条出现时会把内容区挤窄 10px，于是表头（粘性、宽度按
+	 * 内容盒算）与表体的列在"有没有滚动条"两种状态下宽度不同 —— 一滚动
+	 * 就整体错位一点。`stable` 让它始终占着那一格，布局不跳。
+	 */
+	scrollbar-gutter: stable;
+	/* 冻结表头往上补边的高度 = 本容器的上内边距（见 `.track-table th::before`） */
+	--sticky-head-gap: var(--sp-md);
 	margin: var(--sp-sm) var(--sp-md) var(--sp-md);
 	padding: var(--sp-md);
 	padding-bottom: 72px;
@@ -885,13 +895,76 @@ body {
 	border-bottom: 1px solid var(--surface-3);
 }
 
+/*
+ * 冻结表头（表格滚动时粘住的那一行）。
+ *
+ * ⚠️ 这里原来有三处错，合起来就是用户看到的「一条发白的横带压住卡片圆角、
+ * 行内容跟它叠在一起」：
+ *
+ *   1. `background: var(--bg)` —— `--bg` 是**应用底色**，而表头浮在
+ *      `#content` 这张卡片上（卡片是 `--surface-container`，与 `--surface`
+ *      同值）。两个令牌不同色，于是滚动时多出一条**与容器不同色**的横带。
+ *      冻结表头必须用它所在容器的底色，否则看起来是一块贴上来的异物。
+ *      （收藏夹预览那张表在 `.favorite-list__item` 里，那也是 `--surface`，
+ *      所以这一个值在两处都对。）
+ *   2. `top: calc(var(--sp-md) * -1)` —— 往上顶 16px，表头**钻出滚动视口**，
+ *      它的方角正好压在卡片的圆角上。`top: 0` 才是"贴住滚动区上沿"；
+ *      卡片自己是 `overflow-y: auto` + 圆角，所以贴边时会被圆角自然裁掉。
+ *   3. 没有 `z-index` —— 与行同处一层叠绘顺序，长列表里行会跟它抢绘制。
+ *
+ * 阴影用**滚动驱动动画**：未滚动时完全没有阴影，滚动 24px 内渐显。
+ * 用 `@supports` 包住 —— 不支持时必须**退回"只有底线"**，否则 `animation`
+ * 会按时间轴立刻跑到终点，变成"永远挂着阴影"。
+ */
 .track-table th {
 	font-size: var(--fs-label-large);
 	color: var(--on-surface-variant);
 	font-weight: 500;
 	position: sticky;
-	top: calc(var(--sp-md) * -1);
-	background: var(--bg);
+	top: 0;
+	z-index: 2;
+	background: var(--surface);
+}
+
+/*
+ * ⚠️ 表头**上方**那一条也要盖住。
+ *
+ * 粘性元素的"活动范围"被它的**包含块**限制住 —— 这里是 `<table>`。
+ * 而表格的上边缘在滚动容器里是往下缩了 `padding-top` 的，所以表头最多只能
+ * 粘到那里（实测偏移 16px，正好等于 `#content` 的 `padding`）。
+ * 结果是：表头上面留出一条 16px 的缝，**滚过去的行会从缝里露出来** ——
+ * 截图上就是"冻结表头上面还有半行被切掉的内容"（靠看截图发现的，
+ * 断言量不出来：表头本身的位置、颜色、对齐全是对的）。
+ *
+ * 修法：让每个表头格子用伪元素往**上**补一条同色块，把缝盖住。
+ * 高度取所在容器的上内边距（`--sticky-head-gap`），所以换了容器也不用改 ——
+ * 收藏夹预览那层是 `--sp-xs`，它自己的滚动容器内边距就是那么点。
+ */
+.track-table th::before {
+	content: '';
+	position: absolute;
+	left: 0;
+	right: 0;
+	top: calc(-1 * var(--sticky-head-gap, var(--sp-md)));
+	height: var(--sticky-head-gap, var(--sp-md));
+	background: inherit;
+}
+
+@keyframes track-th-shadow {
+	from {
+		box-shadow: 0 0 0 0 transparent;
+	}
+	to {
+		box-shadow: 0 6px 10px -8px rgb(0 0 0 / 0.45);
+	}
+}
+
+@supports (animation-timeline: scroll()) {
+	.track-table th {
+		animation: track-th-shadow linear both;
+		animation-timeline: scroll(nearest);
+		animation-range: 0 24px;
+	}
 }
 
 .track-table tbody tr {
@@ -907,12 +980,22 @@ body {
 	color: var(--on-secondary-container);
 }
 
+/*
+ * ⚠️ 序号列与时长列的表头**必须一起右对齐**。
+ *
+ * 原来只写了 `td`（`text-align: right`），表头落到通用规则上的 `text-align: left`
+ * 于是**同一列、表头靠左、表体靠右** —— 滚动时表头浮起来，这个错位就变成了
+ * "表头和内容对不上"（用户截图里圈的就是它，不是滚动条的问题）。
+ * 凡是"表体单独设了对齐/宽度"的列，表头都要跟着设。
+ */
+.track-table th.col-index,
 .track-table td.col-index {
 	width: 40px;
 	color: var(--on-surface-variant);
 	text-align: right;
 }
 
+.track-table th.col-duration,
 .track-table td.col-duration {
 	width: 72px;
 	text-align: right;
@@ -1734,6 +1817,9 @@ input[type='range']:focus-visible {
 	overflow-y: auto;
 	border-top: 1px solid var(--outline-variant);
 	padding-top: var(--sp-xs);
+	/* 它自己是滚动容器，上内边距是 `--sp-xs` —— 冻结表头补边要按这个高度
+	   （写死 --sp-md 会多盖 12px，把上面的内容切掉一条） */
+	--sticky-head-gap: var(--sp-xs);
 }
 
 /* ── 侧栏徽标可点 ─────────────────────────────────────── */

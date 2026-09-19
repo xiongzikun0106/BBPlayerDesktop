@@ -80,10 +80,18 @@ function main() {
 			resolve(value)
 		}
 		const timer = setTimeout(() => {
-			console.error('\n⚠ 超时（300s），强制结束')
+			/*
+			 * ⚠️ 正常一轮约 80 秒；这里的上限留得比它宽得多。
+			 *
+			 * 这套断言里夹着**真实网络**等待（导入示例合集、搜索、歌词匹配），
+			 * B 站限流时会显著变慢 —— 上限太紧就会出现"跑到一半被砍、
+			 * 打印上一次的报告"这种**看不出是超时**的失败。
+			 * 超时的意义是"卡死了要说一声"，不是"跑得久就判死"。
+			 */
+			console.error('\n⚠ 超时（480s），强制结束')
 			child.kill()
 			settle('timeout')
-		}, 300_000)
+		}, 480_000)
 		child.on('exit', (code) => {
 			clearTimeout(timer)
 			settle(code)
