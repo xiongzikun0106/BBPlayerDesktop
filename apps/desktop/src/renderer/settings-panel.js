@@ -627,7 +627,7 @@
 			detail.className = 'muted mono'
 			detail.textContent =
 				task.percent === null
-					? `${formatBytes(task.bytesWritten)}`
+					? formatBytes(task.bytesWritten)
 					: `${task.percent}% · ${formatBytes(task.bytesWritten)}`
 			row.appendChild(detail)
 
@@ -796,7 +796,9 @@
 			setStatus(els.backupStatus, '正在保存…', 'busy')
 			try {
 				const password = els.webdavPassword?.value ?? ''
-				const data = unwrap(
+				// 这里**故意不用返回值**：`unwrap` 的作用是"失败就抛"，
+				// 而保存成功与否由下面的状态行表达（返回值没人用）
+				unwrap(
 					await window.bbplayer.backup.saveConfig({
 						url: els.webdavUrl?.value?.trim() ?? '',
 						username: els.webdavUser?.value?.trim() ?? '',

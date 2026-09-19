@@ -59,7 +59,8 @@
 	 * @param {(event: KeyboardEvent) => void} handler
 	 */
 	function register(combo, options, handler) {
-		const key = String(combo).toLowerCase()
+		// 参数就是字符串（见 JSDoc），`String(combo)` 是多余的类型转换
+		const key = combo.toLowerCase()
 		if (typeof options === 'function') {
 			handler = options
 			options = {}
@@ -94,10 +95,11 @@
 	 * 与真实按键的区别：不做 `isTyping()` 检查（用户是**主动点菜单**，
 	 * 不是在输入框里敲键盘），也不构造 KeyboardEvent。
 	 *
+	 * @param {string} combo 组合键字符串，例如 `'space'` / `'shift+arrowleft'`
 	 * @returns {boolean} 有没有命中已注册的处理器
 	 */
 	function trigger(combo) {
-		const key = String(combo).toLowerCase()
+		const key = combo.toLowerCase()
 		const binding = bindings.get(key)
 		if (!binding?.handler) return false
 		try {

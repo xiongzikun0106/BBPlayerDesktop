@@ -96,6 +96,13 @@
 		}
 		box.style.setProperty('--art-hue', String(hueOf(text || iconName)))
 		// 首字：中文取第一个字，英文取首字母大写 —— 与移动端一致
+		//
+		// ⚠️ 这里**故意**用 `[...text][0]` 而不是 `text[0]`：展开按**码点**切分，
+		// emoji / 增补平面字符会被完整取到，而 `text[0]` 只取半个代理对
+		// （界面上是"半个乱码字"）。lint 的 no-misused-spread 建议改用
+		// `Intl.Segmenter` 做字素簇切分 —— 对"歌单名首字"这个用途是过度设计，
+		// 所以**就地豁免并写明理由**，而不是关掉整条规则。
+		// oxlint-disable-next-line typescript/no-misused-spread
 		box.textContent = text ? [...text][0].toUpperCase() : ''
 		if (!text) box.appendChild(icon(iconName, 'icon--md'))
 	}

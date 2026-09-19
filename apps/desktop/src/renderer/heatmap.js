@@ -104,7 +104,7 @@
 	 */
 	function render(container, byDate, { onPick, today } = {}) {
 		container.textContent = ''
-		const { weeks, start, end } = buildGrid(byDate, today)
+		const { weeks, start } = buildGrid(byDate, today)
 
 		// 按容器可用宽度算格子尺寸（见文件头注释）
 		const available = Math.max(320, container.clientWidth || 900)

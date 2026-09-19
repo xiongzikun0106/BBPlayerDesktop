@@ -121,7 +121,10 @@ const STYLE_ID = 'bb-theme-vars'
 			).length,
 			datasetTheme: document.documentElement.dataset.theme,
 			colorScheme: document.documentElement.style.colorScheme,
-			primary: state.colors?.primary ?? null,
+			// ⚠️ `primary` 在上面已经给过了（阶段 4 的派生主色）。
+			// 这里原来**又写了一遍** —— 同一个对象里重复的键，后一个会静默覆盖
+			// 前一个：当前两处取值恰好相同所以看不出问题，但只要将来改了其中一个，
+			// 改动会被无声地吃掉。（`pnpm lint` 的 no-dupe-keys 抓到的。）
 			surfaceContainer: state.colors?.surfaceContainer ?? null,
 		}),
 		/** 探针用：直接问主进程要一份，不依赖推送 */

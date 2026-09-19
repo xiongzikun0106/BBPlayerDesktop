@@ -33,7 +33,26 @@ export default defineConfig({
 		'**/.expo/**',
 		'**/node_modules/**',
 		'**/*.config.mjs',
-		'**/*.js',
+		/*
+		 * ⚠️ 这里原来是一条「排除所有 js」的规则（glob 星号两枚 + 斜杠 + .js，
+		 * 写法这里就不复述了 —— 它的 `*` 加 `/` 会在注释里**提前结束块注释**，
+		 * 我第一版就是这么写的，直接让配置解析失败）。
+		 *
+		 * 本意是排除"生成的 / 配置型的 JS"，但**顺带把桌面端整个渲染进程也
+		 * 排除掉了**（`apps/desktop/src/renderer` 下 20 个**手写**文件），
+		 * 于是那批文件**从来没有被 lint 过**：`pnpm lint` 干净对它们是空的
+		 * （实测把 `share.js` / `player.js` 复制成 `.cjs` 再跑，会报出问题）。
+		 *
+		 * 现在只排除真正需要排除的那几个，逐个写明理由 —— 全仓库被它挡住的
+		 * JS 一共只有 7 个（移动端）+ 3 个（杂项），是可以点清的。
+		 */
+		'apps/mobile/expo-plugins/**', // Expo config plugin：跑在 Node 构建期，风格与 App 代码不同
+		'apps/mobile/drizzle/**', // drizzle-kit 生成的迁移索引
+		'apps/mobile/babel.config.js', // 构建配置（里面的 console 是构建日志）
+		'apps/mobile/metro.config.js', // 构建配置
+		'apps/mobile/index.js', // Expo 入口：`import 'expo-router/entry'` 是副作用导入
+		'packages/splash/jest.config.js', // 测试配置，不是产品代码
+		'packages/eslint-plugin/**', // 自定义 lint 规则本身（JS 写的插件，风格自成一派）
 		'packages/logs/**',
 		'packages/bottom-tabs-react-navigation/**',
 		'packages/react-native-bottom-tabs/**',
@@ -126,6 +145,67 @@ export default defineConfig({
 		},
 	],
 	overrides: [
+		{
+			/**
+			 * 桌面端**渲染进程**（`apps/desktop/src/renderer` 下的手写 .js）。
+			 *
+			 * 这批文件是纯 DOM/JS 模块（不是 React，也不进打包器），因此：
+			 *
+			 * * `no-console` 放开：渲染进程**没有别的日志出口** ——
+			 *   `renderer.js` 的 `log()` 要同时写进界面日志面板
+			 *   （`Ctrl+Shift+L` 可显示）和 devtools 控制台，另外 5 处是
+			 *   catch / 冲突分支里的 `warn`/`error`。那不是"忘了删的调试输出"。
+			 * * 其余规则（含 `correctness` / `suspicious` 两档）**照常生效** ——
+			 *   这里只放开了这一条，别把整个目录变成免检区。
+			 */
+			files: ['apps/desktop/src/renderer/**/*.js'],
+			rules: {
+				'no-console': 'allow',
+				/**
+				 * 渲染进程的**全局标记**用的是双下划线前缀，与 `__csrf` 同一个
+				 * 理由：它们是"跨模块/跨进程约定的名字"，不是普通字段。
+				 *
+				 * * `__bbReady` / `__bbLyricsWindowReady` —— 探针与主进程等的
+				 *   "界面已就绪"信号（`renderer.js` 的 boot、独立歌词窗口）；
+				 * * `__lyricsPanel` / `__lyricsPanelUtils` / `__lyricsLab` ——
+				 *   歌词面板的调试/自动化出口（独立页面 `lyrics-lab.html` 也用）。
+				 *
+				 * 逐个列出而不是关掉整条规则：这几个名字是要**稳定**的契约，
+				 * 新增一个就得显式加到这里来。
+				 */
+				'no-underscore-dangle': [
+					'error',
+					{
+						allow: [
+							'__csrf',
+							'__bbReady',
+							'__bbLyricsWindowReady',
+							'__lyricsPanel',
+							'__lyricsPanelUtils',
+							'__lyricsLab',
+						],
+					},
+				],
+				/**
+				 * ⚠️ 这条规则**在这个目录里是错的**，不是"嫌麻烦关掉"。
+				 *
+				 * 它要求把"没有捕获任何外层变量"的函数**移到外层作用域**。
+				 * 但渲染进程的 20 个模块都是 `index.html` 里的**普通 `<script>`**
+				 * （不是 ES module、没有打包器），每个文件是 `;(function(){…})()`
+				 * 包起来的 —— 所以"外层作用域"就是**全局对象**。
+				 *
+				 * 于是它的建议会变成"把模块级助手提升为全局函数"。而这些名字是
+				 * **重复的**（实测：`setStatus` 出现在 9 个文件、`formatTime` 3 个），
+				 * 提升之后就是 9 个同名全局函数互相覆盖 —— 后加载的脚本静默胜出，
+				 * 每个文件调到的都可能是别人的实现。这是**规则自己引入的 bug**，
+				 * 比它想避免的"每次调用重建一个函数"严重得多。
+				 *
+				 * 例外：真正**嵌在函数体内**的助手（确实每次调用都会重建）该移的
+				 * 已经移到了各自模块的顶层 —— 那是这条规则唯一有价值的部分。
+				 */
+				'unicorn/consistent-function-scoping': 'allow',
+			},
+		},
 		{
 			files: ['apps/mobile/src/**/*.{ts,tsx,mts,cts}'],
 			rules: {

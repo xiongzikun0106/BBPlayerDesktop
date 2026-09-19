@@ -331,7 +331,8 @@
 			}
 		}
 		state.rowInfo.set(playlistId, {
-			...(state.rowInfo.get(playlistId) ?? {}),
+			// `{ ...undefined }` 本来就是合法的空展开，`?? {}` 是多余的兜底
+			...state.rowInfo.get(playlistId),
 			...patch,
 		})
 	}
@@ -583,8 +584,11 @@
 			box.appendChild(error)
 		}
 
-		const preview = state.preview
-		if (!preview) {
+		// ⚠️ 不要叫 `preview` —— 外层已经有一个同名标识符，内层再声明会遮蔽它
+		// （`no-shadow` 抓到的）。当前读起来"恰好对"，但那种遮蔽正是
+		// "改了一个、另一个没改"的温床。
+		const previewState = state.preview
+		if (!previewState) {
 			if (!state.previewError) {
 				const empty = el('p', 'muted')
 				empty.textContent = '还没有预览内容。'
@@ -594,26 +598,26 @@
 		}
 
 		const title = el('div', 'share-preview__title')
-		title.textContent = preview.title ?? '(无标题)'
+		title.textContent = previewState.title ?? '(无标题)'
 		box.appendChild(title)
 
-		const owner = preview.owner
+		const owner = previewState.owner
 		const meta = el('div', 'muted share-preview__meta')
 		meta.dataset.testid = 'share-preview-meta'
-		const updated = formatTimestamp(preview.updatedAt)
+		const updated = formatTimestamp(previewState.updatedAt)
 		meta.textContent =
-			`${preview.trackCount ?? 0} 首` +
+			`${previewState.trackCount ?? 0} 首` +
 			(owner ? ` · 拥有者：${owner.name ?? '—'}` : ' · 拥有者：未知') +
 			(updated ? ` · 更新于 ${updated}` : '')
 		box.appendChild(meta)
 
-		if (preview.description) {
+		if (previewState.description) {
 			const description = el('p', 'muted share-preview__desc')
-			description.textContent = preview.description
+			description.textContent = previewState.description
 			box.appendChild(description)
 		}
 
-		const tracks = preview.tracks ?? []
+		const tracks = previewState.tracks ?? []
 		if (tracks.length > 0) {
 			const list = el('ol', 'share-preview__tracks')
 			list.dataset.testid = 'share-preview-tracks'
@@ -624,11 +628,11 @@
 			}
 			box.appendChild(list)
 
-			if ((preview.trackCount ?? 0) > tracks.length) {
+			if ((previewState.trackCount ?? 0) > tracks.length) {
 				box.appendChild(
 					hint(
-						`预览只返回前 ${tracks.length} 首（服务端上限 ${preview.previewLimit ?? '?'}）。` +
-							`订阅后会把全部 ${preview.trackCount} 首拉下来。`,
+						`预览只返回前 ${tracks.length} 首（服务端上限 ${previewState.previewLimit ?? '?'}）。` +
+							`订阅后会把全部 ${previewState.trackCount} 首拉下来。`,
 					),
 				)
 			}
@@ -637,7 +641,7 @@
 		}
 
 		const link = el('p', 'muted mono share-preview__link')
-		link.textContent = preview.shareLink ?? ''
+		link.textContent = previewState.shareLink ?? ''
 		box.appendChild(link)
 		return box
 	}

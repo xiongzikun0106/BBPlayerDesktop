@@ -607,8 +607,11 @@
 				// `matchDone` 也必须跟着夹住，否则会出现
 				// 「matchDone=200 但 rowCount=6」这种自相矛盾的状态
 				state.matchDone = Math.min(state.matchDone, state.rows.length)
-				// 已勾选的下标可能越界，清理掉
-				for (const index of [...selected]) {
+				// 已勾选的下标可能越界，清理掉。
+				// ⚠️ 直接遍历 Set 边遍历边删是**安全的**（ECMAScript 规定迭代器
+				// 会跳过被删除的元素），不需要先复制一份 —— 复制在这里只是
+				// 多分配一个数组。
+				for (const index of selected) {
 					if (index >= count) selected.delete(index)
 				}
 			}
