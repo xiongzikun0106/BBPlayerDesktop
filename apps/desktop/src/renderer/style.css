@@ -1271,37 +1271,15 @@ input[type='checkbox']:focus-visible {
  * 百分比，默认 0%）分两段着色。这样不需要额外的 DOM。
  */
 /*
- * 取色器（阶段 4a 的「配色 › 自定义」）。
+ * ⚠️ 这里原来有一条 `input[type='color']` 的归一化样式（阶段 4a 加的）。
  *
- * ⚠️ `input[type='color']` 必须显式归一化：不写 `appearance: none` 的话
- * 它是浏览器默认外观（一块带内阴影的方框），与其它控件完全不是一套语言；
- * 而写了 `appearance: none` 之后**必须自己画 swatch**，否则会变成一个空盒子
- * （Chromium 会把内部 swatch 一起清掉）。
+ * 现在**已经不需要了**：阶段 6e 把种子色控件改成自绘的色块 + 十六进制输入
+ * （见 `components.css` 的 `.swatch`）—— 因为原生取色器弹出的**操作系统**
+ * 窗口是 CSS 碰不到的，圆角与主题色都无从谈起。
  *
- * 顺带把控件基线的断言也钉住了 —— 那条断言要求**所有** input 都归一化，
- * 它正是抓到"新增控件忘了进基线"的那条。
+ * 留着这段死样式有害：它会让"控件基线"那条断言以为还有 color input 要管，
+ * 也会让下一个人以为这个控件还在。**死样式比没有样式更糟。**
  */
-input[type='color'] {
-	appearance: none;
-	-webkit-appearance: none;
-	width: 52px;
-	height: 32px;
-	min-height: 0;
-	padding: 0;
-	border: 1px solid var(--outline-variant);
-	border-radius: var(--r-sm);
-	background: var(--surface-container-high);
-	cursor: pointer;
-}
-
-input[type='color']::-webkit-color-swatch-wrapper {
-	padding: 3px;
-}
-
-input[type='color']::-webkit-color-swatch {
-	border: none;
-	border-radius: 5px;
-}
 
 input[type='range'] {
 	appearance: none;

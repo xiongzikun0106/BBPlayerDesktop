@@ -431,14 +431,58 @@ async function run(window) {
 		window,
 		`!document.getElementById('settings-accent-row').hidden`,
 	)
-	check('选「自定义」后露出取色器', accentRowVisible === true)
+	check('选「自定义」后露出取色控件', accentRowVisible === true)
 
+	/*
+	 * 取色控件是**自绘**的（一排色块 + 十六进制输入框），
+	 * 不是原生 `<input type="color">`。
+	 *
+	 * ⚠️ 原生那个点开弹的是**操作系统**的取色器 —— 一个 CSS 碰不到的窗口，
+	 * 所以"圆角 / 主题色"从原理上做不到（用户复审时指出的）。
+	 * 这条断言钉住"不许退回原生控件"。
+	 */
+	const accentControl = JSON.parse(
+		await evaluate(
+			window,
+			`(() => {
+				const row = document.getElementById('settings-accent-row')
+				const swatches = row ? row.querySelectorAll('[data-accent-swatch]') : []
+				const first = swatches[0]
+				const radius = first
+					? Number.parseFloat(getComputedStyle(first).borderRadius) || 0
+					: 0
+				const width = first ? first.getBoundingClientRect().width : 0
+				return JSON.stringify({
+					nativeColorInputs: document.querySelectorAll("input[type='color']").length,
+					swatchCount: swatches.length,
+					swatchRadius: Math.round(radius),
+					swatchWidth: Math.round(width),
+					hasHexInput: Boolean(
+						document.getElementById('settings-accent-hex-input'),
+					),
+				})
+			})()`,
+		),
+	)
+	check(
+		'取色控件是自绘的，**没有**原生 input[type=color]（它弹的是 OS 窗口，主题不了）',
+		accentControl.nativeColorInputs === 0 &&
+			accentControl.swatchCount >= 8 &&
+			accentControl.hasHexInput,
+		`原生=${accentControl.nativeColorInputs} 色块=${accentControl.swatchCount} 十六进制框=${accentControl.hasHexInput}`,
+	)
+	check(
+		'色块是**圆**的（方框会被读成复选框）',
+		accentControl.swatchRadius >= accentControl.swatchWidth / 2 - 2,
+		`${accentControl.swatchWidth}px 宽，圆角 ${accentControl.swatchRadius}`,
+	)
+
+	// 点一个**不在预设里**的色块不行 —— 用一个预设色块验证真的换主题
 	await evaluate(
 		window,
 		`(() => {
-			const input = document.getElementById('settings-accent-color')
-			input.value = '#0078d4'
-			input.dispatchEvent(new Event('change', { bubbles: true }))
+			const swatch = document.querySelector('[data-accent-swatch="#0078d4"]')
+			if (swatch) swatch.click()
 			return true
 		})()`,
 	)

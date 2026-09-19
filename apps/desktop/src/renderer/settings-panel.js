@@ -265,12 +265,85 @@
 		}
 		const row = document.getElementById('settings-accent-row')
 		if (row) row.hidden = (accentMode ?? 'system') !== 'custom'
-		const input = document.getElementById('settings-accent-color')
-		if (input && /^#[0-9a-fA-F]{6}$/.test(String(accentColor ?? ''))) {
-			input.value = String(accentColor)
+		const hex = /^#[0-9a-fA-F]{6}$/.test(String(accentColor ?? ''))
+			? String(accentColor)
+			: null
+		// 色块选中态与十六进制输入框反映**同一个值**
+		for (const swatch of document.querySelectorAll('[data-accent-swatch]')) {
+			swatch.classList.toggle(
+				'is-active',
+				hex != null &&
+					swatch.dataset.accentSwatch.toLowerCase() === hex.toLowerCase(),
+			)
 		}
-		const label = document.getElementById('settings-accent-hex')
-		if (label && input) label.textContent = input.value
+		const input = document.getElementById('settings-accent-hex-input')
+		if (input && hex != null) input.value = hex
+	}
+
+	/*
+	 * 预设色块 —— **自绘取色控件**。
+	 *
+	 * ⚠️ 为什么不用 `<input type="color">`：点开它弹出的是**操作系统**的
+	 * 取色器，那是个 OS 窗口，CSS 碰不到它 —— 所以"圆角 / 主题色"从原理上
+	 * 就做不到（用户复审时指出：「自定义选择种子色的弹出框，没有应用圆角和
+	 * 主题色」）。
+	 *
+	 * 改成：一排预设色块 + 一个十六进制输入框，**不弹任何浮层**。
+	 * 既没有那个无法主题化的问题，也少一次点击；想要任意颜色就填十六进制。
+	 */
+	const ACCENT_PRESETS = [
+		'#6750A4',
+		'#0061A4',
+		'#00696D',
+		'#3F6833',
+		'#8C4A60',
+		'#8B5000',
+		'#7D5260',
+		'#4A5C92',
+		'#B3261E',
+		'#386A20',
+		'#7A5900',
+		'#1C1B1F',
+	]
+	{
+		const box = document.getElementById('settings-accent-swatches')
+		for (const value of ACCENT_PRESETS) {
+			const swatch = document.createElement('button')
+			swatch.className = 'swatch'
+			swatch.dataset.accentSwatch = value
+			swatch.dataset.testid = `accent-swatch-${value.slice(1)}`
+			swatch.style.background = value
+			swatch.title = value
+			swatch.setAttribute('aria-label', `种子色 ${value}`)
+			swatch.addEventListener('click', () => {
+				void (async () => {
+					if (!ready) {
+						notReady(els.backupStatus)
+						return
+					}
+					await features.writeSettings({ accentColor: value })
+					await refreshSettings()
+				})()
+			})
+			box?.appendChild(swatch)
+		}
+		document
+			.getElementById('settings-accent-hex-input')
+			?.addEventListener('change', (event) => {
+				void (async () => {
+					const raw = String(event.target.value ?? '').trim()
+					// 允许不写 `#`
+					const value = /^[0-9a-fA-F]{6}$/.test(raw) ? `#${raw}` : raw
+					if (!/^#[0-9a-fA-F]{6}$/.test(value)) {
+						setStatus(els.backupStatus, '颜色要写成 #RRGGBB', 'bad')
+						// 还原成当前值 —— 别让用户对着一个无效值继续编辑
+						await refreshSettings()
+						return
+					}
+					await features.writeSettings({ accentColor: value })
+					await refreshSettings()
+				})()
+			})
 	}
 
 	for (const button of els.accents) {
@@ -287,23 +360,6 @@
 			})()
 		})
 	}
-	document
-		.getElementById('settings-accent-color')
-		?.addEventListener('input', (event) => {
-			const value = event.target.value
-			const label = document.getElementById('settings-accent-hex')
-			if (label) label.textContent = value
-			// `input` 事件在拖动取色器时高频触发 —— 只在 change 时落盘，
-			// 否则每拖一格就写一次设置、推一次主题
-		})
-	document
-		.getElementById('settings-accent-color')
-		?.addEventListener('change', (event) => {
-			void (async () => {
-				await features?.writeSettings?.({ accentColor: event.target.value })
-				await refreshSettings()
-			})()
-		})
 
 	function renderMaterial(level) {
 		for (const button of els.materials) {

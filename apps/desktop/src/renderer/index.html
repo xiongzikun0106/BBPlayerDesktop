@@ -510,19 +510,32 @@
 						</button>
 					</div>
 					<div class="settings-row" id="settings-accent-row" hidden>
-						<label for="settings-accent-color">种子色</label>
+						<label>种子色</label>
+						<!--
+							⚠️ 这里**不能**用 `<input type="color">`。
+							点开它弹出的是**操作系统**的取色器 —— 那是个 OS 窗口，
+							CSS 碰不到它，所以"圆角 / 主题色"从原理上就做不到
+							（用户复审时指出：「自定义选择种子色的弹出框，
+							没有应用圆角和主题色」）。
+
+							改成**自绘**：一排预设色块 + 一个十六进制输入框。
+							既不需要那个无法主题化的 OS 弹框，也不用自己做一整套
+							色相/明度取色器 —— 桌面用户给十六进制是最快的路径。
+						-->
+						<div
+							class="swatches"
+							id="settings-accent-swatches"
+							data-testid="settings-accent-swatches"
+						></div>
 						<input
-							id="settings-accent-color"
-							data-testid="settings-accent-color"
-							type="color"
-							value="#6750A4"
+							id="settings-accent-hex-input"
+							data-testid="settings-accent-hex-input"
+							type="text"
+							spellcheck="false"
+							maxlength="7"
+							placeholder="#6750A4"
+							aria-label="十六进制颜色"
 						/>
-						<span
-							class="muted mono"
-							id="settings-accent-hex"
-							data-testid="settings-accent-hex"
-							>#6750A4</span
-						>
 					</div>
 
 					<h3>材质</h3>

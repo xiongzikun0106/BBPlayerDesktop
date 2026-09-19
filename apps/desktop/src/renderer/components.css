@@ -834,6 +834,69 @@
 	min-width: 0;
 }
 
+/* ── 种子色色块（阶段 6e）─────────────────────────────── */
+/*
+ * 自绘取色控件的一部分：一排预设色块。
+ *
+ * ⚠️ 它是**自绘**的，不是 `<input type="color">` —— 后者点开弹的是操作系统
+ * 的取色器，那个窗口 CSS 碰不到，圆角与主题色都无从谈起（用户复审时指出的）。
+ *
+ * 色块本身是圆的（`--r-full`）而不是方的：与导航/页签的胶囊语言一致，
+ * 也避免"方框"被读成复选框。
+ */
+.swatches {
+	display: flex;
+	flex-wrap: wrap;
+	gap: var(--sp-xs);
+	flex: 1 1 auto;
+}
+
+/*
+ * ⚠️ 选择器必须写到 `.swatches .swatch`（特异性 0-2-0），不能只写 `.swatch`。
+ *
+ * `style.css` 里有一条 `.settings-row button`（**0-1-1**）会把按钮画成
+ * 圆角 8px 的方框 —— 它压过 `.swatch`（0-1-0）。实测：色块量出来是
+ * "28px 宽，圆角 8"，看起来就是个小方块，**与开关那次是同一类 bug**
+ * （属性选择器/复合选择器吃掉了类选择器）。
+ *
+ * 用 `.swatches .swatch` 而不是加 `!important`：后者会掩盖将来的同类冲突。
+ */
+.swatches .swatch {
+	width: 28px;
+	height: 28px;
+	flex: none;
+	border-radius: var(--r-full);
+	/*
+	 * 默认描边用 `--outline-variant`：深色主题下浅色种子色块需要一圈边界，
+	 * 否则会和底色糊在一起。
+	 */
+	border: 1px solid var(--outline-variant);
+	padding: 0;
+	cursor: pointer;
+	transition:
+		transform var(--motion-duration-fast) ease,
+		box-shadow var(--motion-duration-fast) ease;
+}
+
+.swatches .swatch:hover {
+	transform: scale(1.08);
+}
+
+/*
+ * 选中态：**外侧一圈主色环**（`box-shadow` 而不是 `border`）。
+ * 用 border 会改变元素尺寸导致整排跳动；`box-shadow` 不影响布局。
+ */
+.swatches .swatch.is-active {
+	box-shadow:
+		0 0 0 2px var(--surface-container),
+		0 0 0 4px var(--primary);
+}
+
+.swatches .swatch:focus-visible {
+	outline: 2px solid var(--primary);
+	outline-offset: 3px;
+}
+
 /* ── 空状态 ────────────────────────────────────────────── */
 /*
  * 空状态是**被设计过的**界面，不是留白：一个淡图标 + 一句话 +
